@@ -6,6 +6,7 @@ class ModelUser {
   String? image;
   String? bio; // Added for Profile/About section
   String? interests; // Added for Interests section
+  bool? isAdmin; // Admin can grant edit permissions, upload certificates
 
   ModelUser({
     this.id,
@@ -15,6 +16,7 @@ class ModelUser {
     this.image,
     this.bio,
     this.interests,
+    this.isAdmin,
   });
 
   // Maps the JSON keys from your PHP API to Dart properties
@@ -27,6 +29,7 @@ class ModelUser {
     image = json['profile_pic'] ?? json['image'];
     bio = json['bio'];
     interests = json['interests'];
+    isAdmin = json['is_admin'] == 1 || json['is_admin'] == true;
   }
 
   // Converts the object back to JSON for API requests like updateProfile
@@ -39,6 +42,7 @@ class ModelUser {
     data['image'] = image;
     data['bio'] = bio;
     data['interests'] = interests;
+    data['is_admin'] = isAdmin;
     return data;
   }
 }

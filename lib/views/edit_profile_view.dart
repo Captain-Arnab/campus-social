@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import '../controllers/profile_controller.dart';
+import '../utils/sweetalert_helper.dart';
 
 class EditProfileView extends StatefulWidget {
   const EditProfileView({super.key});
@@ -598,24 +599,14 @@ class _EditProfileViewState extends State<EditProfileView> {
         setState(() => selectedImage = File(img.path));
       }
     } catch (e) {
-      Get.snackbar(
-        "Error",
-        "Failed to pick image",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(context, "Error", "Failed to pick image");
     }
   }
 
   Future<void> _saveProfile() async {
     // Validation
     if (nameCtrl.text.trim().isEmpty) {
-      Get.snackbar(
-        "Required",
-        "Please enter your name",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(context, "Required", "Please enter your name");
       return;
     }
 

@@ -8,12 +8,14 @@ class ApiService {
   static final Dio _dio = Dio(
     BaseOptions(
       baseUrl: Constant.baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 25),
+      sendTimeout: const Duration(seconds: 20),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
+      validateStatus: (status) => status != null && status < 500,
     ),
   );
 
@@ -134,9 +136,44 @@ class ApiService {
   }
 
   // --- Events ---
-  static Future<Response> getEvents({String? search, String? category}) async {
+  static Future<Response> getEvents({String? search, String? category, CancelToken? cancelToken}) async {
     try {
       Map<String, dynamic> queryParams = {"type": "live"};
+      if (search != null) queryParams['search'] = search;
+      if (category != null) queryParams['category'] = category;
+      return await _dio.get(
+        "events.php",
+        queryParameters: queryParams,
+        cancelToken: cancelToken,
+        options: Options(receiveTimeout: const Duration(seconds: 20), sendTimeout: const Duration(seconds: 15)),
+      );
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) rethrow;
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'events.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  /// GET single event by id (includes editor_ids, pending_edit, winners, volunteer_list, participant_list)
+  static Future<Response> getEventById(int eventId) async {
+    try {
+      return await _dio.get("events.php", queryParameters: {"id": eventId});
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'events.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  /// GET past events (event_date < NOW())
+  static Future<Response> getPastEvents({String? search, String? category}) async {
+    try {
+      Map<String, dynamic> queryParams = {"type": "past"};
       if (search != null) queryParams['search'] = search;
       if (category != null) queryParams['category'] = category;
       return await _dio.get("events.php", queryParameters: queryParams);
@@ -345,22 +382,77 @@ class ApiService {
     required String title,
     required String description,
     required String venue,
+    String? eventDate,
+    String? category,
   }) async {
     try {
+      final Map<String, dynamic> payload = {
+        "id": id,
+        "user_id": await PrefService.getUserId(),
+        "title": title,
+        "description": description,
+        "venue": venue,
+      };
+      if (eventDate != null && eventDate.isNotEmpty) payload["event_date"] = eventDate;
+      if (category != null && category.isNotEmpty) payload["category"] = category;
       final response = await _dio.put(
         "events.php",
-        data: {
-          "id": id,
-          "title": title,
-          "description": description,
-          "venue": venue,
-        },
+        data: payload,
         options: await _getAuthOptions(),
       );
       debugPrint("🔵 updateEvent response: ${response.data}");
       return response;
     } on DioException catch (e) {
       debugPrint("🔴 updateEvent error: ${e.message}");
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'events.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
+    }
+  }
+
+  /// Update event via POST multipart (same fields as create + optional banners). Use for organizer/editor edit with banner.
+  static Future<Response> updateEventWithFormData({
+    required int eventId,
+    required String userId,
+    required String title,
+    required String description,
+    required String venue,
+    required String eventDate,
+    required String category,
+    List<File>? bannerFiles,
+  }) async {
+    try {
+      final Map<String, dynamic> data = {
+        "action": "update",
+        "event_id": eventId,
+        "user_id": userId,
+        "title": title,
+        "description": description,
+        "venue": venue,
+        "event_date": eventDate,
+        "category": category,
+      };
+      final formData = FormData.fromMap(Map<String, dynamic>.from(data));
+      if (bannerFiles != null && bannerFiles.isNotEmpty) {
+        for (var file in bannerFiles) {
+          formData.files.add(MapEntry(
+            "banners[]",
+            await MultipartFile.fromFile(file.path),
+          ));
+        }
+      }
+      final response = await _dio.post(
+        "events.php",
+        data: formData,
+        options: await _getAuthOptions(),
+      );
+      debugPrint("🔵 updateEventWithFormData response: ${response.data}");
+      return response;
+    } on DioException catch (e) {
+      debugPrint("🔴 updateEventWithFormData error: ${e.message}");
       return e.response ??
           Response(
             requestOptions: RequestOptions(path: 'events.php'),
@@ -479,6 +571,138 @@ class ApiService {
       debugPrint("🔴 getParticipatingEvents error: ${e.message}");
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  /// Events the user can edit (admin granted permission via event_editors). Requires API view type=editing.
+  static Future<Response> getEditingEvents() async {
+    try {
+      String? userId = await PrefService.getUserId();
+      if (userId == null) {
+        return Response(
+          requestOptions: RequestOptions(path: 'events.php'),
+          statusCode: 400,
+          data: {'status': 'error', 'message': 'User ID not found'}
+        );
+      }
+      final response = await _dio.get("events.php", queryParameters: {
+        "user_id": userId,
+        "type": "editing"
+      }, options: await _getAuthOptions());
+      return response;
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'events.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  // --- Winners (GET by event_id) ---
+  static Future<Response> getWinnersByEventId(int eventId) async {
+    try {
+      return await _dio.get("event_winners.php", queryParameters: {"event_id": eventId});
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'event_winners.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  // --- E-Certificates (GET by user_id or event_id) ---
+  static Future<Response> getCertificatesByUserId(String userId) async {
+    try {
+      return await _dio.get(
+        "event_certificates.php",
+        queryParameters: {"user_id": userId.trim()},
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'event_certificates.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  static Future<Response> getCertificatesByEventId(int eventId) async {
+    try {
+      return await _dio.get(
+        "event_certificates.php",
+        queryParameters: {"event_id": eventId},
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'event_certificates.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  /// Upload e-certificate for a user (admin): event_id, user_id, type (volunteer/participant), file
+  static Future<Response> uploadCertificate({
+    required int eventId,
+    required String userId,
+    required String type,
+    required File file,
+  }) async {
+    try {
+      FormData formData = FormData.fromMap({
+        "event_id": eventId,
+        "user_id": userId,
+        "type": type,
+        "certificate": await MultipartFile.fromFile(file.path),
+      });
+      return await _dio.post(
+        "event_certificates.php",
+        data: formData,
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'event_certificates.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  // --- Event editors (admin grants edit permission) ---
+  static Future<Response> addEventEditor({required int eventId, required String userId}) async {
+    try {
+      return await _dio.post(
+        "event_editors.php",
+        data: {"event_id": eventId, "user_id": userId, "action": "add"},
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'event_editors.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  static Future<Response> removeEventEditor({required int eventId, required String userId}) async {
+    try {
+      return await _dio.post(
+        "event_editors.php",
+        data: {"event_id": eventId, "user_id": userId, "action": "remove"},
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'event_editors.php'),
         statusCode: 0,
         data: {'status': 'error', 'message': 'Network error: ${e.message}'}
       );

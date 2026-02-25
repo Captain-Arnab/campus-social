@@ -3,17 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../utils/sweetalert_helper.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 
 class EventController extends GetxController {
   var isLoading = false.obs;
+  var isRefreshing = false.obs; // true during pull-to-refresh / search; list stays visible
   var eventList = <dynamic>[].obs;
   var favoriteList = <dynamic>[].obs;
   var attendingList = <dynamic>[].obs;
   var volunteeringList = <dynamic>[].obs;
   var participatingList = <dynamic>[].obs;
   var hostedList = <dynamic>[].obs;
+  var editingList = <dynamic>[].obs;
+  CancelToken? _eventsCancelToken;
 
   @override
   void onInit() {
@@ -24,12 +28,24 @@ class EventController extends GetxController {
     fetchVolunteeringEvents();
     fetchHostedEvents();
     fetchParticipatingEvents();
+    fetchEditingEvents();
   }
 
   Future<void> fetchEvents({String? search, String? category}) async {
-    isLoading.value = true;
+    _eventsCancelToken?.cancel('New request');
+    _eventsCancelToken = CancelToken();
+    final isInitialLoad = eventList.isEmpty;
+    if (isInitialLoad) {
+      isLoading.value = true;
+    } else {
+      isRefreshing.value = true;
+    }
     try {
-      final response = await ApiService.getEvents(search: search, category: category);
+      final response = await ApiService.getEvents(
+        search: search,
+        category: category,
+        cancelToken: _eventsCancelToken,
+      );
       if (response.data['status'] == 'success') {
         final data = response.data['data'] as List?;
         if (data != null) {
@@ -38,9 +54,12 @@ class EventController extends GetxController {
         }
       }
     } catch (e) {
-      debugPrint("✗ Fetch error: $e");
+      if (e is! DioException || !CancelToken.isCancel(e)) {
+        debugPrint("✗ Fetch error: $e");
+      }
     } finally {
       isLoading.value = false;
+      isRefreshing.value = false;
     }
   }
 
@@ -139,14 +158,38 @@ class EventController extends GetxController {
     }
   }
 
+  Future<void> fetchEditingEvents() async {
+    try {
+      String? userId = await PrefService.getUserId();
+      if (userId == null) {
+        debugPrint("✗ User ID not found for editing events");
+        return;
+      }
+      final response = await ApiService.getEditingEvents();
+      if (response.data['status'] == 'success') {
+        final data = response.data['data'] as List?;
+        if (data != null) {
+          editingList.value = data;
+          debugPrint("✓ Loaded ${data.length} events you can edit");
+        } else {
+          editingList.value = [];
+        }
+      } else {
+        editingList.value = [];
+      }
+    } catch (e) {
+      debugPrint("✗ Editing events fetch error: $e");
+      editingList.value = [];
+    }
+  }
+
   Future<void> participate(String eventId) async {
     isLoading.value = true;
     try {
       String? userId = await PrefService.getUserId();
       
       if (userId == null) {
-        Get.snackbar("Error", "User not found. Please login again", 
-          backgroundColor: Colors.red, colorText: Colors.white);
+        SweetAlertHelper.showError(Get.context, "Error", "User not found. Please login again");
         isLoading.value = false;
         return;
       }
@@ -161,23 +204,13 @@ class EventController extends GetxController {
       debugPrint("Participant response: ${response.data}");
       
       if (response.statusCode != null && response.statusCode! >= 400) {
-        Get.snackbar(
-          "Server Error",
-          "Server returned error ${response.statusCode}. Please contact support.",
-          backgroundColor: Colors.red,
-          colorText: Colors.white
-        );
+        SweetAlertHelper.showError(Get.context, "Server Error", "Server returned error ${response.statusCode}. Please contact support.");
         isLoading.value = false;
         return;
       }
       
       if (response.data == null) {
-        Get.snackbar(
-          "Error",
-          "Invalid response from server. Please try again.",
-          backgroundColor: Colors.red,
-          colorText: Colors.white
-        );
+        SweetAlertHelper.showError(Get.context, "Error", "Invalid response from server. Please try again.");
         isLoading.value = false;
         return;
       }
@@ -188,30 +221,13 @@ class EventController extends GetxController {
       if (status == 'success') {
         Get.back();
         fetchParticipatingEvents();
-        Get.snackbar(
-          "Success", 
-          "Successfully registered as participant!",
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3)
-        );
+        SweetAlertHelper.showSuccess(Get.context, "Success", "Successfully registered as participant!");
       } else {
-        Get.snackbar(
-          "Error",
-          message,
-          backgroundColor: Colors.red,
-          colorText: Colors.white
-        );
+        SweetAlertHelper.showError(Get.context, "Error", message);
       }
     } catch (e) {
       debugPrint("Participant exception: $e");
-      Get.snackbar(
-        "Error",
-        "Participation registration failed: ${e.toString()}",
-        backgroundColor: Colors.red,
-        colorText: Colors.white
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Participation registration failed: ${e.toString()}");
     } finally {
       isLoading.value = false;
     }
@@ -256,28 +272,25 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     required String title,
     required String description,
     required String venue,
+    String? eventDate,
+    String? category,
   }) async {
-    // Only pending events can be modified
-    if (!_isPending(event)) {
-      Get.snackbar(
-        "Not Allowed",
-        "Approved events cannot be modified.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-      return;
-    }
-
     final idRaw = (event is Map) ? event['id'] : null;
     final id = (idRaw is int) ? idRaw : int.tryParse(idRaw?.toString() ?? '');
     if (id == null) {
-      Get.snackbar(
-        "Error",
-        "Invalid event id.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Invalid event id.");
       return;
+    }
+
+    // Pending events: only allow direct update (no pending-approval flow)
+    final bool isPending = _isPending(event);
+    if (isPending) {
+      // Approved events with editors go to pending approval; pending events update directly
+      final hasEditors = (event is Map && event['editor_ids'] is List) ? (event['editor_ids'] as List).isNotEmpty : false;
+      if (hasEditors) {
+        SweetAlertHelper.showInfo(Get.context, "Info", "Only pending events without editors can be edited here.");
+        return;
+      }
     }
 
     isLoading.value = true;
@@ -287,60 +300,153 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         title: title,
         description: description,
         venue: venue,
+        eventDate: eventDate,
+        category: category,
       );
 
       final data = response.data;
       if (data is Map && data['status'] == 'success') {
-        Get.snackbar(
-          "Success",
-          data['message']?.toString() ?? "Event updated",
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
+        final bool pendingApproval = data['pending_approval'] == true;
+        SweetAlertHelper.showSuccess(Get.context, "Success", pendingApproval ? "Edit submitted for admin approval." : (data['message']?.toString() ?? "Event updated"));
         await fetchHostedEvents(forceRefresh: true);
+        await fetchEditingEvents();
         await fetchEvents();
       } else {
-        Get.snackbar(
-          "Error",
-          (data is Map ? data['message'] : null)?.toString() ?? "Failed to update event",
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        SweetAlertHelper.showError(Get.context, "Error", (data is Map ? data['message'] : null)?.toString() ?? "Failed to update event");
       }
     } catch (e) {
       debugPrint("Update event error: $e");
-      Get.snackbar(
-        "Error",
-        "Failed to update event.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to update event.");
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  /// Update an approved event (organizer or editor). If event has editors, edit goes to admin approval.
+  Future<void> updateApprovedEvent({
+    required dynamic event,
+    required String title,
+    required String description,
+    required String venue,
+    String? eventDate,
+    String? category,
+  }) async {
+    final idRaw = (event is Map) ? event['id'] : null;
+    final id = (idRaw is int) ? idRaw : int.tryParse(idRaw?.toString() ?? '');
+    if (id == null) {
+      SweetAlertHelper.showError(Get.context, "Error", "Invalid event id.");
+      return;
+    }
+    isLoading.value = true;
+    try {
+      final response = await ApiService.updateEvent(
+        id: id,
+        title: title,
+        description: description,
+        venue: venue,
+        eventDate: eventDate,
+        category: category,
+      );
+      final data = response.data;
+      if (data is Map && data['status'] == 'success') {
+        final bool pendingApproval = data['pending_approval'] == true;
+        SweetAlertHelper.showSuccess(Get.context, "Success", pendingApproval ? "Edit submitted for admin approval." : (data['message']?.toString() ?? "Event updated"));
+        await fetchHostedEvents(forceRefresh: true);
+        await fetchEditingEvents();
+        await fetchEvents();
+      } else {
+        SweetAlertHelper.showError(Get.context, "Error", (data is Map ? data['message'] : null)?.toString() ?? "Failed to update event");
+      }
+    } catch (e) {
+      debugPrint("Update approved event error: $e");
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to update event.");
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Update approved event with full form (including optional banner). Uses POST multipart; supports pending_approval.
+  Future<bool> updateApprovedEventWithFormData({
+    required dynamic event,
+    required String title,
+    required String description,
+    required String venue,
+    required String eventDate,
+    required String category,
+    List<File>? bannerFiles,
+  }) async {
+    final idRaw = (event is Map) ? event['id'] : null;
+    final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
+    if (id == null) {
+      SweetAlertHelper.showError(Get.context, "Error", "Invalid event id.");
+      return false;
+    }
+    final userId = await PrefService.getUserId();
+    if (userId == null) {
+      SweetAlertHelper.showError(Get.context, "Error", "Please log in again.");
+      return false;
+    }
+    isLoading.value = true;
+    try {
+      final response = await ApiService.updateEventWithFormData(
+        eventId: id,
+        userId: userId,
+        title: title,
+        description: description,
+        venue: venue,
+        eventDate: eventDate,
+        category: category,
+        bannerFiles: bannerFiles,
+      );
+      final data = response.data;
+      if (data is Map && data['status'] == 'success') {
+        await fetchHostedEvents(forceRefresh: true);
+        await fetchEditingEvents();
+        await fetchEvents();
+        return true;
+      } else {
+        SweetAlertHelper.showError(
+          Get.context,
+          "Error",
+          (data is Map ? data['message'] : null)?.toString() ?? "Failed to update event",
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint("Update approved event (form) error: $e");
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to update event.");
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Fetch single event by id (includes editor_ids, pending_edit, winners).
+  Future<Map<String, dynamic>?> fetchEventById(int eventId) async {
+    try {
+      final response = await ApiService.getEventById(eventId);
+      if (response.data is Map && response.data['status'] == 'success') {
+        final d = response.data['data'];
+        return d is Map ? Map<String, dynamic>.from(d) : null;
+      }
+      return null;
+    } catch (e) {
+      debugPrint("fetchEventById error: $e");
+      return null;
     }
   }
 
   Future<void> deleteHostedEvent({required dynamic event}) async {
     // Only pending events can be deleted
     if (!_isPending(event)) {
-      Get.snackbar(
-        "Not Allowed",
-        "Approved events cannot be deleted.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Not Allowed", "Approved events cannot be deleted.");
       return;
     }
 
     final idRaw = (event is Map) ? event['id'] : null;
     final id = (idRaw is int) ? idRaw : int.tryParse(idRaw?.toString() ?? '');
     if (id == null) {
-      Get.snackbar(
-        "Error",
-        "Invalid event id.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Invalid event id.");
       return;
     }
 
@@ -349,30 +455,15 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       final response = await ApiService.deleteEvent(id: id);
       final data = response.data;
       if (data is Map && data['status'] == 'success') {
-        Get.snackbar(
-          "Deleted",
-          data['message']?.toString() ?? "Event deleted",
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
+        SweetAlertHelper.showSuccess(Get.context, "Deleted", data['message']?.toString() ?? "Event deleted");
         await fetchHostedEvents(forceRefresh: true);
         await fetchEvents();
       } else {
-        Get.snackbar(
-          "Error",
-          (data is Map ? data['message'] : null)?.toString() ?? "Failed to delete event",
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        SweetAlertHelper.showError(Get.context, "Error", (data is Map ? data['message'] : null)?.toString() ?? "Failed to delete event");
       }
     } catch (e) {
       debugPrint("Delete event error: $e");
-      Get.snackbar(
-        "Error",
-        "Failed to delete event.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to delete event.");
     } finally {
       isLoading.value = false;
     }
@@ -390,35 +481,20 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
   }) async {
     // Only pending events can be modified
     if (!_isPending(oldEvent)) {
-      Get.snackbar(
-        "Not Allowed",
-        "Only pending events can be edited.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Not Allowed", "Only pending events can be edited.");
       return false;
     }
 
     final idRaw = (oldEvent is Map) ? oldEvent['id'] : null;
     final oldId = (idRaw is int) ? idRaw : int.tryParse(idRaw?.toString() ?? '');
     if (oldId == null) {
-      Get.snackbar(
-        "Error",
-        "Invalid event id.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Invalid event id.");
       return false;
     }
 
     String? userId = await PrefService.getUserId();
     if (userId == null) {
-      Get.snackbar(
-        "Error",
-        "User not found. Please login again",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "User not found. Please login again");
       return false;
     }
 
@@ -450,12 +526,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
 
       final createData = createResp.data;
       if (createData is! Map || createData['status'] != 'success') {
-        Get.snackbar(
-          "Error",
-          (createData is Map ? createData['message'] : null)?.toString() ?? "Failed to update event",
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-        );
+        SweetAlertHelper.showError(Get.context, "Error", (createData is Map ? createData['message'] : null)?.toString() ?? "Failed to update event");
         return false;
       }
 
@@ -463,13 +534,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       final deleteResp = await ApiService.deleteEvent(id: oldId);
       final deleteData = deleteResp.data;
       if (deleteData is! Map || deleteData['status'] != 'success') {
-        // Not fatal, but will cause duplicates.
-        Get.snackbar(
-          "Warning",
-          "Updated event created, but old event could not be deleted. Please delete the old one manually.",
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-        );
+        SweetAlertHelper.showWarning(Get.context, "Warning", "Updated event created, but old event could not be deleted. Please delete the old one manually.");
       }
 
       await fetchHostedEvents(forceRefresh: true);
@@ -477,12 +542,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       return true;
     } catch (e) {
       debugPrint("replacePendingHostedEvent error: $e");
-      Get.snackbar(
-        "Error",
-        "Failed to update event. Please try again.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to update event. Please try again.");
       return false;
     } finally {
       isLoading.value = false;
@@ -495,14 +555,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     try {
       String? userId = await PrefService.getUserId();
       if (userId == null) {
-        Get.snackbar(
-          "Error", 
-          "Please login again",
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3),
-        );
+        SweetAlertHelper.showError(Get.context, "Error", "Please login again");
         isLoading.value = false;
         return false;
       }
@@ -521,15 +574,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       debugPrint("Create event response: ${response.data}");
 
       if (response.data['status'] == 'success') {
-        Get.snackbar(
-          "Success 🎉", 
-          "Event created successfully!",
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3),
-          margin: const EdgeInsets.all(10),
-        );
+        SweetAlertHelper.showSuccess(Get.context, "Success 🎉", "Event created successfully!");
         
         // Refresh lists
         await fetchEvents();
@@ -544,28 +589,12 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         
         return true;
       } else {
-        Get.snackbar(
-          "Error", 
-          response.data['message'] ?? "Failed to create event",
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3),
-          margin: const EdgeInsets.all(10),
-        );
+        SweetAlertHelper.showError(Get.context, "Error", response.data['message'] ?? "Failed to create event");
         return false;
       }
     } catch (e) {
       debugPrint("Create event error: $e");
-      Get.snackbar(
-        "Error", 
-        "Failed to create event. Please try again.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 3),
-        margin: const EdgeInsets.all(10),
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to create event. Please try again.");
       return false;
     } finally {
       isLoading.value = false;
@@ -577,10 +606,10 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       final response = await ApiService.toggleFavorite(eventId);
       if (response.data['status'] == 'success') {
         fetchFavorites();
-        Get.snackbar("Favorites", response.data['message'], snackPosition: SnackPosition.BOTTOM);
+        SweetAlertHelper.showSuccess(Get.context, "Favorites", response.data['message']?.toString() ?? "Done");
       }
     } catch (e) {
-      Get.snackbar("Error", "Action failed");
+      SweetAlertHelper.showError(Get.context, "Error", "Action failed");
     }
   }
 
@@ -588,16 +617,20 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     try {
       final response = await ApiService.joinEvent(eventId);
       debugPrint("📱 joinEvent response status: ${response.data['status']}");
-      Get.snackbar(response.data['status'] == 'success' ? "Success" : "Notice", response.data['message']);
-      if (response.data['status'] == 'success') {
+      final isSuccess = response.data['status'] == 'success';
+      final msg = response.data['message']?.toString() ?? '';
+      if (isSuccess) {
+        SweetAlertHelper.showSuccess(Get.context, "Success", msg.isNotEmpty ? msg : "Registration successful.");
         debugPrint("🔄 Refreshing attending events...");
         await fetchAttendingEvents();
         await fetchEvents();
         debugPrint("✓ Lists refreshed");
+      } else {
+        SweetAlertHelper.showInfo(Get.context, "Notice", msg);
       }
     } catch (e) {
       debugPrint("✗ joinEvent error: $e");
-      Get.snackbar("Error", "Registration failed");
+      SweetAlertHelper.showError(Get.context, "Error", "Registration failed");
     }
   }
 
@@ -607,7 +640,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       String? userId = await PrefService.getUserId();
       
       if (userId == null) {
-        Get.snackbar("Error", "User not found. Please login again", backgroundColor: Colors.red, colorText: Colors.white);
+        SweetAlertHelper.showError(Get.context, "Error", "User not found. Please login again");
         isLoading.value = false;
         return;
       }
@@ -626,23 +659,13 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       debugPrint("Volunteer response type: ${response.runtimeType}");
       
       if (response.statusCode != null && response.statusCode! >= 400) {
-        Get.snackbar(
-          "Server Error",
-          "Server returned error ${response.statusCode}. Please contact support.",
-          backgroundColor: Colors.red,
-          colorText: Colors.white
-        );
+        SweetAlertHelper.showError(Get.context, "Server Error", "Server returned error ${response.statusCode}. Please contact support.");
         isLoading.value = false;
         return;
       }
       
       if (response.data == null) {
-        Get.snackbar(
-          "Error",
-          "Invalid response from server. Please try again.",
-          backgroundColor: Colors.red,
-          colorText: Colors.white
-        );
+        SweetAlertHelper.showError(Get.context, "Error", "Invalid response from server. Please try again.");
         isLoading.value = false;
         return;
       }
@@ -653,30 +676,13 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       if (status == 'success') {
         Get.back();
         fetchVolunteeringEvents();
-        Get.snackbar(
-          "Success", 
-          "Successfully registered as volunteer!",
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3)
-        );
+        SweetAlertHelper.showSuccess(Get.context, "Success", "Successfully registered as volunteer!");
       } else {
-        Get.snackbar(
-          "Error",
-          message,
-          backgroundColor: Colors.red,
-          colorText: Colors.white
-        );
+        SweetAlertHelper.showError(Get.context, "Error", message);
       }
     } catch (e) {
       debugPrint("Volunteer exception: $e");
-      Get.snackbar(
-        "Error",
-        "Volunteering registration failed: ${e.toString()}",
-        backgroundColor: Colors.red,
-        colorText: Colors.white
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Volunteering registration failed: ${e.toString()}");
     } finally {
       isLoading.value = false;
     }

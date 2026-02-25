@@ -4,6 +4,10 @@ class Constant {
   // --- API Configuration ---
   static const String baseUrl = "https://exdeos.com/AS/campus_social/api/";
   
+  // Upload base URLs (for building certificate/banner URLs)
+  static const String uploadsBaseUrl = "https://exdeos.com/AS/campus_social/uploads/";
+  static const String certificatesPath = "certificates/";
+
   // Endpoints
   static const String loginEndpoint = "users.php"; 
   static const String registerEndpoint = "users.php"; 

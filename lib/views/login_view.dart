@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
+import '../utils/sweetalert_helper.dart';
 import 'signup_view.dart';
 // import 'forgot_password_view.dart'; // Email-based flow (disabled - SMS-only auth)
 
@@ -354,36 +355,26 @@ class _LoginViewState extends State<LoginView> {
 
   bool _validateLogin() {
     if (identifierCtrl.text.trim().isEmpty) {
-      Get.snackbar(
-        "Required",
-        _isStudent ? "Please enter your roll number" : "Please enter your employee ID",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(context, "Required", _isStudent ? "Please enter your roll number" : "Please enter your employee ID");
       return false;
     }
     if (emailPhoneCtrl.text.trim().isEmpty) {
-      Get.snackbar(
-        "Required",
-        _loginByMobile ? "Please enter your mobile number" : "Please enter your email",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(context, "Required", _loginByMobile ? "Please enter your mobile number" : "Please enter your email");
       return false;
     }
     if (_loginByMobile) {
       if (!GetUtils.isPhoneNumber(emailPhoneCtrl.text.trim())) {
-        Get.snackbar("Invalid", "Please enter a valid mobile number", backgroundColor: Colors.red, colorText: Colors.white);
+        SweetAlertHelper.showError(context, "Invalid", "Please enter a valid mobile number");
         return false;
       }
     } else {
       if (!GetUtils.isEmail(emailPhoneCtrl.text.trim())) {
-        Get.snackbar("Invalid", "Please enter a valid email address", backgroundColor: Colors.red, colorText: Colors.white);
+        SweetAlertHelper.showError(context, "Invalid", "Please enter a valid email address");
         return false;
       }
     }
     if (passCtrl.text.isEmpty) {
-      Get.snackbar("Required", "Please enter your password", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please enter your password");
       return false;
     }
     return true;

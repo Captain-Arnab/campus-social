@@ -1,13 +1,20 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:art_sweetalert_new/art_sweetalert_new.dart';
+import '../base/constant.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
+import '../utils/sweetalert_helper.dart';
 import 'create_event_view.dart';
 import 'event_detail_view.dart';
 import 'favorites_view.dart';
+import 'winners_view.dart';
 import 'edit_profile_view.dart';
 import 'volunteer_dialog.dart';
 import '../data/api_service.dart';
@@ -101,6 +108,153 @@ class _HomeViewState extends State<HomeView> {
   }
 }
 
+// --- Cracker burst painter: sparks bursting from a rounded rect border ---
+class _CrackerBurstPainter extends CustomPainter {
+  final double progress;
+  final double borderRadius;
+
+  _CrackerBurstPainter({required this.progress, required this.borderRadius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const double inset = 14.0; // match burst padding so sparks start at button edge
+    final center = Offset(size.width / 2, size.height / 2);
+    final halfW = (size.width - inset * 2) / 2;
+    final halfH = (size.height - inset * 2) / 2;
+    const int sparkCount = 32;
+    const double burstLength = 22.0;
+    final colors = [
+      const Color(0xFFFFD700), // gold
+      const Color(0xFFFF8C00), // orange
+      Colors.white,
+      const Color(0xFFFFA500),
+    ];
+
+    for (var i = 0; i < sparkCount; i++) {
+      final angle = (i / sparkCount) * 2 * math.pi;
+      final cosA = math.cos(angle);
+      final sinA = math.sin(angle);
+      // Point on ellipse = button border (rounded rect approximated by ellipse)
+      final start = Offset(
+        center.dx + halfW * cosA,
+        center.dy + halfH * sinA,
+      );
+      final unit = Offset(cosA, sinA);
+      final end = start + unit * (burstLength * progress);
+      final opacity = (1.0 - progress).clamp(0.0, 1.0);
+      final color = colors[i % colors.length].withOpacity(opacity * 0.95);
+      final paint = Paint()
+        ..color = color
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(start, end, paint);
+      canvas.drawCircle(end, 2.0, Paint()..color = color);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CrackerBurstPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.borderRadius != borderRadius;
+}
+
+// --- Celebrating Winners button: cracker burst from border radius ---
+class _CelebratingWinnersButton extends StatefulWidget {
+  const _CelebratingWinnersButton();
+
+  @override
+  State<_CelebratingWinnersButton> createState() => _CelebratingWinnersButtonState();
+}
+
+class _CelebratingWinnersButtonState extends State<_CelebratingWinnersButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _burstAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 900),
+      vsync: this,
+    )..repeat();
+
+    _burstAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const double borderRadius = 22.0;
+    const double burstPadding = 14.0;
+
+    return AnimatedBuilder(
+      animation: _burstAnimation,
+      builder: (context, child) {
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            CustomPaint(
+              size: Size(120.w + burstPadding * 2, 40.h + burstPadding * 2),
+              painter: _CrackerBurstPainter(
+                progress: _burstAnimation.value,
+                borderRadius: borderRadius,
+              ),
+            ),
+            Material(
+              color: Colors.white.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(borderRadius),
+              child: InkWell(
+                onTap: () => Get.to(() => const WinnersView(), transition: Transition.rightToLeft),
+                borderRadius: BorderRadius.circular(borderRadius),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(borderRadius),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.8),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.emoji_events, color: Colors.white, size: 20.w),
+                      SizedBox(width: 6.w),
+                      Text(
+                        "Winners",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14.sp,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withOpacity(0.25),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 // --- EXPLORE TAB ---
 class _ExploreTab extends StatefulWidget {
   const _ExploreTab();
@@ -114,13 +268,68 @@ class _ExploreTabState extends State<_ExploreTab> {
   final TextEditingController searchCtrl = TextEditingController();
   String selectedCategory = "All";
   final List<String> categories = ["All", "IT/Tech", "Cultural", "Sports", "Academic", "Social"];
+  List<MapEntry<dynamic, List<dynamic>>> _winnersSwiperData = [];
+  bool _winnersLoading = false;
+  Timer? _searchDebounce;
 
-  // Add refresh method
   Future<void> _refreshData() async {
     await controller.fetchEvents(
       search: searchCtrl.text.isEmpty ? null : searchCtrl.text,
       category: selectedCategory == "All" ? null : selectedCategory
     );
+  }
+
+  Future<void> _loadWinnersSwiper() async {
+    if (_winnersLoading) return;
+    setState(() => _winnersLoading = true);
+    try {
+      final response = await ApiService.getPastEvents();
+      final data = response.data;
+      if (data is! Map || data['status'] != 'success') {
+        setState(() { _winnersLoading = false; return; });
+      }
+      final list = data['data'];
+      final events = list is List ? list : [];
+      final List<MapEntry<dynamic, List<dynamic>>> result = [];
+      for (var i = 0; i < events.length && i < 8; i++) {
+        final e = events[i];
+        final idRaw = e is Map ? e['id'] : null;
+        final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
+        if (id == null) continue;
+        final winRes = await ApiService.getWinnersByEventId(id);
+        if (winRes.data is Map && winRes.data['status'] == 'success') {
+          final wList = winRes.data['data'];
+          if (wList is List && wList.isNotEmpty) result.add(MapEntry(e, wList));
+        }
+      }
+      if (mounted) setState(() { _winnersSwiperData = result; _winnersLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _winnersLoading = false);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadWinnersSwiper());
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String val) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      controller.fetchEvents(
+        search: val.isEmpty ? null : val,
+        category: selectedCategory == "All" ? null : selectedCategory,
+      );
+    });
   }
 
   @override
@@ -130,6 +339,8 @@ class _ExploreTabState extends State<_ExploreTab> {
       color: const Color(0xFFFF5F15),
       child: SafeArea(
         child: CustomScrollView(
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          cacheExtent: 400,
         slivers: [
           // Header with gradient
           SliverToBoxAdapter(
@@ -192,9 +403,16 @@ class _ExploreTabState extends State<_ExploreTab> {
                           ),
                         ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.favorite_outline, color: Colors.white),
-                        onPressed: () => Get.to(() => const FavoritesView(), transition: Transition.rightToLeft),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const _CelebratingWinnersButton(),
+                          SizedBox(width: 8.w),
+                          IconButton(
+                            icon: const Icon(Icons.favorite_outline, color: Colors.white),
+                            onPressed: () => Get.to(() => const FavoritesView(), transition: Transition.rightToLeft),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -214,10 +432,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                       ),
                       contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 20.w)
                     ),
-                    onChanged: (val) => controller.fetchEvents(
-                      search: val, 
-                      category: selectedCategory == "All" ? null : selectedCategory
-                    ),
+                    onChanged: _onSearchChanged,
                   ),
                 ],
               ),
@@ -276,7 +491,159 @@ class _ExploreTabState extends State<_ExploreTab> {
               );
             }),
           ),
-          
+
+          // Winners section — horizontal swiper of winner cards
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: 16.h),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20.w),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Winners",
+                        style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                      ),
+                      TextButton(
+                        onPressed: () => Get.to(() => const WinnersView(), transition: Transition.rightToLeft),
+                        child: Text("See all", style: TextStyle(color: const Color(0xFFFF5F15), fontWeight: FontWeight.w600, fontSize: 14.sp)),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 10.h),
+                if (_winnersLoading)
+                  SizedBox(
+                    height: 200.h,
+                    child: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
+                  )
+                else if (_winnersSwiperData.isEmpty)
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20.w),
+                    child: GestureDetector(
+                      onTap: () => Get.to(() => const WinnersView(), transition: Transition.rightToLeft),
+                      child: Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.symmetric(vertical: 20.h, horizontal: 20.w),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [const Color(0xFFFF5F15).withOpacity(0.15), const Color(0xFFFF9068).withOpacity(0.1)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFFF5F15).withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(12.w),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF5F15).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.emoji_events, color: Color(0xFFFF5F15), size: 36),
+                            ),
+                            SizedBox(width: 16.w),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Event winners", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp)),
+                                  SizedBox(height: 4.h),
+                                  Text("See who won past events", style: TextStyle(fontSize: 13.sp, color: Colors.grey[700])),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right, color: Color(0xFFFF5F15)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    height: 220.h,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.symmetric(horizontal: 16.w),
+                      itemCount: _winnersSwiperData.length,
+                      itemBuilder: (context, index) {
+                        final entry = _winnersSwiperData[index];
+                        final event = entry.key;
+                        final winners = entry.value;
+                        final title = (event is Map ? event['title'] : null)?.toString() ?? 'Event';
+                        final date = (event is Map ? event['event_date'] : null)?.toString() ?? '';
+                        return GestureDetector(
+                          onTap: () => Get.to(() => EventDetailView(event: event), transition: Transition.rightToLeft),
+                          child: Container(
+                            width: 260.w,
+                            margin: EdgeInsets.only(right: 12.w),
+                            padding: EdgeInsets.all(14.w),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.emoji_events, color: const Color(0xFFFF5F15), size: 24.w),
+                                    SizedBox(width: 8.w),
+                                    Expanded(
+                                      child: Text(
+                                        title,
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (date.isNotEmpty) Text(date, style: TextStyle(fontSize: 11.sp, color: Colors.grey[600])),
+                                SizedBox(height: 10.h),
+                                ...winners.take(3).map<Widget>((w) {
+                                  final pos = (w is Map ? w['position'] : null) ?? 0;
+                                  final name = (w is Map ? w['full_name'] : null)?.toString() ?? '—';
+                                  return Padding(
+                                    padding: EdgeInsets.only(bottom: 4.h),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 20.w,
+                                          height: 20.w,
+                                          decoration: BoxDecoration(
+                                            color: pos == 1 ? const Color(0xFFFFD700) : (pos == 2 ? Colors.grey.shade400 : Colors.brown.shade300),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Center(child: Text('$pos', style: TextStyle(fontSize: 10.sp, fontWeight: FontWeight.bold))),
+                                        ),
+                                        SizedBox(width: 8.w),
+                                        Expanded(child: Text(name, style: TextStyle(fontSize: 12.sp), overflow: TextOverflow.ellipsis)),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                SizedBox(height: 20.h),
+              ],
+            ),
+          ),
+
           // Category Filter (Moved here - above All Events)
           SliverToBoxAdapter(
             child: Column(
@@ -368,7 +735,6 @@ class _ExploreTabState extends State<_ExploreTab> {
                 ),
               );
             }
-            
             if (controller.eventList.isEmpty) {
               return SliverToBoxAdapter(
                 child: SizedBox(height: 300.h, child: _buildEmptyState()),
@@ -382,10 +748,11 @@ class _ExploreTabState extends State<_ExploreTab> {
                   padding: EdgeInsets.symmetric(horizontal: 20.w),
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
+                  cacheExtent: 200,
                   itemCount: controller.eventList.length,
                   separatorBuilder: (_, __) => SizedBox(width: 16.w),
                   itemBuilder: (context, index) {
-                    return _AllEventCard(event: controller.eventList[index]);
+                    return RepaintBoundary(child: _AllEventCard(event: controller.eventList[index]));
                   },
                 ),
               ),
@@ -726,18 +1093,26 @@ class _AllEventCard extends StatelessWidget {
                                                 ? null 
                                                 : () {
                                                     // Show participate confirmation dialog
-                                                    Get.defaultDialog(
-                                                      title: "Participate",
-                                                      middleText: "Do you want to participate in this event?",
-                                                      textConfirm: "Yes",
-                                                      textCancel: "Cancel",
-                                                      confirmTextColor: Colors.white,
-                                                      buttonColor: const Color(0xFFFF5F15),
-                                                      cancelTextColor: Colors.grey[700],
-                                                      onConfirm: () {
-                                                        Get.back();
-                                                        controller.participate(event['id'].toString());
-                                                      },
+                                                    ArtSweetAlert.show(
+                                                      context: context,
+                                                      title: const Text("Participate"),
+                                                      content: const Text("Do you want to participate in this event?"),
+                                                      type: ArtAlertType.question,
+                                                      actions: [
+                                                        ArtAlertButton(
+                                                          onPressed: () => Navigator.pop(context),
+                                                          child: const Text("Cancel"),
+                                                          backgroundColor: Colors.grey,
+                                                        ),
+                                                        ArtAlertButton(
+                                                          onPressed: () {
+                                                            Navigator.pop(context);
+                                                            controller.participate(event['id'].toString());
+                                                          },
+                                                          child: const Text("Yes"),
+                                                          backgroundColor: const Color(0xFFFF5F15),
+                                                        ),
+                                                      ],
                                                     );
                                                   },
                                             style: ElevatedButton.styleFrom(
@@ -942,6 +1317,138 @@ class _FeaturedEventCard extends StatelessWidget {
     child: const Center(child: Icon(Icons.event, size: 80, color: Colors.white))
   );
 }
+// --- Certificates tab (user-wise, from My Events) ---
+class _CertificatesTab extends StatefulWidget {
+  const _CertificatesTab();
+
+  @override
+  State<_CertificatesTab> createState() => _CertificatesTabState();
+}
+
+class _CertificatesTabState extends State<_CertificatesTab> {
+  List<dynamic> _list = [];
+  bool _loading = true;
+  String? _error;
+
+  Future<void> _load() async {
+    final userId = await PrefService.getUserId();
+    if (userId == null) {
+      setState(() { _loading = false; _error = 'Please log in.'; });
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      final response = await ApiService.getCertificatesByUserId(userId);
+      final data = response.data;
+      if (data is Map && data['status'] == 'success') {
+        final raw = data['data'];
+        final list = raw is List ? raw : <dynamic>[];
+        setState(() { _list = list; _loading = false; _error = null; });
+      } else {
+        final msg = (data is Map ? data['message'] : null)?.toString();
+        setState(() { _list = []; _loading = false; _error = msg; });
+      }
+    } catch (e) {
+      setState(() { _list = []; _loading = false; _error = 'Network error.'; });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Center(child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(color: Color(0xFFFF5F15)),
+          SizedBox(height: 16.h),
+          Text("Loading certificates...", style: TextStyle(color: Colors.grey[600])),
+        ],
+      ));
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.w),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 64.w, color: Colors.grey),
+              SizedBox(height: 16.h),
+              Text(_error!, textAlign: TextAlign.center),
+              SizedBox(height: 16.h),
+              ElevatedButton(onPressed: _load, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF5F15), foregroundColor: Colors.white), child: const Text("Retry")),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_list.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.card_membership, size: 80.w, color: Colors.grey[300]),
+            SizedBox(height: 16.h),
+            Text("No certificates yet", style: TextStyle(fontSize: 16.sp, color: Colors.grey[600])),
+            SizedBox(height: 8.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 32.w),
+              child: Text("Certificates for past events are uploaded by admin. You will see them here when available.", textAlign: TextAlign.center, style: TextStyle(fontSize: 13.sp, color: Colors.grey[500])),
+            ),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: const Color(0xFFFF5F15),
+      child: ListView.builder(
+        padding: EdgeInsets.all(16.w),
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        cacheExtent: 200,
+        itemCount: _list.length,
+        itemBuilder: (context, index) {
+          final c = _list[index];
+          final eventTitle = (c is Map ? c['event_title'] : null)?.toString() ?? 'Event';
+          final eventDate = (c is Map ? c['event_date'] : null)?.toString() ?? '';
+          final type = (c is Map ? c['type'] : null)?.toString() ?? 'certificate';
+          final filePath = (c is Map ? c['file_path'] : null)?.toString() ?? '';
+          final path = filePath.startsWith('http') ? filePath : filePath.replaceFirst(RegExp(r'^certificates[/\\]'), '');
+          final url = filePath.startsWith('http') ? filePath : '${Constant.uploadsBaseUrl}${Constant.certificatesPath}$path';
+          return Card(
+            margin: EdgeInsets.only(bottom: 12.h),
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              leading: CircleAvatar(backgroundColor: const Color(0xFFFF5F15).withOpacity(0.2), child: const Icon(Icons.card_membership, color: Color(0xFFFF5F15))),
+              title: Text(eventTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp)),
+              subtitle: Text('${type.toUpperCase()} • $eventDate', style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: () async {
+                final uri = Uri.tryParse(url);
+                if (uri != null) {
+                  try {
+                    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } catch (_) {
+                    SweetAlertHelper.showError(context, "Certificate", "Could not open link.");
+                  }
+                }
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 // --- MY EVENTS TAB ---
 class _MyEventsTab extends StatelessWidget {
   final int initialIndex;
@@ -950,8 +1457,8 @@ class _MyEventsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5, // CHANGED FROM 4 TO 5
-      initialIndex: initialIndex.clamp(0, 4),
+      length: 7,
+      initialIndex: initialIndex.clamp(0, 6),
       child: Scaffold(
         backgroundColor: const Color(0xFFF8F9FD),
         appBar: AppBar(
@@ -968,9 +1475,11 @@ class _MyEventsTab extends StatelessWidget {
             tabs: const [
               Tab(text: "Attending"),
               Tab(text: "Hosting"),
+              Tab(text: "I can edit"),
               Tab(text: "Volunteering"),
               Tab(text: "Participating"),
               Tab(text: "Favorites"),
+              Tab(text: "Certificates"),
             ],
           ),
         ),
@@ -978,9 +1487,11 @@ class _MyEventsTab extends StatelessWidget {
           children: [
             _EventListWidget(type: 'attending'),
             _EventListWidget(type: 'hosted'),
+            _EventListWidget(type: 'editing'),
             _EventListWidget(type: 'volunteering'),
             _EventListWidget(type: 'participating'),
             const FavoritesView(),
+            const _CertificatesTab(),
           ],
         ),
       ),
@@ -1023,6 +1534,9 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
       case 'hosted':
         await controller.fetchHostedEvents();
         break;
+      case 'editing':
+        await controller.fetchEditingEvents();
+        break;
       case 'volunteering':
         await controller.fetchVolunteeringEvents();
         break;
@@ -1060,6 +1574,11 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
           eventsList = controller.hostedList;
           emptyMessage = "You haven't hosted any events yet";
           emptyIcon = Icons.event_note;
+          break;
+        case 'editing':
+          eventsList = controller.editingList;
+          emptyMessage = "No events shared with you for editing yet. When an admin grants you permission to edit an event, it will appear here.";
+          emptyIcon = Icons.edit_note;
           break;
         case 'volunteering':
           eventsList = controller.volunteeringList;
@@ -1193,6 +1712,8 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
           color: const Color(0xFFFF5F15),
           child: ListView(
             padding: EdgeInsets.only(bottom: 24.h),
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+            cacheExtent: 300,
             children: [
               buildSection(
                 title: "Pending",
@@ -1356,8 +1877,6 @@ class _ProfileTab extends StatelessWidget {
     final EventController eventController = Get.find<EventController>();
     final AuthController authController = Get.find<AuthController>();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshProfile());
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       body: Obx(() {
@@ -1370,6 +1889,8 @@ class _ProfileTab extends StatelessWidget {
           onRefresh: _refreshProfile,
           color: const Color(0xFFFF5F15),
           child: CustomScrollView(
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+            cacheExtent: 300,
             slivers: [
             SliverAppBar(
               expandedHeight: 50.h,
@@ -1433,18 +1954,26 @@ class _ProfileTab extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.logout_outlined, color: Colors.white, size: 22),
                   onPressed: () {
-                    Get.defaultDialog(
-                      title: "Logout",
-                      middleText: "Are you sure you want to logout?",
-                      textConfirm: "Yes",
-                      textCancel: "Cancel",
-                      confirmTextColor: Colors.white,
-                      buttonColor: const Color(0xFFFF5F15),
-                      cancelTextColor: Colors.grey[700],
-                      onConfirm: () {
-                        Get.back();
-                        authController.logout();
-                      },
+                    ArtSweetAlert.show(
+                      context: context,
+                      title: const Text("Logout"),
+                      content: const Text("Are you sure you want to logout?"),
+                      type: ArtAlertType.warning,
+                      actions: [
+                        ArtAlertButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text("Cancel"),
+                          backgroundColor: Colors.grey,
+                        ),
+                        ArtAlertButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            authController.logout();
+                          },
+                          child: const Text("Yes"),
+                          backgroundColor: const Color(0xFFFF5F15),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -2084,17 +2613,26 @@ class _HostedEventTile extends StatelessWidget {
                       transition: Transition.rightToLeft,
                     );
                   } else if (value == 'delete') {
-                    Get.defaultDialog(
-                      title: "Delete Event?",
-                      middleText: "You can delete only pending events. Continue?",
-                      textConfirm: "Delete",
-                      textCancel: "Cancel",
-                      confirmTextColor: Colors.white,
-                      buttonColor: Colors.red,
-                      onConfirm: () async {
-                        Get.back();
-                        await controller.deleteHostedEvent(event: event);
-                      },
+                    ArtSweetAlert.show(
+                      context: context,
+                      title: const Text("Delete Event?"),
+                      content: const Text("You can delete only pending events. Continue?"),
+                      type: ArtAlertType.warning,
+                      actions: [
+                        ArtAlertButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text("Cancel"),
+                          backgroundColor: Colors.grey,
+                        ),
+                        ArtAlertButton(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            await controller.deleteHostedEvent(event: event);
+                          },
+                          child: const Text("Delete"),
+                          backgroundColor: Colors.red,
+                        ),
+                      ],
                     );
                   }
                 },
