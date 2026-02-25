@@ -1,0 +1,67 @@
+name: MiCampus
+description: A new Flutter project for Campus Events.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # State Management & Routing
+  get: ^4.6.6
+  # Networking
+  dio: ^5.4.0
+  # Local Storage
+  shared_preferences: ^2.2.2
+  # UI Utilities
+  flutter_screenutil: ^5.9.0
+  intl: ^0.19.0
+  # Media
+  image_picker: ^1.0.7
+  carousel_slider: ^5.1.1
+  # Icons
+  cupertino_icons: ^1.0.6
+  path_provider: ^2.1.2    # To find local storage paths
+  pdf: ^3.10.7             # For PDF generation
+  saver_gallery: ^4.0.0    # To save images to the phone gallery
+  permission_handler: ^11.0.1
+  google_fonts: ^6.2.1
+  http: ^1.1.0
+  pin_code_fields: ^8.0.1
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: "^0.13.1"
+  flutter_lints: ^3.0.0
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/logo.jpeg"
+
+flutter:
+  uses-material-design: true
+  
+  # Assets
+  assets:
+    - assets/images/
+    - assets/images/logo.jpeg
+    - assets/images/background1.png
+    - assets/images/paint.png
+    - assets/images/music_strokes.png
+    - assets/images/basketball.png
+    - assets/images/graduation_poster.jpeg
+    - assets/images/music_poster.jpeg
+    - assets/images/sports_poster.jpeg
+    - assets/images/tech_poster.jpeg
+    - assets/images/online_course_poster.jpeg
+    - assets/images/guru_nanak_logo.png
+    - assets/images/basketball/basketball.png
+    - assets/images/innovation/robot.png
+    - assets/images/music/music.png
+    - assets/images/graduation/element2.png
+    - assets/images/online_course/element.png
