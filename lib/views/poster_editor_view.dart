@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/poster_controller.dart';
+import '../utils/sweetalert_helper.dart';
 import '../widgets/poster_themes.dart';
 
 class PosterEditorView extends StatefulWidget {
@@ -420,7 +421,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                     if (posterFile != null) {
                       Get.back(result: posterFile); 
                     } else {
-                      Get.snackbar("Error", "Failed to generate poster");
+                      SweetAlertHelper.showError(context, "Error", "Failed to generate poster");
                     }
                   },
                   style: ElevatedButton.styleFrom(

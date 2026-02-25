@@ -30,7 +30,8 @@ dependencies:
   google_fonts: ^6.2.1
   http: ^1.1.0
   pin_code_fields: ^8.0.1
-
+  url_launcher: ^6.2.0
+  art_sweetalert_new: ^1.0.0
 
 dev_dependencies:
   flutter_test:

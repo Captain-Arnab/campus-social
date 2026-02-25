@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../utils/sweetalert_helper.dart';
 import '../views/home_view.dart';
 import '../views/login_view.dart';
 import '../data/otp_service.dart';
@@ -13,24 +14,14 @@ class AuthController extends GetxController {
 
   Future<bool> sendRegistrationOtp(String emailOrPhone, bool isMobile) async {
     // OTP disabled (SMS + Email) temporarily.
-    Get.snackbar(
-      "OTP Disabled",
-      "OTP verification is temporarily turned off.",
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
-    );
+    SweetAlertHelper.showWarning(Get.context, "OTP Disabled", "OTP verification is temporarily turned off.");
     return false;
   }
 
   //Send OTP for Login
   Future<bool> sendLoginOtp(String emailOrPhone, bool isMobile) async {
     // OTP disabled (SMS + Email) temporarily.
-    Get.snackbar(
-      "OTP Disabled",
-      "OTP verification is temporarily turned off.",
-      backgroundColor: Colors.orange,
-      colorText: Colors.white,
-    );
+    SweetAlertHelper.showWarning(Get.context, "OTP Disabled", "OTP verification is temporarily turned off.");
     return false;
   }
 
@@ -41,24 +32,14 @@ class AuthController extends GetxController {
     final difference = now.difference(otpSentTime.value);
     
     if (difference.inMinutes > 5) {
-      Get.snackbar(
-        "Expired",
-        "OTP has expired. Please request a new one.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Expired", "OTP has expired. Please request a new one.");
       return false;
     }
     
     if (OtpService.verifyOtp(enteredOtp, sentOtp.value)) {
       return true;
     } else {
-      Get.snackbar(
-        "Invalid OTP",
-        "The OTP you entered is incorrect.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(Get.context, "Invalid OTP", "The OTP you entered is incorrect.");
       return false;
     }
   }
@@ -90,30 +71,25 @@ class AuthController extends GetxController {
       
       final data = response.data;
       if (data == null) {
-        Get.snackbar("Error", "No response from server");
+        SweetAlertHelper.showError(Get.context, "Error", "No response from server");
         return;
       }
 
       if (data is! Map) {
-        Get.snackbar("Error", "Invalid response format");
+        SweetAlertHelper.showError(Get.context, "Error", "Invalid response format");
         return;
       }
       
       if (data['status'] == 'success') {
-        Get.snackbar(
-          "Success",
-          "Account created! Please login.",
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
+        SweetAlertHelper.showSuccess(Get.context, "Success", "Account created! Please login.");
         Get.off(() => const LoginView());
       } else {
         String errorMsg = data['message']?.toString() ?? "Registration failed";
-        Get.snackbar("Registration Failed", errorMsg, backgroundColor: Colors.red, colorText: Colors.white);
+        SweetAlertHelper.showError(Get.context, "Registration Failed", errorMsg);
       }
     } catch (e) {
       debugPrint("Registration error: $e");
-      Get.snackbar("Error", "Connection failed: ${e.toString()}", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
     } finally {
       isLoading.value = false;
     }
@@ -139,12 +115,12 @@ class AuthController extends GetxController {
       
       final data = response.data;
       if (data == null) {
-        Get.snackbar("Error", "No response from server");
+        SweetAlertHelper.showError(Get.context, "Error", "No response from server");
         return;
       }
 
       if (data is! Map) {
-        Get.snackbar("Error", "Invalid response format");
+        SweetAlertHelper.showError(Get.context, "Error", "Invalid response format");
         return;
       }
 
@@ -156,19 +132,14 @@ class AuthController extends GetxController {
         await PrefService.saveUserSession(userId, name, token);
         
         Get.offAll(() => const HomeView());
-        Get.snackbar(
-          "Success",
-          "Welcome back, $name!",
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-        );
+        SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
       } else {
         String errorMsg = data['message']?.toString() ?? "Unknown error";
-        Get.snackbar("Login Failed", errorMsg, backgroundColor: Colors.red, colorText: Colors.white);
+        SweetAlertHelper.showError(Get.context, "Login Failed", errorMsg);
       }
     } catch (e) {
       debugPrint("Login error: $e");
-      Get.snackbar("Error", "Connection failed: ${e.toString()}", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
     } finally {
       isLoading.value = false;
     }
@@ -182,26 +153,26 @@ class AuthController extends GetxController {
       
       final data = response.data;
       if (data == null) {
-        Get.snackbar("Error", "No response from server");
+        SweetAlertHelper.showError(Get.context, "Error", "No response from server");
         return;
       }
 
       if (data is! Map) {
-        Get.snackbar("Error", "Invalid response format");
+        SweetAlertHelper.showError(Get.context, "Error", "Invalid response format");
         return;
       }
 
       if (data['status'] == 'success') {
         Get.back();
         String msg = data['message']?.toString() ?? "Password reset email sent";
-        Get.snackbar("Success", msg, backgroundColor: Colors.green, colorText: Colors.white);
+        SweetAlertHelper.showSuccess(Get.context, "Success", msg);
       } else {
         String errorMsg = data['message']?.toString() ?? "Failed to process request";
-        Get.snackbar("Error", errorMsg, backgroundColor: Colors.red, colorText: Colors.white);
+        SweetAlertHelper.showError(Get.context, "Error", errorMsg);
       }
     } catch (e) {
       debugPrint("Forgot password error: $e");
-      Get.snackbar("Error", "Failed to process request: ${e.toString()}", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to process request: ${e.toString()}");
     } finally {
       isLoading.value = false;
     }

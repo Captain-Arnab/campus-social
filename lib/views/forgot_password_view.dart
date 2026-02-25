@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
+import '../utils/sweetalert_helper.dart';
 
 class ForgotPasswordView extends StatefulWidget {
   const ForgotPasswordView({super.key});
@@ -141,12 +142,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                             : ElevatedButton(
                                 onPressed: () {
                                   if (emailCtrl.text.trim().isEmpty) {
-                                    Get.snackbar(
-                                      "Required",
-                                      "Please enter your email address",
-                                      backgroundColor: Colors.red,
-                                      colorText: Colors.white,
-                                    );
+                                    SweetAlertHelper.showError(context, "Required", "Please enter your email address");
                                     return;
                                   }
                                   controller.forgotPassword(emailCtrl.text.trim());

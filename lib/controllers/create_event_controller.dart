@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../utils/sweetalert_helper.dart';
 import 'event_controller.dart';
 
 class CreateEventController extends GetxController {
@@ -34,7 +35,7 @@ class CreateEventController extends GetxController {
         update();
       }
     } catch (e) {
-      Get.snackbar("Error", "Failed to pick image");
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to pick image");
     }
   }
 
@@ -50,14 +51,13 @@ class CreateEventController extends GetxController {
     if (titleController.text.isEmpty || 
         dateController.text.isEmpty || 
         venueController.text.isEmpty) {
-      Get.snackbar("Required Fields", "Please fill in Title, Date, and Venue",
-          backgroundColor: Colors.redAccent, colorText: Colors.white);
+      SweetAlertHelper.showError(Get.context, "Required Fields", "Please fill in Title, Date, and Venue");
       return false;
     }
 
     String? userId = await PrefService.getUserId();
     if (userId == null) {
-      Get.snackbar("Session Error", "Please log in again");
+      SweetAlertHelper.showError(Get.context, "Session Error", "Please log in again");
       return false;
     }
 
@@ -76,8 +76,7 @@ class CreateEventController extends GetxController {
       }, imagesToUpload);
 
       if (response.data['status'] == 'success') {
-        Get.snackbar("Success 🎉", "Event submitted for admin approval!",
-            backgroundColor: Colors.green, colorText: Colors.white);
+        SweetAlertHelper.showSuccess(Get.context, "Success 🎉", "Event submitted for admin approval!");
         
         _resetForm();
         
@@ -88,12 +87,12 @@ class CreateEventController extends GetxController {
         
         return true;
       } else {
-        Get.snackbar("Error", response.data['message'] ?? "Failed to create event");
+        SweetAlertHelper.showError(Get.context, "Error", response.data['message'] ?? "Failed to create event");
         return false;
       }
     } catch (e) {
       debugPrint("Create Event API Error: $e");
-      Get.snackbar("Connection Error", "Could not reach the server");
+      SweetAlertHelper.showError(Get.context, "Connection Error", "Could not reach the server");
       return false;
     } finally {
       isLoading.value = false;

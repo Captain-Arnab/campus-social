@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
+import '../utils/sweetalert_helper.dart';
 import 'login_view.dart';
 // import 'otp_verification_view.dart'; // OTP disabled temporarily
 
@@ -992,45 +993,45 @@ class _SignupViewState extends State<SignupView> {
 
   bool _validateForm() {
     if (_isStudent && rollNumberCtrl.text.trim().isEmpty) {
-      Get.snackbar("Required", "Please enter your roll number", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please enter your roll number");
       return false;
     }
     if (!_isStudent && empNumberCtrl.text.trim().isEmpty) {
-      Get.snackbar("Required", "Please enter your employee ID", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please enter your employee ID");
       return false;
     }
     if (nameCtrl.text.trim().isEmpty) {
-      Get.snackbar("Required", "Please enter your full name", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please enter your full name");
       return false;
     }
     if (emailCtrl.text.trim().isEmpty) {
-      Get.snackbar("Required", "Please enter your email", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please enter your email");
       return false;
     }
     if (!GetUtils.isEmail(emailCtrl.text.trim())) {
-      Get.snackbar("Invalid", "Please enter a valid email address", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Invalid", "Please enter a valid email address");
       return false;
     }
     if (phoneCtrl.text.trim().isEmpty) {
-      Get.snackbar("Required", "Please enter your phone number", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please enter your phone number");
       return false;
     }
     // Bio is now optional
     // Interests are now optional
     if (passCtrl.text.isEmpty) {
-      Get.snackbar("Required", "Please enter a password", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please enter a password");
       return false;
     }
     if (passCtrl.text.length < 6) {
-      Get.snackbar("Weak", "Password must be at least 6 characters", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Weak", "Password must be at least 6 characters");
       return false;
     }
     if (passCtrl.text != confirmPassCtrl.text) {
-      Get.snackbar("Mismatch", "Passwords do not match", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Mismatch", "Passwords do not match");
       return false;
     }
     if (!_agreeTerms) {
-      Get.snackbar("Required", "Please agree to Terms and Conditions", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please agree to Terms and Conditions");
       return false;
     }
     return true;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../utils/sweetalert_helper.dart';
 import '../modal/model_user.dart';
 
 class ProfileController extends GetxController {
@@ -70,8 +71,7 @@ class ProfileController extends GetxController {
     try {
       String? userId = await PrefService.getUserId();
       if (userId == null) {
-        Get.snackbar("Error", "User not found. Please login again", 
-          backgroundColor: Colors.red, colorText: Colors.white);
+        SweetAlertHelper.showError(Get.context, "Error", "User not found. Please login again");
         return false;
       }
       
@@ -88,25 +88,13 @@ class ProfileController extends GetxController {
       }
       
       await loadProfile();
-      Get.snackbar(
-        "Success",
-        "Profile updated successfully!",
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 2)
-      );
-      // Delay slightly before navigating back to ensure snackbar is visible
+      SweetAlertHelper.showSuccess(Get.context, "Success", "Profile updated successfully!");
+      // Delay slightly before navigating back so user can dismiss alert
       await Future.delayed(const Duration(milliseconds: 500));
       Get.back();
       return true;
     } catch (e) {
-      Get.snackbar(
-        "Error",
-        "Failed to update profile. Please try again.",
-        backgroundColor: Colors.red,
-        colorText: Colors.white
-      );
+      SweetAlertHelper.showError(Get.context, "Error", "Failed to update profile. Please try again.");
       debugPrint("Profile update error: $e");
       return false;
     } finally {

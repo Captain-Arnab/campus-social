@@ -81,10 +81,14 @@ class FavoritesView extends StatelessWidget {
           color: const Color(0xFFFF5F15),
           child: ListView.builder(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+            cacheExtent: 300,
             itemCount: controller.favoriteList.length,
-            itemBuilder: (context, index) => _FavoriteEventCard(
-              event: controller.favoriteList[index],
-              controller: controller,
+            itemBuilder: (context, index) => RepaintBoundary(
+              child: _FavoriteEventCard(
+                event: controller.favoriteList[index],
+                controller: controller,
+              ),
             ),
           ),
         );

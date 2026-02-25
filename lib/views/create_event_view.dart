@@ -5,6 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
+import '../utils/sweetalert_helper.dart';
 import 'template_gallery_view.dart'; 
 import 'home_view.dart';
 
@@ -100,15 +101,7 @@ class CreateEventViewState extends State<CreateEventView> {
         selectedImage = posterFile;
       });
       
-      Get.snackbar(
-        "Success",
-        "Poster added successfully!",
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 2),
-        icon: const Icon(Icons.check_circle, color: Colors.white),
-      );
+      SweetAlertHelper.showSuccess(context, "Success", "Poster added successfully!");
     }
   }
 
@@ -138,46 +131,26 @@ class CreateEventViewState extends State<CreateEventView> {
           );
 
     if (success) {
-      // Show success message
-      Get.snackbar(
+      SweetAlertHelper.showSuccess(
+        context,
         "Success",
-        isEdit
-            ? "Event updated successfully (pending)."
-            : "Event creation successful, please wait for admin to approve.",
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 4),
-        margin: EdgeInsets.all(15.w),
-        icon: const Icon(Icons.check_circle, color: Colors.white),
+        isEdit ? "Event updated successfully (pending)." : "Event creation successful, please wait for admin to approve.",
+        onConfirm: () {
+          if (isEdit) {
+            Get.offAll(() => const HomeView(initialBottomTabIndex: 1, initialMyEventsTabIndex: 1));
+          } else {
+            Get.offAll(() => const HomeView());
+          }
+        },
       );
-
-      // Navigate back (edit) or to Home (create)
-      Future.delayed(const Duration(seconds: 1), () {
-        if (isEdit) {
-          // Redirect to My Events -> Hosting
-          Get.offAll(() => const HomeView(
-                initialBottomTabIndex: 1,
-                initialMyEventsTabIndex: 1,
-              ));
-        } else {
-          Get.offAll(() => const HomeView());
-        }
-      });
     } else {
-      Get.snackbar(
-        "Error",
-        isEdit ? "Failed to update event. Please try again." : "Failed to create event. Please try again.",
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showError(context, "Error", isEdit ? "Failed to update event. Please try again." : "Failed to create event. Please try again.");
     }
   }
 
   bool _validateForm() {
     if (titleCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty || selectedDate == null || selectedTime == null || venueCtrl.text.trim().isEmpty) {
-      Get.snackbar("Required", "Please fill all fields", backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please fill all fields");
       return false;
     }
     return true;

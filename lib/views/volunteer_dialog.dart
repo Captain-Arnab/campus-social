@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/event_controller.dart';
+import '../utils/sweetalert_helper.dart';
 
 class VolunteerDialog extends StatefulWidget {
   final dynamic event;
@@ -264,26 +265,19 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
   void _submitVolunteer() {
     final status = (widget.event['status'] ?? '').toString().toLowerCase();
     if (status != 'approved') {
-      Get.snackbar(
-        "Not Available",
-        "You can volunteer only after admin approval.",
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
-      );
+      SweetAlertHelper.showWarning(context, "Not Available", "You can volunteer only after admin approval.");
       return;
     }
 
     if (selectedRole == null || selectedRole!.isEmpty) {
-      Get.snackbar("Required", "Please select a role",
-          backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please select a role");
       return;
     }
 
     String role = selectedRole == "Other" ? roleCtrl.text.trim() : selectedRole!;
 
     if (role.isEmpty) {
-      Get.snackbar("Required", "Please specify your role",
-          backgroundColor: Colors.red, colorText: Colors.white);
+      SweetAlertHelper.showError(context, "Required", "Please specify your role");
       return;
     }
 

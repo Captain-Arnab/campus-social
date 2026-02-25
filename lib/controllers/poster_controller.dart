@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:saver_gallery/saver_gallery.dart';
+import '../utils/sweetalert_helper.dart';
 
 class PosterController extends GetxController {
   // --- OBSERVABLE VARIABLES ---
@@ -445,10 +446,10 @@ class PosterController extends GetxController {
        
        if (bytes != null) {
          await SaverGallery.saveImage(bytes, fileName: "gnu_poster_${DateTime.now().millisecondsSinceEpoch}.png", skipIfExists: false);
-         Get.snackbar("Success", "Poster saved to Gallery!", backgroundColor: Colors.green, colorText: Colors.white, snackPosition: SnackPosition.BOTTOM);
+         SweetAlertHelper.showSuccess(Get.context, "Success", "Poster saved to Gallery!");
        }
      } catch(e) { 
-       Get.snackbar("Error", "Could not save image", backgroundColor: Colors.red, colorText: Colors.white); 
+       SweetAlertHelper.showError(Get.context, "Error", "Could not save image"); 
      }
   }
 
@@ -474,9 +475,9 @@ class PosterController extends GetxController {
       final file = File("$path/gnu_event_${DateTime.now().millisecondsSinceEpoch}.pdf");
       
       await file.writeAsBytes(await pdf.save());
-      Get.snackbar("PDF Saved", "Saved to: ${file.path}", backgroundColor: Colors.green, colorText: Colors.white, duration: const Duration(seconds: 4));
+      SweetAlertHelper.showSuccess(Get.context, "PDF Saved", "Saved to: ${file.path}");
     } catch(e) { 
-      Get.snackbar("Error", "Could not save PDF", backgroundColor: Colors.red); 
+      SweetAlertHelper.showError(Get.context, "Error", "Could not save PDF"); 
     }
   }
 }
