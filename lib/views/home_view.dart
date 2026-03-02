@@ -439,6 +439,11 @@ class _ExploreTabState extends State<_ExploreTab> {
             ),
           ),
 
+          // Upcoming reminders (notification dates)
+          const SliverToBoxAdapter(
+            child: _UpcomingRemindersSection(),
+          ),
+
           // Featured Events Slider
           SliverToBoxAdapter(
             child: Obx(() {
@@ -2646,6 +2651,159 @@ class _HostedEventTile extends StatelessWidget {
               Icon(Icons.lock_outline, color: Colors.grey[500], size: 20),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// --- Upcoming reminders (notification dates from API) ---
+class _UpcomingRemindersSection extends StatefulWidget {
+  const _UpcomingRemindersSection();
+
+  @override
+  State<_UpcomingRemindersSection> createState() => _UpcomingRemindersSectionState();
+}
+
+class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
+  List<dynamic> _dates = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final from = DateTime.now().toIso8601String().substring(0, 10);
+      final res = await ApiService.getNotificationDates(
+        from: from,
+        includeEvents: true,
+        includeCelebrations: true,
+      );
+      if (!mounted) return;
+      final data = res.data;
+      if (data is Map && data['status'] == 'success') {
+        final list = data['data'];
+        setState(() {
+          _dates = list is List ? list : [];
+          _loading = false;
+          _error = null;
+        });
+      } else {
+        setState(() {
+          _dates = [];
+          _loading = false;
+          _error = (data is Map ? data['message'] : null)?.toString();
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() {
+        _dates = [];
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
+        child: SizedBox(
+          height: 60.h,
+          child: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
+        ),
+      );
+    }
+    if (_error != null && _dates.isEmpty) return const SizedBox.shrink();
+    if (_dates.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 8.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notifications_active_outlined, color: const Color(0xFFFF5F15), size: 22.sp),
+              SizedBox(width: 8.w),
+              Text(
+                "Upcoming reminders",
+                style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          ...(_dates.take(10).map<Widget>((d) {
+            final title = (d is Map ? d['title'] : null)?.toString() ?? 'Reminder';
+            final dateStr = (d is Map ? d['notify_date'] : null)?.toString() ?? '';
+            final message = (d is Map ? d['message'] : null)?.toString() ?? '';
+            final source = (d is Map ? d['source'] : null)?.toString() ?? '';
+            final eventIdRaw = d is Map ? d['event_id'] : null;
+            final eventId = eventIdRaw is int ? eventIdRaw : int.tryParse(eventIdRaw?.toString() ?? '');
+            return Padding(
+              padding: EdgeInsets.only(bottom: 10.h),
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                elevation: 1,
+                child: InkWell(
+                  onTap: () {
+                    final id = eventId;
+                    if (id != null && id > 0) {
+                      Get.to(() => EventDetailView(event: {'id': id}), transition: Transition.rightToLeft);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: EdgeInsets.all(14.w),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(8.w),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF5F15).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.calendar_today, color: const Color(0xFFFF5F15), size: 20.sp),
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp)),
+                              if (dateStr.isNotEmpty)
+                                Text(dateStr, style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
+                              if (message.isNotEmpty && message != title)
+                                Padding(
+                                  padding: EdgeInsets.only(top: 4.h),
+                                  child: Text(message, style: TextStyle(fontSize: 12.sp, color: Colors.grey[700]), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                ),
+                              if (source.isNotEmpty)
+                                Padding(
+                                  padding: EdgeInsets.only(top: 2.h),
+                                  child: Text(source, style: TextStyle(fontSize: 11.sp, color: Colors.grey[500])),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (eventId != null) Icon(Icons.chevron_right, color: Colors.grey[400], size: 20.sp),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          })),
+          SizedBox(height: 8.h),
+        ],
       ),
     );
   }

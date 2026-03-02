@@ -531,6 +531,22 @@ class _EventDetailViewState extends State<EventDetailView> {
                       },
                     ),
 
+                  // Organizer: Send notification to volunteers & participants
+                  if (_isApprovedEvent())
+                    FutureBuilder<bool>(
+                      future: _canEditEvent(),
+                      builder: (context, snap) {
+                        if (snap.data != true) return const SizedBox.shrink();
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 16.h),
+                          child: _SendNotificationCard(
+                            event: _event,
+                            onSent: () {},
+                          ),
+                        );
+                      },
+                    ),
+
                   if (_isPastEvent())
                     Padding(
                       padding: EdgeInsets.only(bottom: 16.h),
@@ -894,6 +910,135 @@ class _EventDetailViewState extends State<EventDetailView> {
                 SizedBox(height: 4.h),
                 Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp)),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Card for organizer to send a push notification to volunteers and/or participants.
+class _SendNotificationCard extends StatefulWidget {
+  final dynamic event;
+  final VoidCallback onSent;
+
+  const _SendNotificationCard({required this.event, required this.onSent});
+
+  @override
+  State<_SendNotificationCard> createState() => _SendNotificationCardState();
+}
+
+class _SendNotificationCardState extends State<_SendNotificationCard> {
+  final TextEditingController _messageController = TextEditingController();
+  String _recipientType = 'both';
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final message = _messageController.text.trim();
+    if (message.isEmpty) {
+      SweetAlertHelper.showWarning(context, "Empty message", "Please type a message to send.");
+      return;
+    }
+    final eventId = int.tryParse((widget.event['id']).toString());
+    final organizerId = widget.event['organizer_id']?.toString() ?? widget.event['hostId']?.toString();
+    if (eventId == null || organizerId == null) return;
+    setState(() => _sending = true);
+    try {
+      final res = await ApiService.sendEventNotification(
+        eventId: eventId,
+        organizerId: organizerId,
+        message: message,
+        recipientType: _recipientType,
+      );
+      if (mounted) {
+        setState(() => _sending = false);
+        if (res.data is Map && (res.data as Map)['status'] == 'success') {
+          _messageController.clear();
+          final sent = res.data['push_sent'] ?? 0;
+          SweetAlertHelper.showSuccess(context, "Sent", "Notification sent to $sent recipient(s).");
+          widget.onSent();
+        } else {
+          SweetAlertHelper.showError(context, "Error", (res.data is Map ? res.data['message'] : null)?.toString() ?? "Failed to send.");
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sending = false);
+        SweetAlertHelper.showError(context, "Error", "Failed to send: $e");
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.notifications_active, color: Colors.blue.shade700, size: 22),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Send notification to volunteers & participants", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+                    SizedBox(height: 2.h),
+                    Text("As the organizer, you can send meeting updates or reminders. They will receive a push notification.", style: TextStyle(fontSize: 12.sp, color: Colors.blue.shade800)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          TextField(
+            controller: _messageController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: "Type your message (e.g. meeting reminder, update...)",
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          DropdownButtonFormField<String>(
+            value: _recipientType,
+            decoration: const InputDecoration(
+              labelText: "Send to",
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            items: const [
+              DropdownMenuItem(value: 'both', child: Text("Volunteers & Participants")),
+              DropdownMenuItem(value: 'volunteers', child: Text("Volunteers only")),
+              DropdownMenuItem(value: 'participants', child: Text("Participants only")),
+            ],
+            onChanged: (v) => setState(() => _recipientType = v ?? 'both'),
+          ),
+          SizedBox(height: 12.h),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _sending ? null : _send,
+              icon: _sending ? SizedBox(width: 18.w, height: 18.h, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send, size: 18),
+              label: Text(_sending ? "Sending..." : "Send notification"),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF5F15), foregroundColor: Colors.white),
             ),
           ),
         ],

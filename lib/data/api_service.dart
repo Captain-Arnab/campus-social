@@ -708,4 +708,78 @@ class ApiService {
       );
     }
   }
+
+  // --- FCM & Notifications ---
+
+  /// Register FCM token for push notifications (user_id, fcm_token, optional device_id).
+  static Future<Response> registerFcmToken({
+    required String userId,
+    required String fcmToken,
+    String? deviceId,
+  }) async {
+    try {
+      final data = <String, dynamic>{"user_id": userId, "fcm_token": fcmToken};
+      if (deviceId != null && deviceId.isNotEmpty) data["device_id"] = deviceId;
+      return await _dio.post("register_fcm_token.php", data: data, options: await _getAuthOptions());
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'register_fcm_token.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  /// Get list of notification dates (schedule, celebrations, events). Optional: from, to, include_events, include_celebrations.
+  static Future<Response> getNotificationDates({
+    String? from,
+    String? to,
+    bool includeEvents = true,
+    bool includeCelebrations = true,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (from != null) queryParams['from'] = from;
+      if (to != null) queryParams['to'] = to;
+      if (!includeEvents) queryParams['include_events'] = '0';
+      if (!includeCelebrations) queryParams['include_celebrations'] = '0';
+      return await _dio.get(
+        "notification_dates.php",
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'notification_dates.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
+
+  /// Organizer sends a text message as push notification to volunteers/participants (event_id, organizer_id, message, recipient_type: volunteers|participants|both).
+  static Future<Response> sendEventNotification({
+    required int eventId,
+    required String organizerId,
+    required String message,
+    String recipientType = 'both',
+  }) async {
+    try {
+      return await _dio.post(
+        "send_event_notification.php",
+        data: {
+          "event_id": eventId,
+          "organizer_id": organizerId,
+          "message": message,
+          "recipient_type": recipientType,
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ?? Response(
+        requestOptions: RequestOptions(path: 'send_event_notification.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      );
+    }
+  }
 }
