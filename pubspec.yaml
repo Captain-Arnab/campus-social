@@ -9,6 +9,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Firebase
+  firebase_core: ^2.30.0
+  firebase_messaging: ^14.9.0
   # State Management & Routing
   get: ^4.6.6
   # Networking

@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../services/notification_service.dart';
 import '../utils/sweetalert_helper.dart';
 import '../views/home_view.dart';
 import '../views/login_view.dart';
@@ -130,7 +131,8 @@ class AuthController extends GetxController {
         String token = data['token']?.toString() ?? "";
 
         await PrefService.saveUserSession(userId, name, token);
-        
+        await NotificationService.registerTokenWithBackend();
+
         Get.offAll(() => const HomeView());
         SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
       } else {
