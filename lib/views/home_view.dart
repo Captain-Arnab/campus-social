@@ -841,7 +841,7 @@ class _AllEventCard extends StatelessWidget {
     final EventController controller = Get.find<EventController>();
     final List banners = event['banners'] ?? [];
     final String imageUrl = banners.isNotEmpty 
-        ? "https://exdeos.com/AS/campus_social/uploads/events/${banners[0]}" 
+        ? "https://micampus.co.in/uploads/events/${banners[0]}" 
         : "";
 
     return GestureDetector(
@@ -1195,7 +1195,7 @@ class _FeaturedEventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final List banners = event['banners'] ?? [];
     final String imageUrl = banners.isNotEmpty 
-        ? "https://exdeos.com/AS/campus_social/uploads/events/${banners[0]}" 
+        ? "https://micampus.co.in/uploads/events/${banners[0]}" 
         : "";
 
     return GestureDetector(
@@ -2032,7 +2032,7 @@ class _ProfileTab extends StatelessWidget {
                               radius: 50.w,
                               backgroundColor: Colors.grey[100],
                               backgroundImage: user.image != null && user.image!.isNotEmpty 
-                                ? NetworkImage("https://exdeos.com/AS/campus_social/uploads/profiles/${user.image}") 
+                                ? NetworkImage("https://micampus.co.in/uploads/profiles/${user.image}") 
                                 : null,
                               child: user.image == null || user.image!.isEmpty 
                                 ? Icon(Icons.person, size: 50.w, color: const Color(0xFFFF5F15)) 
@@ -2325,7 +2325,7 @@ class _EventCard extends StatelessWidget {
     final EventController controller = Get.find<EventController>();
     final List banners = event['banners'] ?? [];
     final String imageUrl = banners.isNotEmpty 
-        ? "https://exdeos.com/AS/campus_social/uploads/events/${banners[0]}" 
+        ? "https://micampus.co.in/uploads/events/${banners[0]}" 
         : "";
 
     return GestureDetector(

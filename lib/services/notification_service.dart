@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 
@@ -72,7 +74,9 @@ class NotificationService {
 
   static void _onForegroundMessage(RemoteMessage message) {
     debugPrint('Foreground: ${message.notification?.title}');
-    // Optionally show in-app banner; notification may still show per platform.
+    final title = message.notification?.title ?? 'Notification';
+    final body = message.notification?.body ?? message.data['message']?.toString() ?? '';
+    _showInAppNotification(title, body);
   }
 
   static void _onMessageOpenedApp(RemoteMessage message) {
@@ -87,11 +91,12 @@ class NotificationService {
     }
   }
 
-  /// Get current FCM token (cached after first fetch).
+  /// Get current FCM token (cached after first fetch). Call after init() so permission is granted.
   static Future<String?> getToken() async {
     if (_cachedToken != null) return _cachedToken;
     try {
       _cachedToken = await _messaging.getToken();
+      if (_cachedToken == null) debugPrint('FCM getToken returned null (check notification permission on Android 13+)');
       return _cachedToken;
     } catch (e) {
       debugPrint('FCM getToken error: $e');
@@ -119,5 +124,19 @@ class NotificationService {
   static Future<void> getTokenAndRegisterIfLoggedIn() async {
     final t = await getToken();
     if (t != null) await registerTokenWithBackend(t);
+  }
+
+  static void _showInAppNotification(String title, String body) {
+    try {
+      Get.snackbar(
+        title,
+        body,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: const Color(0xFF1F2937),
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
+        margin: const EdgeInsets.all(12),
+      );
+    } catch (_) {}
   }
 }

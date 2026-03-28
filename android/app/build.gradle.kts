@@ -15,7 +15,7 @@ dependencies {
 }
 
 android {
-    namespace = "in.co.micampus.app"
+    namespace = "co.micampus.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
@@ -29,8 +29,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "in.co.micampus.app"
+        // Must match package_name in google-services.json for FCM
+        applicationId = "co.micampus.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23

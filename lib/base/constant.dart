@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 class Constant {
   // --- API Configuration ---
-  static const String baseUrl = "https://exdeos.com/AS/campus_social/api/";
+  static const String baseUrl = "https://micampus.co.in/api/";
   
   // Upload base URLs (for building certificate/banner URLs)
-  static const String uploadsBaseUrl = "https://exdeos.com/AS/campus_social/uploads/";
+  static const String uploadsBaseUrl = "https://micampus.co.in/uploads/";
   static const String certificatesPath = "certificates/";
 
   // Endpoints
@@ -40,6 +40,11 @@ class Constant {
     "Academic",
     "Social"
   ];
+
+  // FCM: Android notification channel (must match AndroidManifest + MainActivity).
+  // Backend (send_event_notification.php) should send FCM with "notification" payload and
+  // android_channel_id: "high_importance_channel" so notifications show when app is in background.
+  static const String fcmAndroidChannelId = 'high_importance_channel';
 
   // Volunteer Roles
   static const List<String> volunteerRoles = [

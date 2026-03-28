@@ -203,7 +203,14 @@ class _OnboardingPage extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(25),
-                  child: Image.asset(data.imagePath, fit: BoxFit.cover),
+                  child: Image.asset(
+                    data.imagePath,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: data.color.withOpacity(0.3),
+                      child: Icon(Icons.image_not_supported, size: 64, color: Colors.white70),
+                    ),
+                  ),
                 ),
               ),
               SizedBox(height: 30.h),

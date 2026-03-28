@@ -217,7 +217,7 @@ class _EditEventViewState extends State<EditEventView> {
                         ? Image.file(selectedImage!, fit: BoxFit.contain, width: double.infinity, height: double.infinity)
                         : (_existingBannerName != null && !_removeExistingBanner)
                             ? Image.network(
-                                "https://exdeos.com/AS/campus_social/uploads/events/$_existingBannerName",
+                                "https://micampus.co.in/uploads/events/$_existingBannerName",
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,
