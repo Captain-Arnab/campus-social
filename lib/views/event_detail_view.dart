@@ -366,7 +366,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                     itemCount: banners.length,
                     itemBuilder: (context, index) {
                       return Image.network(
-                        "https://micampus.co.in/uploads/events/${banners[index]}",
+                        "https://micampus.co.in/admin/uploads/events/${banners[index]}",
                         fit: BoxFit.cover,
                         errorBuilder: (c, e, s) => _buildPlaceholder(),
                       );
@@ -638,7 +638,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                           radius: 25.w,
                           backgroundColor: const Color(0xFFFF5F15),
                           backgroundImage: organizerAvatar != 'default_avatar.png'
-                            ? NetworkImage("https://micampus.co.in/uploads/profiles/$organizerAvatar")
+                            ? NetworkImage("https://micampus.co.in/admin/uploads/profiles/$organizerAvatar")
                             : null,
                           child: organizerAvatar == 'default_avatar.png'
                             ? const Icon(Icons.person, color: Colors.white)

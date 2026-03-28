@@ -506,7 +506,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         try {
           final tmpDir = await getTemporaryDirectory();
           final tmpPath = "${tmpDir.path}/evt_banner_${oldId}_${DateTime.now().millisecondsSinceEpoch}.jpg";
-          final url = "https://micampus.co.in/uploads/events/$existingBannerName";
+          final url = "https://micampus.co.in/admin/uploads/events/$existingBannerName";
           await Dio().download(url, tmpPath);
           bannerToUpload = File(tmpPath);
         } catch (e) {

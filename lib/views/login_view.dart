@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
@@ -17,11 +20,14 @@ class _LoginViewState extends State<LoginView> {
   final AuthController controller = Get.put(AuthController());
   final TextEditingController identifierCtrl = TextEditingController(); // Roll/Emp ID
   final TextEditingController emailPhoneCtrl = TextEditingController(); // Email or Mobile (toggle)
+  final TextEditingController otpCtrl = TextEditingController();
   final TextEditingController passCtrl = TextEditingController();
-  
+
   bool _obscurePassword = true;
   bool _isStudent = true; // Default to student
   bool _loginByMobile = false; // Toggle between email/mobile
+  int _otpResendSeconds = 0;
+  Timer? _otpResendTimer;
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +214,8 @@ class _LoginViewState extends State<LoginView> {
                             setState(() {
                               _loginByMobile = selection.first;
                               emailPhoneCtrl.clear();
+                              otpCtrl.clear();
+                              _cancelOtpResendTimer();
                             });
                           },
                           style: ButtonStyle(
@@ -256,14 +264,82 @@ class _LoginViewState extends State<LoginView> {
                           ),
                         ),
                         
+                        if (_loginByMobile) ...[
+                          SizedBox(height: 16.h),
+                          Text(
+                            "We will text a 6-digit code to the mobile number registered on your account.",
+                            style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                          ),
+                          SizedBox(height: 12.h),
+                          Obx(() => OutlinedButton.icon(
+                                onPressed: (_otpResendSeconds > 0 || controller.isSendingLoginOtp.value)
+                                    ? null
+                                    : () => _onSendLoginOtp(),
+                                icon: controller.isSendingLoginOtp.value
+                                    ? SizedBox(
+                                        width: 18.w,
+                                        height: 18.w,
+                                        child: const CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Color(0xFFFF5F15),
+                                        ),
+                                      )
+                                    : const Icon(Icons.sms_outlined, color: Color(0xFFFF5F15)),
+                                label: Text(
+                                  _otpResendSeconds > 0
+                                      ? "Resend OTP in ${_otpResendSeconds}s"
+                                      : "Send OTP via SMS",
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFFFF5F15),
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                                  side: const BorderSide(color: Color(0xFFFF5F15)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              )),
+                          SizedBox(height: 12.h),
+                          TextField(
+                            controller: otpCtrl,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            decoration: InputDecoration(
+                              counterText: '',
+                              labelText: "OTP (6 digits)",
+                              prefixIcon: const Icon(Icons.pin_outlined, color: Color(0xFFFF5F15)),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.grey[300]!),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.grey[300]!),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 2),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 8.h),
+                          Text(
+                            "Or use your password",
+                            style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                          ),
+                        ],
+                        
                         SizedBox(height: 16.h),
                         
-                        // Password
+                        // Password (email: required; mobile: optional if OTP used)
                         TextField(
                           controller: passCtrl,
                           obscureText: _obscurePassword,
                           decoration: InputDecoration(
-                            labelText: "Password",
+                            labelText: _loginByMobile ? "Password (optional with OTP)" : "Password",
                             prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFFFF5F15)),
                             suffixIcon: IconButton(
                               icon: Icon(
@@ -287,10 +363,6 @@ class _LoginViewState extends State<LoginView> {
                           ),
                         ),
                         
-                        SizedBox(height: 8.h),
-                        
-                        // (Toggle moved above input field)
-                        
                         SizedBox(height: 24.h),
                         
                         // Login Button
@@ -299,15 +371,27 @@ class _LoginViewState extends State<LoginView> {
                             : ElevatedButton(
                                 onPressed: () async {
                                   if (!_validateLogin()) return;
-                                  
-                                  // OTP disabled temporarily: login directly.
-                                  await controller.loginWithIdentifier(
-                                    identifierCtrl.text.trim(),
-                                    emailPhoneCtrl.text.trim(),
-                                    passCtrl.text,
-                                    _isStudent,
-                                    _loginByMobile, // byMobile
-                                  );
+                                  final id = identifierCtrl.text.trim();
+                                  final contact = emailPhoneCtrl.text.trim();
+                                  final otp = otpCtrl.text.trim();
+                                  if (_loginByMobile && otp.length == 6) {
+                                    await controller.loginWithIdentifier(
+                                      id,
+                                      contact,
+                                      _isStudent,
+                                      true,
+                                      password: '',
+                                      otp: otp,
+                                    );
+                                  } else {
+                                    await controller.loginWithIdentifier(
+                                      id,
+                                      contact,
+                                      _isStudent,
+                                      _loginByMobile,
+                                      password: passCtrl.text,
+                                    );
+                                  }
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFFFF5F15),
@@ -367,23 +451,90 @@ class _LoginViewState extends State<LoginView> {
         SweetAlertHelper.showError(context, "Invalid", "Please enter a valid mobile number");
         return false;
       }
+      final otp = otpCtrl.text.trim();
+      if (otp.isNotEmpty && otp.length != 6) {
+        SweetAlertHelper.showError(context, "Invalid", "Enter the 6-digit OTP or leave it blank to use password");
+        return false;
+      }
+      if (otp.length != 6 && passCtrl.text.isEmpty) {
+        SweetAlertHelper.showError(
+          context,
+          "Required",
+          "Enter the OTP from SMS, or your password",
+        );
+        return false;
+      }
     } else {
       if (!GetUtils.isEmail(emailPhoneCtrl.text.trim())) {
         SweetAlertHelper.showError(context, "Invalid", "Please enter a valid email address");
         return false;
       }
+      if (passCtrl.text.isEmpty) {
+        SweetAlertHelper.showError(context, "Required", "Please enter your password");
+        return false;
+      }
     }
-    if (passCtrl.text.isEmpty) {
-      SweetAlertHelper.showError(context, "Required", "Please enter your password");
+    return true;
+  }
+
+  bool _validateSendOtp() {
+    if (identifierCtrl.text.trim().isEmpty) {
+      SweetAlertHelper.showError(context, "Required", _isStudent ? "Please enter your roll number" : "Please enter your employee ID");
+      return false;
+    }
+    if (emailPhoneCtrl.text.trim().isEmpty) {
+      SweetAlertHelper.showError(context, "Required", "Please enter your mobile number");
+      return false;
+    }
+    if (!GetUtils.isPhoneNumber(emailPhoneCtrl.text.trim())) {
+      SweetAlertHelper.showError(context, "Invalid", "Please enter a valid mobile number");
       return false;
     }
     return true;
   }
 
+  Future<void> _onSendLoginOtp() async {
+    if (!_validateSendOtp()) return;
+    final ok = await controller.sendLoginOtp(
+      identifierCtrl.text.trim(),
+      emailPhoneCtrl.text.trim(),
+      _isStudent,
+    );
+    if (!mounted || !ok) return;
+    _startOtpResendCooldown();
+  }
+
+  void _startOtpResendCooldown() {
+    _otpResendTimer?.cancel();
+    setState(() => _otpResendSeconds = 60);
+    _otpResendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {
+        if (_otpResendSeconds <= 1) {
+          _otpResendSeconds = 0;
+          t.cancel();
+        } else {
+          _otpResendSeconds--;
+        }
+      });
+    });
+  }
+
+  void _cancelOtpResendTimer() {
+    _otpResendTimer?.cancel();
+    _otpResendTimer = null;
+    _otpResendSeconds = 0;
+  }
+
   @override
   void dispose() {
+    _cancelOtpResendTimer();
     identifierCtrl.dispose();
     emailPhoneCtrl.dispose();
+    otpCtrl.dispose();
     passCtrl.dispose();
     super.dispose();
   }

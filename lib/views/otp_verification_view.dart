@@ -3,17 +3,24 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import '../controllers/auth_controller.dart';
+import '../utils/sweetalert_helper.dart';
 
 class OtpVerificationView extends StatefulWidget {
   final String emailOrPhone;
   final bool isMobile;
   final VoidCallback onVerified;
-  
+
+  /// Roll / employee ID and role — required to resend **login** SMS OTP via API.
+  final String? loginIdentifier;
+  final bool? loginIsStudent;
+
   const OtpVerificationView({
     super.key,
     required this.emailOrPhone,
     required this.isMobile,
     required this.onVerified,
+    this.loginIdentifier,
+    this.loginIsStudent,
   });
 
   @override
@@ -143,9 +150,20 @@ class _OtpVerificationViewState extends State<OtpVerificationView> {
             TextButton(
               onPressed: remainingSeconds == 0
                   ? () async {
-                      // OTP disabled temporarily.
-                      final sent = await controller.sendLoginOtp(widget.emailOrPhone, true);
-                      if (sent) {
+                      if (widget.loginIdentifier == null || widget.loginIsStudent == null) {
+                        SweetAlertHelper.showError(
+                          context,
+                          "Resend",
+                          "Login OTP resend needs roll/employee ID. Use the login screen.",
+                        );
+                        return;
+                      }
+                      final sent = await controller.sendLoginOtp(
+                        widget.loginIdentifier!,
+                        widget.emailOrPhone,
+                        widget.loginIsStudent!,
+                      );
+                      if (sent && mounted) {
                         setState(() => remainingSeconds = 300);
                       }
                     }

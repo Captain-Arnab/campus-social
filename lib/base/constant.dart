@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 class Constant {
   // --- API Configuration ---
-  static const String baseUrl = "https://micampus.co.in/api/";
+  static const String baseUrl = "https://micampus.co.in/admin/api/";
   
   // Upload base URLs (for building certificate/banner URLs)
-  static const String uploadsBaseUrl = "https://micampus.co.in/uploads/";
+  static const String uploadsBaseUrl = "https://micampus.co.in/admin/uploads/";
   static const String certificatesPath = "certificates/";
 
   // Endpoints

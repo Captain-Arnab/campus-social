@@ -10,6 +10,7 @@ import '../data/otp_service.dart';
 
 class AuthController extends GetxController {
   var isLoading = false.obs;
+  var isSendingLoginOtp = false.obs;
   var sentOtp = ''.obs;
   var otpSentTime = DateTime.now().obs;
 
@@ -19,11 +20,39 @@ class AuthController extends GetxController {
     return false;
   }
 
-  //Send OTP for Login
-  Future<bool> sendLoginOtp(String emailOrPhone, bool isMobile) async {
-    // OTP disabled (SMS + Email) temporarily.
-    SweetAlertHelper.showWarning(Get.context, "OTP Disabled", "OTP verification is temporarily turned off.");
-    return false;
+  /// Sends SMS OTP via backend (`send_login_otp`). Mobile login only.
+  Future<bool> sendLoginOtp(
+    String identifier,
+    String emailOrPhone,
+    bool isStudent,
+  ) async {
+    isSendingLoginOtp.value = true;
+    try {
+      final response = await ApiService.sendLoginOtp(
+        identifier: identifier,
+        emailOrPhone: emailOrPhone,
+        isStudent: isStudent,
+      );
+      final data = response.data;
+      if (data == null || data is! Map) {
+        SweetAlertHelper.showError(Get.context, "Error", "No response from server");
+        return false;
+      }
+      if (data['status'] == 'success') {
+        final msg = data['message']?.toString() ?? "OTP sent";
+        SweetAlertHelper.showSuccess(Get.context, "OTP", msg);
+        return true;
+      }
+      final err = data['message']?.toString() ?? "Could not send OTP";
+      SweetAlertHelper.showError(Get.context, "OTP", err);
+      return false;
+    } catch (e) {
+      debugPrint("sendLoginOtp error: $e");
+      SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
+      return false;
+    } finally {
+      isSendingLoginOtp.value = false;
+    }
   }
 
   //Verify OTP
@@ -96,22 +125,24 @@ class AuthController extends GetxController {
     }
   }
 
-  // Updated Login with identifier (roll/emp), email/phone, and role
+  /// [otp]: when non-empty, backend uses SMS OTP (requires [byMobile] true). Otherwise [password] is used.
   Future<void> loginWithIdentifier(
     String identifier,
     String emailOrPhone,
-    String password,
     bool isStudent,
-    bool byMobile,
-  ) async {
+    bool byMobile, {
+    String password = '',
+    String? otp,
+  }) async {
     isLoading.value = true;
     try {
       final response = await ApiService.loginWithIdentifier(
         identifier,
         emailOrPhone,
-        password,
         isStudent,
         byMobile,
+        password: password,
+        otp: otp,
       );
       
       final data = response.data;

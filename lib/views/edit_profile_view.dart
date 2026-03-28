@@ -155,7 +155,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                                 ? FileImage(selectedImage!)
                                 : (controller.userData.value.image != null && 
                                    controller.userData.value.image!.isNotEmpty
-                                    ? NetworkImage("https://micampus.co.in/uploads/profiles/${controller.userData.value.image}")
+                                    ? NetworkImage("https://micampus.co.in/admin/uploads/profiles/${controller.userData.value.image}")
                                     : null) as ImageProvider?,
                             child: selectedImage == null &&
                                     (controller.userData.value.image == null || 

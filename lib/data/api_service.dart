@@ -26,35 +26,72 @@ class ApiService {
 
   // --- Auth ---
   
-  // Updated Login with identifier (roll/emp number), email/phone, and role
+  /// Request SMS OTP for mobile login (`send_login_otp` on backend).
+  static Future<Response> sendLoginOtp({
+    required String identifier,
+    required String emailOrPhone,
+    required bool isStudent,
+  }) async {
+    try {
+      final response = await _dio.post(
+        "users.php",
+        queryParameters: {"action": "send_login_otp"},
+        data: {
+          "by_mobile": 1,
+          "identifier": identifier,
+          "email_or_phone": emailOrPhone,
+          "is_student": isStudent ? 1 : 0,
+        },
+      );
+      debugPrint("🟢 send_login_otp: ${response.data}");
+      return response;
+    } on DioException catch (e) {
+      debugPrint("🔴 send_login_otp DioException: ${e.message}");
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'users.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
+    }
+  }
+
+  /// Password login, or SMS OTP login when [otp] is a non-empty 6-digit code (requires [byMobile]).
   static Future<Response> loginWithIdentifier(
     String identifier,
     String emailOrPhone,
-    String password,
     bool isStudent,
-    bool byMobile,
-  ) async {
+    bool byMobile, {
+    String password = '',
+    String? otp,
+  }) async {
     try {
-      final response = await _dio.post("users.php", 
+      final Map<String, dynamic> body = {
+        "identifier": identifier,
+        "email_or_phone": emailOrPhone,
+        "password": password,
+        "is_student": isStudent ? 1 : 0,
+        "by_mobile": byMobile ? 1 : 0,
+      };
+      if (otp != null && otp.isNotEmpty) {
+        body["otp"] = otp;
+      }
+      final response = await _dio.post(
+        "users.php",
         queryParameters: {"action": "login"},
-        data: {
-          "identifier": identifier, // roll_number or emp_number
-          "email_or_phone": emailOrPhone,
-          "password": password,
-          "is_student": isStudent ? 1 : 0,
-          "by_mobile": byMobile ? 1 : 0,
-        }
+        data: body,
       );
       debugPrint("🟢 Login Response: ${response.data}");
       return response;
     } on DioException catch (e) {
       debugPrint("🔴 Login DioException: ${e.message}");
       debugPrint("🔴 Response: ${e.response?.data}");
-      return e.response ?? Response(
-        requestOptions: RequestOptions(path: 'users.php'),
-        statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
-      );
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'users.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
     }
   }
 

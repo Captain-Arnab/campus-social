@@ -8,8 +8,9 @@ import '../data/api_service.dart';
 import '../data/pref_service.dart';
 
 /// Top-level handler for background FCM messages (must be top-level).
+/// Register with [FirebaseMessaging.onBackgroundMessage] in `main()` before [Firebase.initializeApp].
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint('Background message: ${message.messageId}');
 }
@@ -24,7 +25,7 @@ class NotificationService {
   static Future<void> init() async {
     if (_initialized) return;
     try {
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      // Background handler is registered in main() before Firebase.initializeApp.
 
       // Request permission (Android 13+)
       final settings = await _messaging.requestPermission(

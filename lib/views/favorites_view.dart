@@ -110,7 +110,7 @@ class _FavoriteEventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final List banners = event['banners'] ?? [];
     final String imageUrl = banners.isNotEmpty 
-        ? "https://micampus.co.in/uploads/events/${banners[0]}" 
+        ? "https://micampus.co.in/admin/uploads/events/${banners[0]}" 
         : "";
 
     return GestureDetector(

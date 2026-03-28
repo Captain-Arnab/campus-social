@@ -17,7 +17,9 @@ dependencies {
 android {
     namespace = "co.micampus.app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
+    // NDK r28+ builds native libs with 16 KB ELF alignment (Google Play requirement for apps targeting Android 15+).
+    // Install via SDK Manager → SDK Tools → NDK if Gradle reports a missing revision.
+    ndkVersion = "28.0.13004108"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
