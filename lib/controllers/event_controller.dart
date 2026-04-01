@@ -4,12 +4,16 @@ import 'package:get/get.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../utils/sweetalert_helper.dart';
+import '../utils/event_participation_rules.dart';
+import 'profile_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 
 class EventController extends GetxController {
   var isLoading = false.obs;
   var isRefreshing = false.obs; // true during pull-to-refresh / search; list stays visible
+  /// Full approved live feed (no category/search). Home explore builds filtered views from this.
+  var liveEventCatalog = <dynamic>[].obs;
   var eventList = <dynamic>[].obs;
   var favoriteList = <dynamic>[].obs;
   var attendingList = <dynamic>[].obs;
@@ -22,7 +26,7 @@ class EventController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    fetchEvents();
+    fetchLiveEventCatalog();
     fetchFavorites();
     fetchAttendingEvents();
     fetchVolunteeringEvents();
@@ -31,10 +35,11 @@ class EventController extends GetxController {
     fetchEditingEvents();
   }
 
-  Future<void> fetchEvents({String? search, String? category}) async {
+  /// Loads the full live events list (no server-side category or search). Home applies filters locally.
+  Future<void> fetchLiveEventCatalog() async {
     _eventsCancelToken?.cancel('New request');
     _eventsCancelToken = CancelToken();
-    final isInitialLoad = eventList.isEmpty;
+    final isInitialLoad = liveEventCatalog.isEmpty;
     if (isInitialLoad) {
       isLoading.value = true;
     } else {
@@ -42,15 +47,14 @@ class EventController extends GetxController {
     }
     try {
       final response = await ApiService.getEvents(
-        search: search,
-        category: category,
         cancelToken: _eventsCancelToken,
       );
       if (response.data['status'] == 'success') {
         final data = response.data['data'] as List?;
         if (data != null) {
+          liveEventCatalog.value = data;
           eventList.value = data;
-          debugPrint("✓ Loaded ${data.length} events");
+          debugPrint("✓ Loaded ${data.length} events (catalog)");
         }
       }
     } catch (e) {
@@ -61,6 +65,11 @@ class EventController extends GetxController {
       isLoading.value = false;
       isRefreshing.value = false;
     }
+  }
+
+  /// Refreshes the live catalog. [search] and [category] are ignored (filters are client-side on home).
+  Future<void> fetchEvents({String? search, String? category}) async {
+    await fetchLiveEventCatalog();
   }
 
   Future<void> fetchFavorites() async {
@@ -183,7 +192,113 @@ class EventController extends GetxController {
     }
   }
 
-  Future<void> participate(String eventId) async {
+  bool _eventRowMatchesId(String eventId, dynamic row) {
+    if (row is! Map) return false;
+    return row['id']?.toString() == eventId.toString();
+  }
+
+  bool _inAttendingList(String eventId) => attendingList.any((e) => _eventRowMatchesId(eventId, e));
+  bool _inVolunteeringList(String eventId) => volunteeringList.any((e) => _eventRowMatchesId(eventId, e));
+  bool _inParticipatingList(String eventId) => participatingList.any((e) => _eventRowMatchesId(eventId, e));
+
+  bool _isOrganiserForGuard(String userId, {String? organizerId, dynamic eventSnapshot}) {
+    final oid = organizerId ?? EventParticipationRules.organizerIdFromEvent(eventSnapshot);
+    return oid != null && oid == userId;
+  }
+
+  void _warnOrganiserCannotJoin() {
+    SweetAlertHelper.showInfo(
+      Get.context,
+      'Not allowed',
+      'Event organisers cannot attend, volunteer, or register as participants for their own event.',
+    );
+  }
+
+  void _warnSingleRoleConflict(String description) {
+    SweetAlertHelper.showInfo(
+      Get.context,
+      'Already registered',
+      'You are already $description for this event. You can only have one role: attendee, volunteer, or participant.',
+    );
+  }
+
+  void _warnVolunteerParticipantWrongOrganiserType() {
+    SweetAlertHelper.showInfo(
+      Get.context,
+      'Not allowed',
+      'You can only volunteer or participate in events organised by your own group '
+      '(students with student organisers, staff with staff organisers). For the other group\'s events, you can only attend.',
+    );
+  }
+
+  /// Returns false if the action must be blocked (and shows a message).
+  bool guardParticipationAction(
+    String eventId,
+    String userId, {
+    required String trying,
+    String? organizerId,
+    dynamic eventSnapshot,
+    bool? userIsStudent,
+  }) {
+    if (_isOrganiserForGuard(userId, organizerId: organizerId, eventSnapshot: eventSnapshot)) {
+      _warnOrganiserCannotJoin();
+      return false;
+    }
+
+    final orgStudent = EventParticipationRules.organizerIsStudentFromEvent(eventSnapshot);
+    if (userIsStudent != null && orgStudent != null) {
+      if (trying == 'volunteer' || trying == 'participant') {
+        if (!EventParticipationRules.volunteerOrParticipantAllowed(userIsStudent, orgStudent)) {
+          _warnVolunteerParticipantWrongOrganiserType();
+          return false;
+        }
+      }
+    }
+
+    final id = eventId.toString();
+    switch (trying) {
+      case 'attendee':
+        if (_inVolunteeringList(id) || EventParticipationRules.userInVolunteerList(eventSnapshot, userId)) {
+          _warnSingleRoleConflict('registered as a volunteer');
+          return false;
+        }
+        if (_inParticipatingList(id) || EventParticipationRules.userInParticipantList(eventSnapshot, userId)) {
+          _warnSingleRoleConflict('registered as a participant');
+          return false;
+        }
+        return true;
+      case 'volunteer':
+        if (_inAttendingList(id)) {
+          _warnSingleRoleConflict('registered as an attendee');
+          return false;
+        }
+        if (_inParticipatingList(id) || EventParticipationRules.userInParticipantList(eventSnapshot, userId)) {
+          _warnSingleRoleConflict('registered as a participant');
+          return false;
+        }
+        return true;
+      case 'participant':
+        if (_inAttendingList(id)) {
+          _warnSingleRoleConflict('registered as an attendee');
+          return false;
+        }
+        if (_inVolunteeringList(id) || EventParticipationRules.userInVolunteerList(eventSnapshot, userId)) {
+          _warnSingleRoleConflict('registered as a volunteer');
+          return false;
+        }
+        return true;
+      default:
+        return true;
+    }
+  }
+
+  Future<void> participate(
+    String eventId,
+    String departmentClass, {
+    String? organizerId,
+    dynamic eventSnapshot,
+    bool? userIsStudent,
+  }) async {
     isLoading.value = true;
     try {
       String? userId = await PrefService.getUserId();
@@ -193,12 +308,25 @@ class EventController extends GetxController {
         isLoading.value = false;
         return;
       }
+
+      if (!guardParticipationAction(
+        eventId,
+        userId,
+        trying: 'participant',
+        organizerId: organizerId,
+        eventSnapshot: eventSnapshot,
+        userIsStudent: userIsStudent,
+      )) {
+        isLoading.value = false;
+        return;
+      }
       
-      debugPrint("Participant data: event=$eventId, user=$userId");
+      debugPrint("Participant data: event=$eventId, user=$userId, dept=$departmentClass");
       
       final response = await ApiService.joinParticipant({
         "event_id": eventId,
         "user_id": userId,
+        "department_class": departmentClass.trim(),
       });
       
       debugPrint("Participant response: ${response.data}");
@@ -219,8 +347,10 @@ class EventController extends GetxController {
       final message = response.data['message'] ?? 'Unknown error occurred';
       
       if (status == 'success') {
-        Get.back();
         fetchParticipatingEvents();
+        if (Get.isRegistered<ProfileController>()) {
+          Get.find<ProfileController>().loadProfile();
+        }
         SweetAlertHelper.showSuccess(Get.context, "Success", "Successfully registered as participant!");
       } else {
         SweetAlertHelper.showError(Get.context, "Error", message);
@@ -274,6 +404,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     required String venue,
     String? eventDate,
     String? category,
+    String? rules,
   }) async {
     final idRaw = (event is Map) ? event['id'] : null;
     final id = (idRaw is int) ? idRaw : int.tryParse(idRaw?.toString() ?? '');
@@ -302,6 +433,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         venue: venue,
         eventDate: eventDate,
         category: category,
+        rules: rules,
       );
 
       final data = response.data;
@@ -330,6 +462,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     required String venue,
     String? eventDate,
     String? category,
+    String? rules,
   }) async {
     final idRaw = (event is Map) ? event['id'] : null;
     final id = (idRaw is int) ? idRaw : int.tryParse(idRaw?.toString() ?? '');
@@ -346,6 +479,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         venue: venue,
         eventDate: eventDate,
         category: category,
+        rules: rules,
       );
       final data = response.data;
       if (data is Map && data['status'] == 'success') {
@@ -374,6 +508,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     required String eventDate,
     required String category,
     List<File>? bannerFiles,
+    String? rules,
   }) async {
     final idRaw = (event is Map) ? event['id'] : null;
     final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
@@ -397,6 +532,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         eventDate: eventDate,
         category: category,
         bannerFiles: bannerFiles,
+        rules: rules,
       );
       final data = response.data;
       if (data is Map && data['status'] == 'success') {
@@ -478,6 +614,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     required String venue,
     required File? newBanner,
     required String? existingBannerName,
+    String rules = '',
   }) async {
     // Only pending events can be modified
     if (!_isPending(oldEvent)) {
@@ -522,6 +659,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         "event_date": date,
         "category": category,
         "venue": venue,
+        "rules": rules,
       }, bannerToUpload != null ? [bannerToUpload] : []);
 
       final createData = createResp.data;
@@ -550,7 +688,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
   }
 
   // Image is now optional - pass null if no image selected
-  Future<bool> createEvent(String title, String desc, String date, String category, String venue, File? image) async {
+  Future<bool> createEvent(String title, String desc, String date, String category, String venue, File? image, {String rules = ''}) async {
     isLoading.value = true;
     try {
       String? userId = await PrefService.getUserId();
@@ -569,6 +707,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         "event_date": date,
         "category": category,
         "venue": venue,
+        "rules": rules,
       }, image != null ? [image] : []);
 
       debugPrint("Create event response: ${response.data}");
@@ -613,8 +752,28 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     }
   }
 
-  Future<void> joinEvent(String eventId) async {
+  Future<void> joinEvent(
+    String eventId, {
+    String? organizerId,
+    dynamic eventSnapshot,
+    bool? userIsStudent,
+  }) async {
     try {
+      final userId = await PrefService.getUserId();
+      if (userId == null) {
+        SweetAlertHelper.showError(Get.context, "Error", "User not found. Please login again");
+        return;
+      }
+      if (!guardParticipationAction(
+        eventId,
+        userId,
+        trying: 'attendee',
+        organizerId: organizerId,
+        eventSnapshot: eventSnapshot,
+        userIsStudent: userIsStudent,
+      )) {
+        return;
+      }
       final response = await ApiService.joinEvent(eventId);
       debugPrint("📱 joinEvent response status: ${response.data['status']}");
       final isSuccess = response.data['status'] == 'success';
@@ -634,13 +793,32 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     }
   }
 
-  Future<void> volunteer(String eventId, String role, String contact) async {
+  Future<void> volunteer(
+    String eventId,
+    String role,
+    String contact, {
+    String? organizerId,
+    dynamic eventSnapshot,
+    bool? userIsStudent,
+  }) async {
     isLoading.value = true;
     try {
       String? userId = await PrefService.getUserId();
       
       if (userId == null) {
         SweetAlertHelper.showError(Get.context, "Error", "User not found. Please login again");
+        isLoading.value = false;
+        return;
+      }
+
+      if (!guardParticipationAction(
+        eventId,
+        userId,
+        trying: 'volunteer',
+        organizerId: organizerId,
+        eventSnapshot: eventSnapshot,
+        userIsStudent: userIsStudent,
+      )) {
         isLoading.value = false;
         return;
       }

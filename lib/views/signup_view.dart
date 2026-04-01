@@ -23,6 +23,7 @@ class _SignupViewState extends State<SignupView> {
   final bioCtrl = TextEditingController();
   final rollNumberCtrl = TextEditingController();
   final empNumberCtrl = TextEditingController();
+  final departmentClassCtrl = TextEditingController();
   final interestSearchCtrl = TextEditingController();
   
   bool _obscurePassword = true;
@@ -516,6 +517,30 @@ class _SignupViewState extends State<SignupView> {
                       
                       SizedBox(height: 16.h),
                       
+                      TextField(
+                        controller: departmentClassCtrl,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: InputDecoration(
+                          labelText: "Department / Class",
+                          hintText: "e.g. CSE 3rd Year, Section A",
+                          prefixIcon: const Icon(Icons.school_outlined, color: Color(0xFFFF5F15)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 2),
+                          ),
+                        ),
+                      ),
+                      
+                      SizedBox(height: 16.h),
+                      
                       // Full Name
                       TextField(
                         controller: nameCtrl,
@@ -940,6 +965,7 @@ class _SignupViewState extends State<SignupView> {
                                 _isStudent,
                                 _isStudent ? rollNumberCtrl.text.trim() : null,
                                 _isStudent ? null : empNumberCtrl.text.trim(),
+                                departmentClass: departmentClassCtrl.text.trim(),
                               );
                             },
                             style: ElevatedButton.styleFrom(
@@ -1000,6 +1026,10 @@ class _SignupViewState extends State<SignupView> {
       SweetAlertHelper.showError(context, "Required", "Please enter your employee ID");
       return false;
     }
+    if (departmentClassCtrl.text.trim().isEmpty) {
+      SweetAlertHelper.showError(context, "Required", "Please enter your department or class");
+      return false;
+    }
     if (nameCtrl.text.trim().isEmpty) {
       SweetAlertHelper.showError(context, "Required", "Please enter your full name");
       return false;
@@ -1047,6 +1077,7 @@ class _SignupViewState extends State<SignupView> {
     bioCtrl.dispose();
     rollNumberCtrl.dispose();
     empNumberCtrl.dispose();
+    departmentClassCtrl.dispose();
     interestSearchCtrl.dispose();
     _interestFocusNode.dispose();
     super.dispose();

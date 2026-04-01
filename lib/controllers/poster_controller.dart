@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:saver_gallery/saver_gallery.dart';
 import '../utils/sweetalert_helper.dart';
+import '../widgets/app_calendar_theme.dart';
 
 class PosterController extends GetxController {
   // --- OBSERVABLE VARIABLES ---
@@ -299,10 +300,7 @@ class PosterController extends GetxController {
       initialDate: DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFFFF5F15))),
-        child: child!,
-      ),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
     );
     
     if (picked != null) {
@@ -322,10 +320,7 @@ class PosterController extends GetxController {
       initialDate: DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFFFF6B35))),
-        child: child!,
-      ),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
     );
     
     if (picked != null) {

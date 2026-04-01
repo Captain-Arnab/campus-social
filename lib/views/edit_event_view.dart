@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
 import '../utils/sweetalert_helper.dart';
 import 'template_gallery_view.dart';
+import '../widgets/app_calendar_theme.dart';
 
 /// Full edit form for an approved event (organizer or editor). Same fields as create: banner, title, category, date, venue, description.
 class EditEventView extends StatefulWidget {
@@ -21,6 +22,7 @@ class EditEventView extends StatefulWidget {
 class _EditEventViewState extends State<EditEventView> {
   late TextEditingController titleCtrl;
   late TextEditingController descCtrl;
+  late TextEditingController rulesCtrl;
   late TextEditingController dateCtrl;
   late TextEditingController venueCtrl;
   late String selectedCategory;
@@ -38,6 +40,7 @@ class _EditEventViewState extends State<EditEventView> {
     final e = widget.event;
     titleCtrl = TextEditingController(text: (e['title'] ?? '').toString());
     descCtrl = TextEditingController(text: (e['description'] ?? '').toString());
+    rulesCtrl = TextEditingController(text: (e['rules'] ?? '').toString());
     venueCtrl = TextEditingController(text: (e['venue'] ?? '').toString());
     dateCtrl = TextEditingController();
     selectedCategory = (e['category'] ?? 'IT/Tech').toString();
@@ -55,12 +58,26 @@ class _EditEventViewState extends State<EditEventView> {
     if (banners is List && banners.isNotEmpty) {
       _existingBannerName = banners.first.toString();
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final raw = (widget.event['event_date'] ?? '').toString();
+      if (raw.isEmpty) return;
+      final parsed = DateTime.tryParse(raw.replaceAll(' ', 'T'));
+      if (parsed == null) return;
+      final eventDay = DateTime(parsed.year, parsed.month, parsed.day);
+      final n = DateTime.now();
+      final today = DateTime(n.year, n.month, n.day);
+      if (!today.isBefore(eventDay) && mounted) {
+        Get.back();
+        SweetAlertHelper.showInfo(Get.context, 'Cannot edit', 'This event can no longer be edited.');
+      }
+    });
   }
 
   @override
   void dispose() {
     titleCtrl.dispose();
     descCtrl.dispose();
+    rulesCtrl.dispose();
     dateCtrl.dispose();
     venueCtrl.dispose();
     super.dispose();
@@ -82,6 +99,7 @@ class _EditEventViewState extends State<EditEventView> {
       initialDate: selectedDate ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
     );
     if (picked != null) {
       setState(() => selectedDate = picked);
@@ -138,6 +156,7 @@ class _EditEventViewState extends State<EditEventView> {
       eventDate: dateStr,
       category: selectedCategory,
       bannerFiles: bannerFiles,
+      rules: rulesCtrl.text.trim(),
     );
     if (success && mounted) {
       SweetAlertHelper.showSuccess(
@@ -318,6 +337,18 @@ class _EditEventViewState extends State<EditEventView> {
               decoration: InputDecoration(
                 hintText: "Tell students about your event...",
                 prefixIcon: const Icon(Icons.description_outlined, color: Color(0xFFFF5F15)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            SizedBox(height: 20.h),
+            Text("Event rules", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
+            SizedBox(height: 8.h),
+            TextField(
+              controller: rulesCtrl,
+              maxLines: 5,
+              decoration: InputDecoration(
+                hintText: "Rules, eligibility, dress code...",
+                prefixIcon: const Icon(Icons.gavel_outlined, color: Color(0xFFFF5F15)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),

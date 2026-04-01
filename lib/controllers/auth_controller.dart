@@ -83,8 +83,9 @@ class AuthController extends GetxController {
     String interests,
     bool isStudent,
     String? rollNumber,
-    String? empNumber,
-  ) async {
+    String? empNumber, {
+    String? departmentClass,
+  }) async {
     isLoading.value = true;
     try {
       final response = await ApiService.register(
@@ -97,6 +98,7 @@ class AuthController extends GetxController {
         isStudent,
         rollNumber,
         empNumber,
+        departmentClass: departmentClass,
       );
       
       final data = response.data;

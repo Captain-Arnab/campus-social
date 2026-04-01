@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
 import '../utils/sweetalert_helper.dart';
+import '../widgets/app_calendar_theme.dart';
 
 /// Bottom sheet to edit an approved event (organizer or editor).
 /// Sends event_date and category; may get pending_approval from API.
@@ -65,6 +66,7 @@ class _EditEventSheetState extends State<EditEventSheet> {
       initialDate: selectedDate ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
     );
     if (d != null && mounted) {
       setState(() => selectedDate = d);

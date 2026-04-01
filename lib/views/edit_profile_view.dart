@@ -18,6 +18,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   final ProfileController controller = Get.find<ProfileController>();
   final nameCtrl = TextEditingController();
   final bioCtrl = TextEditingController();
+  final deptClassCtrl = TextEditingController();
   final interestSearchCtrl = TextEditingController();
   File? selectedImage;
   
@@ -42,6 +43,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     super.initState();
     nameCtrl.text = controller.userData.value.fullName ?? "";
     bioCtrl.text = controller.userData.value.bio ?? "";
+    deptClassCtrl.text = controller.userData.value.departmentClass ?? "";
     
     // Parse existing interests from user data into list
     final existingInterests = controller.userData.value.interests ?? "";
@@ -219,6 +221,16 @@ class _EditProfileViewState extends State<EditProfileView> {
                     hint: "Enter your full name",
                     icon: Icons.badge_outlined,
                     inputType: TextInputType.name,
+                  ),
+                  
+                  SizedBox(height: 20.h),
+                  
+                  _buildTextField(
+                    controller: deptClassCtrl,
+                    label: "Department / Class",
+                    hint: "e.g. CSE 3rd Year, Section A",
+                    icon: Icons.school_outlined,
+                    helperText: "Shown on your profile and used when you register as a participant",
                   ),
                   
                   SizedBox(height: 32.h),
@@ -619,8 +631,9 @@ class _EditProfileViewState extends State<EditProfileView> {
     bool success = await controller.updateProfile(
       nameCtrl.text.trim(),
       bioCtrl.text.trim(),
-      interestsString, // Pass as string like before
+      interestsString,
       selectedImage,
+      departmentClass: deptClassCtrl.text.trim(),
     );
     
     if (success) {
@@ -632,6 +645,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   void dispose() {
     nameCtrl.dispose();
     bioCtrl.dispose();
+    deptClassCtrl.dispose();
     interestSearchCtrl.dispose();
     _interestFocusNode.dispose();
     super.dispose();

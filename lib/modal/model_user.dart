@@ -6,6 +6,7 @@ class ModelUser {
   String? image;
   String? bio; // Added for Profile/About section
   String? interests; // Added for Interests section
+  String? departmentClass;
   bool? isAdmin; // Admin can grant edit permissions, upload certificates
 
   ModelUser({
@@ -16,6 +17,7 @@ class ModelUser {
     this.image,
     this.bio,
     this.interests,
+    this.departmentClass,
     this.isAdmin,
   });
 
@@ -29,6 +31,7 @@ class ModelUser {
     image = json['profile_pic'] ?? json['image'];
     bio = json['bio'];
     interests = json['interests'];
+    departmentClass = json['department_class']?.toString();
     isAdmin = json['is_admin'] == 1 || json['is_admin'] == true;
   }
 
@@ -42,6 +45,7 @@ class ModelUser {
     data['image'] = image;
     data['bio'] = bio;
     data['interests'] = interests;
+    data['department_class'] = departmentClass;
     data['is_admin'] = isAdmin;
     return data;
   }

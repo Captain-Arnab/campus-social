@@ -6,7 +6,10 @@ import '../utils/sweetalert_helper.dart';
 
 class VolunteerDialog extends StatefulWidget {
   final dynamic event;
-  const VolunteerDialog({super.key, required this.event});
+  /// From profile; used with event organiser type for participation rules.
+  final bool? userIsStudent;
+
+  const VolunteerDialog({super.key, required this.event, this.userIsStudent});
 
   @override
   State<VolunteerDialog> createState() => _VolunteerDialogState();
@@ -285,6 +288,9 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
       widget.event['id'].toString(),
       role,
       "", // Empty contact since DB doesn't store it
+      organizerId: widget.event['organizer_id']?.toString(),
+      eventSnapshot: widget.event,
+      userIsStudent: widget.userIsStudent,
     );
   }
 

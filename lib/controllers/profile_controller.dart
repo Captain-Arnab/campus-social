@@ -66,7 +66,7 @@ class ProfileController extends GetxController {
     }
   }
 
-  Future<bool> updateProfile(String name, String bio, String interests, File? image) async {
+  Future<bool> updateProfile(String name, String bio, String interests, File? image, {String? departmentClass}) async {
     isLoading.value = true;
     try {
       String? userId = await PrefService.getUserId();
@@ -76,11 +76,15 @@ class ProfileController extends GetxController {
       }
       
       // Update details
-      await ApiService.updateProfile({
+      final Map<String, dynamic> body = {
         "user_id": userId,
         "interests": interests,
-        "bio": bio
-      });
+        "bio": bio,
+      };
+      if (departmentClass != null) {
+        body["department_class"] = departmentClass;
+      }
+      await ApiService.updateProfile(body);
       
       // Update image if selected
       if (image != null) {

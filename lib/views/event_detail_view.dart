@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-import 'package:art_sweetalert_new/art_sweetalert_new.dart';
 import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/sweetalert_helper.dart';
@@ -11,6 +10,8 @@ import 'volunteer_dialog.dart';
 import 'edit_event_view.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../widgets/participate_registration_sheet.dart';
+import '../utils/event_participation_rules.dart';
 
 class EventDetailView extends StatefulWidget {
   final dynamic event;
@@ -72,6 +73,52 @@ class _EventDetailViewState extends State<EventDetailView> {
     return d != null && d.isBefore(DateTime.now());
   }
 
+  /// Same rule as backend: attendance from event calendar day onward.
+  bool _onOrAfterEventDay() {
+    final dateStr = (_event is Map ? _event['event_date'] : null)?.toString() ?? '';
+    if (dateStr.isEmpty) return false;
+    final d = DateTime.tryParse(dateStr.replaceAll(' ', 'T'));
+    if (d == null) return false;
+    final eventDay = DateTime(d.year, d.month, d.day);
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    return !today.isBefore(eventDay);
+  }
+
+  DateTime? _eventCalendarDayOnly() {
+    final dateStr = (_event is Map ? _event['event_date'] : null)?.toString() ?? '';
+    if (dateStr.isEmpty) return null;
+    final d = DateTime.tryParse(dateStr.replaceAll(' ', 'T'));
+    if (d == null) return null;
+    return DateTime(d.year, d.month, d.day);
+  }
+
+  DateTime _todayDateOnly() {
+    final n = DateTime.now();
+    return DateTime(n.year, n.month, n.day);
+  }
+
+  /// Editing is allowed only before the event calendar day (not on or after).
+  bool _canEditEventBySchedule() {
+    final ed = _eventCalendarDayOnly();
+    if (ed == null) return true;
+    return _todayDateOnly().isBefore(ed);
+  }
+
+  /// Organizer notification card through the event day (inclusive); hidden after.
+  bool _canShowOrganizerNotificationBySchedule() {
+    final ed = _eventCalendarDayOnly();
+    if (ed == null) return true;
+    return !_todayDateOnly().isAfter(ed);
+  }
+
+  Future<bool> _isEventOrganizerOnly() async {
+    final uid = await PrefService.getUserId();
+    if (uid == null || _event is! Map) return false;
+    final oid = _event['organizer_id']?.toString() ?? '';
+    return oid.isNotEmpty && oid == uid;
+  }
+
   /// True if current user is organizer or in editor_ids
   Future<bool> _canEditEvent() async {
     final userId = await PrefService.getUserId();
@@ -93,7 +140,12 @@ class _EventDetailViewState extends State<EventDetailView> {
       final userId = await PrefService.getUserId();
       if (userId == null) {
         debugPrint("❌ No user ID found");
-        return {'isStudent': false, 'organizerIsStudent': false}; // Default to faculty
+        return {
+          'isStudent': false,
+          'organizerIsStudent': false,
+          'userId': null,
+          'isOrganizer': false,
+        };
       }
       
       // Get user profile to check if they're a student
@@ -126,13 +178,21 @@ class _EventDetailViewState extends State<EventDetailView> {
       debugPrint("🎯 Organizer is_student raw: $organizerIsStudentRaw → value: $organizerIsStudentValue → organizerIsStudent: $organizerIsStudent");
       debugPrint("✅ Roles match: ${isStudent == organizerIsStudent}");
       
+      final isOrganizer = EventParticipationRules.isUserEventOrganizer(_event, userId);
       return {
         'isStudent': isStudent,
         'organizerIsStudent': organizerIsStudent,
+        'userId': userId,
+        'isOrganizer': isOrganizer,
       };
     } catch (e) {
       debugPrint("❌ Error getting roles: $e");
-      return {'isStudent': false, 'organizerIsStudent': false}; // Default to faculty on error
+      return {
+        'isStudent': false,
+        'organizerIsStudent': false,
+        'userId': null,
+        'isOrganizer': false,
+      };
     }
   }
 
@@ -157,8 +217,12 @@ class _EventDetailViewState extends State<EventDetailView> {
               Get.back();
               final r = await ApiService.addEventEditor(eventId: id, userId: uid);
               if (r.data is Map && r.data['status'] == 'success') {
-                SweetAlertHelper.showSuccess(context, "Success", "Editor added.");
-                await _loadFullEvent();
+                SweetAlertHelper.showSuccess(
+                  context,
+                  "Success",
+                  "Editor added.",
+                  onConfirm: _loadFullEvent,
+                );
               } else {
                 SweetAlertHelper.showError(context, "Error", (r.data is Map ? r.data['message'] : null)?.toString() ?? "Failed");
               }
@@ -254,45 +318,20 @@ class _EventDetailViewState extends State<EventDetailView> {
     );
   }
 
-  void _showParticipateDialog(BuildContext context) {
-    final EventController controller = Get.find<EventController>();
-
+  void _showParticipateDialog(BuildContext context, {required bool userIsStudent}) {
     if (!_isApprovedEvent()) {
       final st = _eventStatus();
       final label = st.isEmpty ? "pending" : st;
       SweetAlertHelper.showWarning(context, "Not Available", "This event is $label. You can participate only after approval.");
       return;
     }
-    
-    ArtSweetAlert.show(
-      context: context,
-      title: const Text("Participate in Event"),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.groups, size: 60, color: Color(0xFF4CAF50)),
-          const SizedBox(height: 16),
-          Text("Join as a participant for:", style: TextStyle(color: Colors.grey[600], fontSize: 14)),
-          const SizedBox(height: 8),
-          Text(_event['title'] ?? "this event", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center),
-        ],
-      ),
-      type: ArtAlertType.question,
-      actions: [
-        ArtAlertButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Cancel"),
-          backgroundColor: Colors.grey,
-        ),
-        ArtAlertButton(
-          onPressed: () {
-            Navigator.pop(context);
-            controller.participate(_event['id'].toString());
-          },
-          child: const Text("Confirm"),
-          backgroundColor: const Color(0xFF4CAF50),
-        ),
-      ],
+    showParticipateRegistrationSheet(
+      context,
+      eventId: _event['id'].toString(),
+      eventTitle: (_event['title'] ?? 'Event').toString(),
+      organizerId: _event['organizer_id']?.toString(),
+      eventSnapshot: _event,
+      userIsStudent: userIsStudent,
     );
   }
 
@@ -311,7 +350,11 @@ class _EventDetailViewState extends State<EventDetailView> {
     final String organizerAvatar = _event['organizer_avatar'] ?? 'default_avatar.png';
     final dynamic pendingEdit = _event['pending_edit'];
     final List winners = _winnersList.isNotEmpty ? _winnersList : (_event['winners'] is List ? _event['winners'] as List : []);
-    
+    final String rulesText = (_event is Map ? (_event['rules'] ?? '').toString().trim() : '');
+    final List volunteerList = _event is Map && _event['volunteer_list'] is List ? _event['volunteer_list'] as List : [];
+    final List participantList = _event is Map && _event['participant_list'] is List ? _event['participant_list'] as List : [];
+    final String existingOrganizerReview = (_event is Map ? (_event['organizer_review'] ?? '').toString().trim() : '');
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: RefreshIndicator(
@@ -434,6 +477,145 @@ class _EventDetailViewState extends State<EventDetailView> {
 
                   SizedBox(height: 24.h),
 
+                  if (rulesText.isNotEmpty) ...[
+                    Text(
+                      "Event rules",
+                      style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                    ),
+                    SizedBox(height: 12.h),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(16.w),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Text(
+                        rulesText,
+                        style: TextStyle(fontSize: 15.sp, color: Colors.grey[800], height: 1.55),
+                      ),
+                    ),
+                    SizedBox(height: 24.h),
+                  ],
+
+                  Text(
+                    "Team",
+                    style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    "Volunteers and participants (with contact numbers)",
+                    style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
+                  ),
+                  SizedBox(height: 12.h),
+                  if (volunteerList.isEmpty && participantList.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 16.w),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Text(
+                        "No team members listed yet.",
+                        style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700),
+                      ),
+                    )
+                  else ...[
+                    if (volunteerList.isNotEmpty) ...[
+                      Text("Volunteers", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFFFF5F15))),
+                      SizedBox(height: 8.h),
+                      ...volunteerList.map<Widget>((v) {
+                        if (v is! Map) return const SizedBox.shrink();
+                        return _TeamMemberTile(map: v, defaultRoleLabel: 'Volunteer');
+                      }),
+                      SizedBox(height: 16.h),
+                    ],
+                    if (participantList.isNotEmpty) ...[
+                      Text("Participants", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFF2E7D32))),
+                      SizedBox(height: 8.h),
+                      ...participantList.map<Widget>((p) {
+                        if (p is! Map) return const SizedBox.shrink();
+                        return _TeamMemberTile(map: p, defaultRoleLabel: 'Participant');
+                      }),
+                    ],
+                  ],
+
+                  SizedBox(height: 24.h),
+
+                  if (_isApprovedEvent() && _onOrAfterEventDay())
+                    FutureBuilder<bool>(
+                      future: _isEventOrganizerOnly(),
+                      builder: (context, snap) {
+                        if (snap.data != true) return const SizedBox.shrink();
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 24.h),
+                          child: _OrganizerAttendancePanel(
+                            key: ValueKey(
+                              'att_${_event['id']}_${volunteerList.length}_${participantList.length}',
+                            ),
+                            event: Map<String, dynamic>.from(_event as Map),
+                            onSaved: _loadFullEvent,
+                          ),
+                        );
+                      },
+                    ),
+
+                  if (_isApprovedEvent() && _isPastEvent())
+                    FutureBuilder<bool>(
+                      future: _isEventOrganizerOnly(),
+                      builder: (context, snap) {
+                        if (snap.connectionState != ConnectionState.done) {
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 16.h),
+                            child: const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF5F15)))),
+                          );
+                        }
+                        final isOrg = snap.data == true;
+                        if (isOrg) {
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 24.h),
+                            child: _OrganizerReviewEditor(
+                              key: ValueKey(
+                                'rev_${_event['id']}_${existingOrganizerReview.hashCode}',
+                              ),
+                              event: Map<String, dynamic>.from(_event as Map),
+                              onSaved: _loadFullEvent,
+                            ),
+                          );
+                        }
+                        if (existingOrganizerReview.isEmpty) return const SizedBox.shrink();
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 24.h),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Organizer review",
+                                style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                              ),
+                              SizedBox(height: 12.h),
+                              Container(
+                                width: double.infinity,
+                                padding: EdgeInsets.all(16.w),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.blue.shade200),
+                                ),
+                                child: Text(
+                                  existingOrganizerReview,
+                                  style: TextStyle(fontSize: 15.sp, color: Colors.blueGrey.shade900, height: 1.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
                   // Pending edit banner
                   if (pendingEdit != null && pendingEdit is Map) ...[
                     Container(
@@ -510,8 +692,8 @@ class _EventDetailViewState extends State<EventDetailView> {
                     ),
                   SizedBox(height: 24.h),
 
-                  // Edit button (organizer or editor)
-                  if (_isApprovedEvent())
+                  // Edit button (organizer or editor) — only before the event day
+                  if (_isApprovedEvent() && _canEditEventBySchedule())
                     FutureBuilder<bool>(
                       future: _canEditEvent(),
                       builder: (context, snap) {
@@ -531,8 +713,8 @@ class _EventDetailViewState extends State<EventDetailView> {
                       },
                     ),
 
-                  // Organizer: Send notification to volunteers & participants
-                  if (_isApprovedEvent())
+                  // Organizer: Send notification — through event day only
+                  if (_isApprovedEvent() && _canShowOrganizerNotificationBySchedule())
                     FutureBuilder<bool>(
                       future: _canEditEvent(),
                       builder: (context, snap) {
@@ -698,8 +880,47 @@ class _EventDetailViewState extends State<EventDetailView> {
           final bool isStudent = roles['isStudent'] as bool;
           final bool organizerIsStudent = roles['organizerIsStudent'] as bool;
           final bool rolesMatch = isStudent == organizerIsStudent;
+          final String? userId = roles['userId'] as String?;
+          final bool isOrganizer = roles['isOrganizer'] as bool? ?? false;
           
           debugPrint("🔍 Final check - User: $isStudent, Organizer: $organizerIsStudent, Match: $rolesMatch");
+          
+          if (isOrganizer) {
+            return Container(
+              padding: EdgeInsets.all(16.w),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, -3))
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(12.w),
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blueGrey.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blueGrey.shade700, size: 22),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Text(
+                            'As the organiser, you cannot attend, volunteer, or register as a participant for this event.',
+                            style: TextStyle(color: Colors.blueGrey.shade900, fontSize: 13.sp, height: 1.35),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
           
           return Container(
             padding: EdgeInsets.all(16.w),
@@ -742,7 +963,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   SizedBox(height: 12.h),
                 ],
 
-                // Role restriction info banner (only show if roles don't match)
+                // Cross-type: volunteer/participant not available for this organiser group
                 if (!rolesMatch) ...[
                   Container(
                     padding: EdgeInsets.all(12.w),
@@ -757,7 +978,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                         SizedBox(width: 12.w),
                         Expanded(
                           child: Text(
-                            "This is a ${organizerIsStudent ? 'student' : 'faculty'} event. You can only attend.",
+                            "Volunteer and participant registration is only for events organised by your own group. You can still join this event as an attendee.",
                             style: TextStyle(
                               color: Colors.orange[800],
                               fontSize: 12.sp,
@@ -774,17 +995,27 @@ class _EventDetailViewState extends State<EventDetailView> {
                 // Buttons row
                 Row(
                   children: [
-                    // Attend Button (always visible)
                     Expanded(
                       child: Obx(() {
-                        final isJoined = controller.attendingList.any((e) => e['id'].toString() == _event['id'].toString());
+                        final eid = _event['id'].toString();
+                        final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
+                        final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
+                            (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
+                        final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
+                            (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
+                        final blockAttend = volunteering || participating;
                         return ElevatedButton(
-                          onPressed: (!_isApprovedEvent() || isJoined)
+                          onPressed: (!_isApprovedEvent() || attending || blockAttend)
                               ? null
-                              : () => controller.joinEvent(_event['id'].toString()),
+                              : () => controller.joinEvent(
+                                    eid,
+                                    organizerId: _event['organizer_id']?.toString(),
+                                    eventSnapshot: _event,
+                                    userIsStudent: isStudent,
+                                  ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isJoined ? Colors.grey[300] : const Color(0xFFFF5F15),
-                            foregroundColor: isJoined ? Colors.grey[600] : Colors.white,
+                            backgroundColor: attending ? Colors.grey[300] : const Color(0xFFFF5F15),
+                            foregroundColor: attending ? Colors.grey[600] : Colors.white,
                             disabledBackgroundColor: Colors.grey[300],
                             disabledForegroundColor: Colors.grey[600],
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -794,10 +1025,10 @@ class _EventDetailViewState extends State<EventDetailView> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(isJoined ? Icons.check : Icons.check_circle, size: 18),
+                              Icon(attending ? Icons.check : Icons.check_circle, size: 18),
                               SizedBox(height: 4.h),
                               Text(
-                                isJoined ? "Joined" : (rolesMatch ? "Attend" : "Attend Only"),
+                                attending ? "Joined" : (blockAttend ? "Attend" : "Join"),
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                               ),
                             ],
@@ -805,25 +1036,31 @@ class _EventDetailViewState extends State<EventDetailView> {
                         );
                       }),
                     ),
-                    
-                    // Only show Volunteer and Participate buttons if roles match
+
                     if (rolesMatch) ...[
                       SizedBox(width: 10.w),
-                      
                       // Volunteer Button
                       Expanded(
                         child: Obx(() {
-                          final isVolunteering = controller.volunteeringList.any((e) => e['id'].toString() == _event['id'].toString());
+                          final eid = _event['id'].toString();
+                          final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
+                          final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
+                              (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
+                          final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
+                              (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                           return OutlinedButton(
-                            onPressed: (!_isApprovedEvent() || isVolunteering)
+                            onPressed: (!_isApprovedEvent() || volunteering || attending || participating)
                                 ? null
                                 : () => showDialog(
                                       context: context,
-                                      builder: (context) => VolunteerDialog(event: _event),
+                                      builder: (context) => VolunteerDialog(
+                                        event: _event,
+                                        userIsStudent: isStudent,
+                                      ),
                                     ),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: isVolunteering ? Colors.grey[600] : const Color(0xFFFF5F15),
-                              side: BorderSide(color: isVolunteering ? Colors.grey[400]! : const Color(0xFFFF5F15), width: 2),
+                              foregroundColor: volunteering ? Colors.grey[600] : const Color(0xFFFF5F15),
+                              side: BorderSide(color: volunteering ? Colors.grey[400]! : const Color(0xFFFF5F15), width: 2),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               padding: EdgeInsets.symmetric(vertical: 12.h),
                             ),
@@ -832,7 +1069,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                               children: [
                                 const Icon(Icons.volunteer_activism, size: 18),
                                 SizedBox(height: 4.h),
-                                Text(isVolunteering ? "Volunteered" : "Volunteer", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                                Text(volunteering ? "Volunteered" : "Volunteer", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
                               ],
                             ),
                           );
@@ -843,12 +1080,19 @@ class _EventDetailViewState extends State<EventDetailView> {
                       // Participate Button
                       Expanded(
                         child: Obx(() {
-                          final isParticipating = controller.participatingList.any((e) => e['id'].toString() == _event['id'].toString());
+                          final eid = _event['id'].toString();
+                          final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
+                          final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
+                              (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
+                          final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
+                              (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                           return OutlinedButton(
-                            onPressed: (!_isApprovedEvent() || isParticipating) ? null : () => _showParticipateDialog(context),
+                            onPressed: (!_isApprovedEvent() || participating || attending || volunteering)
+                                ? null
+                                : () => _showParticipateDialog(context, userIsStudent: isStudent),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: isParticipating ? Colors.grey[600] : const Color(0xFF4CAF50),
-                              side: BorderSide(color: isParticipating ? Colors.grey[400]! : const Color(0xFF4CAF50), width: 2),
+                              foregroundColor: participating ? Colors.grey[600] : const Color(0xFF4CAF50),
+                              side: BorderSide(color: participating ? Colors.grey[400]! : const Color(0xFF4CAF50), width: 2),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               padding: EdgeInsets.symmetric(vertical: 12.h),
                             ),
@@ -857,7 +1101,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                               children: [
                                 const Icon(Icons.groups, size: 18),
                                 SizedBox(height: 4.h),
-                                Text(isParticipating ? "Participating" : "Participate", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                                Text(participating ? "Participating" : "Participate", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
                               ],
                             ),
                           );
@@ -910,6 +1154,371 @@ class _EventDetailViewState extends State<EventDetailView> {
                 SizedBox(height: 4.h),
                 Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp)),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamMemberTile extends StatelessWidget {
+  final Map<dynamic, dynamic> map;
+  final String defaultRoleLabel;
+
+  const _TeamMemberTile({required this.map, required this.defaultRoleLabel});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (map['full_name'] ?? map['student_name'] ?? '—').toString();
+    final role = (map['role'] ?? defaultRoleLabel).toString();
+    final phone = (map['phone'] ?? map['contact_number'] ?? '').toString();
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8.h),
+      child: ListTile(
+        contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+        tileColor: Colors.grey.shade50,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade200),
+        ),
+        leading: const Icon(Icons.person_outline, color: Color(0xFFFF5F15)),
+        title: Text(name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15.sp)),
+        subtitle: Text(
+          '$role${phone.isNotEmpty ? ' · $phone' : ''}',
+          style: TextStyle(fontSize: 13.sp, color: Colors.grey[700]),
+        ),
+      ),
+    );
+  }
+}
+
+bool _rowMarkedAttended(Map<dynamic, dynamic> m) {
+  final a = m['attended'];
+  if (a == true || a == 1 || a == '1') return true;
+  return false;
+}
+
+class _OrganizerAttendancePanel extends StatefulWidget {
+  final Map<String, dynamic> event;
+  final VoidCallback onSaved;
+
+  const _OrganizerAttendancePanel({super.key, required this.event, required this.onSaved});
+
+  @override
+  State<_OrganizerAttendancePanel> createState() => _OrganizerAttendancePanelState();
+}
+
+class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
+  final Map<int, bool> _vol = {};
+  final Map<int, bool> _part = {};
+  bool _saving = false;
+
+  void _loadAttendanceFromEvent() {
+    _vol.clear();
+    _part.clear();
+    final vl = widget.event['volunteer_list'];
+    if (vl is List) {
+      for (final x in vl) {
+        if (x is Map && x['user_id'] != null) {
+          final id = int.tryParse(x['user_id'].toString());
+          if (id != null) _vol[id] = _rowMarkedAttended(x);
+        }
+      }
+    }
+    final pl = widget.event['participant_list'];
+    if (pl is List) {
+      for (final x in pl) {
+        if (x is Map && x['user_id'] != null) {
+          final id = int.tryParse(x['user_id'].toString());
+          if (id != null) _part[id] = _rowMarkedAttended(x);
+        }
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAttendanceFromEvent();
+  }
+
+  @override
+  void didUpdateWidget(covariant _OrganizerAttendancePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.event['id'] != widget.event['id'] ||
+        oldWidget.event['volunteer_list'] != widget.event['volunteer_list'] ||
+        oldWidget.event['participant_list'] != widget.event['participant_list']) {
+      _loadAttendanceFromEvent();
+      setState(() {});
+    }
+  }
+
+  String _nameFromRow(Map<dynamic, dynamic> m) {
+    return (m['full_name'] ?? m['student_name'] ?? 'User').toString();
+  }
+
+  Future<void> _submit() async {
+    final eid = int.tryParse(widget.event['id'].toString());
+    final oid = int.tryParse(widget.event['organizer_id'].toString());
+    if (eid == null || oid == null) return;
+    if (_vol.isEmpty && _part.isEmpty) {
+      SweetAlertHelper.showInfo(context, 'Info', 'No volunteers or participants to mark.');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      if (_vol.isNotEmpty) {
+        final att = _vol.entries.map((e) => {'user_id': e.key, 'present': e.value ? 1 : 0}).toList();
+        final r = await ApiService.eventOrganiserAction({
+          'action': 'set_attendance',
+          'event_id': eid,
+          'organizer_id': oid,
+          'role': 'volunteer',
+          'attendance': att,
+        });
+        final ok = ApiService.responseDataMap(r.data)?['status'] == 'success';
+        if (!ok) {
+          if (mounted) {
+            SweetAlertHelper.showError(context, 'Error', ApiService.responseErrorHint(r));
+          }
+          return;
+        }
+      }
+      if (_part.isNotEmpty) {
+        final att = _part.entries.map((e) => {'user_id': e.key, 'present': e.value ? 1 : 0}).toList();
+        final r = await ApiService.eventOrganiserAction({
+          'action': 'set_attendance',
+          'event_id': eid,
+          'organizer_id': oid,
+          'role': 'participant',
+          'attendance': att,
+        });
+        final ok = ApiService.responseDataMap(r.data)?['status'] == 'success';
+        if (!ok) {
+          if (mounted) {
+            SweetAlertHelper.showError(context, 'Error', ApiService.responseErrorHint(r));
+          }
+          return;
+        }
+      }
+      if (mounted) {
+        SweetAlertHelper.showSuccess(
+          context,
+          'Saved',
+          'Attendance updated.',
+          onConfirm: widget.onSaved,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vl = widget.event['volunteer_list'];
+    final pl = widget.event['participant_list'];
+    final volRows = vl is List
+        ? vl.where((e) => e is Map).map((e) => e as Map<dynamic, dynamic>).toList()
+        : <Map<dynamic, dynamic>>[];
+    final partRows = pl is List
+        ? pl.where((e) => e is Map).map((e) => e as Map<dynamic, dynamic>).toList()
+        : <Map<dynamic, dynamic>>[];
+
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: Colors.teal.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.teal.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.fact_check, color: Colors.teal.shade800, size: 22),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  'Mark attendance (from event day onward)',
+                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            'Check who was present for volunteers and participants.',
+            style: TextStyle(fontSize: 12.sp, color: Colors.teal.shade900),
+          ),
+          SizedBox(height: 16.h),
+          if (volRows.isEmpty && partRows.isEmpty)
+            Text('No volunteers or participants yet.', style: TextStyle(color: Colors.grey[700]))
+          else ...[
+            if (volRows.isNotEmpty) ...[
+              Text('Volunteers', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp)),
+              ...volRows.map((m) {
+                final uid = int.tryParse(m['user_id'].toString());
+                if (uid == null) return const SizedBox.shrink();
+                return CheckboxListTile(
+                  dense: true,
+                  value: _vol[uid] ?? false,
+                  onChanged: (v) => setState(() => _vol[uid] = v ?? false),
+                  title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
+                  subtitle: Text((m['role'] ?? 'Volunteer').toString(), style: TextStyle(fontSize: 12.sp)),
+                );
+              }),
+            ],
+            if (partRows.isNotEmpty) ...[
+              SizedBox(height: 8.h),
+              Text('Participants', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp)),
+              ...partRows.map((m) {
+                final uid = int.tryParse(m['user_id'].toString());
+                if (uid == null) return const SizedBox.shrink();
+                return CheckboxListTile(
+                  dense: true,
+                  value: _part[uid] ?? false,
+                  onChanged: (v) => setState(() => _part[uid] = v ?? false),
+                  title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
+                  subtitle: Text((m['role'] ?? m['department_class'] ?? 'Participant').toString(), style: TextStyle(fontSize: 12.sp)),
+                );
+              }),
+            ],
+            SizedBox(height: 12.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal.shade700,
+                  foregroundColor: Colors.white,
+                ),
+                child: _saving
+                    ? SizedBox(width: 22.w, height: 22.h, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Save attendance'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _OrganizerReviewEditor extends StatefulWidget {
+  final Map<String, dynamic> event;
+  final VoidCallback onSaved;
+
+  const _OrganizerReviewEditor({super.key, required this.event, required this.onSaved});
+
+  @override
+  State<_OrganizerReviewEditor> createState() => _OrganizerReviewEditorState();
+}
+
+class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
+  late final TextEditingController _ctrl;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: (widget.event['organizer_review'] ?? '').toString());
+  }
+
+  @override
+  void didUpdateWidget(covariant _OrganizerReviewEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = (widget.event['organizer_review'] ?? '').toString();
+    final prev = (oldWidget.event['organizer_review'] ?? '').toString();
+    if (next != prev && _ctrl.text == prev) {
+      _ctrl.text = next;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) {
+      SweetAlertHelper.showWarning(context, 'Required', 'Please write your review.');
+      return;
+    }
+    final eid = int.tryParse(widget.event['id'].toString());
+    final oid = int.tryParse(widget.event['organizer_id'].toString());
+    if (eid == null || oid == null) return;
+    setState(() => _saving = true);
+    try {
+      final r = await ApiService.eventOrganiserAction({
+        'action': 'set_review',
+        'event_id': eid,
+        'organizer_id': oid,
+        'organizer_review': text,
+      });
+      final ok = ApiService.responseDataMap(r.data)?['status'] == 'success';
+      if (ok) {
+        if (mounted) {
+          SweetAlertHelper.showSuccess(
+            context,
+            'Saved',
+            'Review saved.',
+            onConfirm: widget.onSaved,
+          );
+        }
+      } else {
+        if (mounted) {
+          SweetAlertHelper.showError(context, 'Error', ApiService.responseErrorHint(r));
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: Colors.purple.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.purple.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your review (after the event)',
+            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.purple.shade900),
+          ),
+          SizedBox(height: 8.h),
+          TextField(
+            controller: _ctrl,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'Share how the event went, highlights, thanks...',
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          SizedBox(height: 12.h),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _saving ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple.shade700,
+                foregroundColor: Colors.white,
+              ),
+              child: _saving
+                  ? SizedBox(width: 22.w, height: 22.h, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Post review'),
             ),
           ),
         ],

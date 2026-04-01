@@ -24,6 +24,23 @@ class ApiService {
     return Options(headers: {"Authorization": "Bearer $token"});
   }
 
+  static Map<String, dynamic>? responseDataMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return null;
+  }
+
+  static String responseErrorHint(Response r) {
+    final m = responseDataMap(r.data);
+    if (m != null && m['message'] != null) return m['message'].toString();
+    if (r.data is String) {
+      final s = (r.data as String).trim();
+      if (s.length > 120) return '${s.substring(0, 120)}…';
+      return s.isEmpty ? 'Invalid response' : s;
+    }
+    return r.statusCode != null ? 'HTTP ${r.statusCode}' : 'Request failed';
+  }
+
   // --- Auth ---
   
   /// Request SMS OTP for mobile login (`send_login_otp` on backend).
@@ -105,8 +122,9 @@ class ApiService {
     String interests,
     bool isStudent,
     String? rollNumber,
-    String? empNumber,
-  ) async {
+    String? empNumber, {
+    String? departmentClass,
+  }) async {
     try {
       final Map<String, dynamic> data = {
         "full_name": name,
@@ -117,6 +135,9 @@ class ApiService {
         "interests": interests,
         "is_student": isStudent ? 1 : 0,
       };
+      if (departmentClass != null && departmentClass.trim().isNotEmpty) {
+        data["department_class"] = departmentClass.trim();
+      }
       
       // Add role-specific field
       if (isStudent) {
@@ -421,6 +442,7 @@ class ApiService {
     required String venue,
     String? eventDate,
     String? category,
+    String? rules,
   }) async {
     try {
       final Map<String, dynamic> payload = {
@@ -432,6 +454,7 @@ class ApiService {
       };
       if (eventDate != null && eventDate.isNotEmpty) payload["event_date"] = eventDate;
       if (category != null && category.isNotEmpty) payload["category"] = category;
+      if (rules != null) payload["rules"] = rules;
       final response = await _dio.put(
         "events.php",
         data: payload,
@@ -460,6 +483,7 @@ class ApiService {
     required String eventDate,
     required String category,
     List<File>? bannerFiles,
+    String? rules,
   }) async {
     try {
       final Map<String, dynamic> data = {
@@ -471,6 +495,7 @@ class ApiService {
         "venue": venue,
         "event_date": eventDate,
         "category": category,
+        "rules": rules ?? '',
       };
       final formData = FormData.fromMap(Map<String, dynamic>.from(data));
       if (bannerFiles != null && bannerFiles.isNotEmpty) {
@@ -817,6 +842,45 @@ class ApiService {
         statusCode: 0,
         data: {'status': 'error', 'message': 'Network error: ${e.message}'}
       );
+    }
+  }
+
+  /// Organizer-only: `set_review` or `set_attendance`.
+  /// Tries [event_organizer.php] then [event_organizer.php] — a 404 "File not found" usually means
+  /// neither script is deployed under [Constant.baseUrl] (same directory as events.php).
+  static Future<Response> eventOrganiserAction(Map<String, dynamic> body) async {
+    const paths = ['event_organizer.php', 'event_organizer.php'];
+    try {
+      final auth = await _getAuthOptions();
+      final opts = Options(
+        headers: auth.headers,
+        validateStatus: (s) => s != null && s < 600,
+      );
+      Response? last404;
+      for (final path in paths) {
+        final r = await _dio.post(path, data: body, options: opts);
+        if (r.statusCode == 404) {
+          last404 = r;
+          continue;
+        }
+        return r;
+      }
+      return Response(
+        requestOptions: last404?.requestOptions ?? RequestOptions(path: paths.last),
+        statusCode: 404,
+        data: {
+          'status': 'error',
+          'message':
+              'Organizer API missing on server (404). Upload event_organizer.php to ${Constant.baseUrl} (same folder as events.php).',
+        },
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'event_organizer.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
     }
   }
 }

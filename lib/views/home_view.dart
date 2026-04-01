@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:art_sweetalert_new/art_sweetalert_new.dart';
 import '../base/constant.dart';
@@ -19,6 +20,9 @@ import 'edit_profile_view.dart';
 import 'volunteer_dialog.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../widgets/app_calendar_theme.dart';
+import '../widgets/participate_registration_sheet.dart';
+import '../utils/event_participation_rules.dart';
 
 class HomeView extends StatefulWidget {
   final int initialBottomTabIndex;
@@ -255,6 +259,8 @@ class _CelebratingWinnersButtonState extends State<_CelebratingWinnersButton>
   }
 }
 
+enum _BrowseDatePreset { any, next7, next15, thisMonth, custom }
+
 // --- EXPLORE TAB ---
 class _ExploreTab extends StatefulWidget {
   const _ExploreTab();
@@ -266,17 +272,20 @@ class _ExploreTab extends StatefulWidget {
 class _ExploreTabState extends State<_ExploreTab> {
   final EventController controller = Get.find<EventController>();
   final TextEditingController searchCtrl = TextEditingController();
-  String selectedCategory = "All";
+  /// Category filter for "Live today" only (featured carousel ignores this).
+  String liveTodayCategory = "All";
+  /// Category + date range for upcoming list (and search bar).
+  String browseCategory = "All";
+  _BrowseDatePreset _browsePreset = _BrowseDatePreset.any;
+  DateTime? _browseCustomStart;
+  DateTime? _browseCustomEnd;
   final List<String> categories = ["All", "IT/Tech", "Cultural", "Sports", "Academic", "Social"];
   List<MapEntry<dynamic, List<dynamic>>> _winnersSwiperData = [];
   bool _winnersLoading = false;
   Timer? _searchDebounce;
 
   Future<void> _refreshData() async {
-    await controller.fetchEvents(
-      search: searchCtrl.text.isEmpty ? null : searchCtrl.text,
-      category: selectedCategory == "All" ? null : selectedCategory
-    );
+    await controller.fetchLiveEventCatalog();
   }
 
   Future<void> _loadWinnersSwiper() async {
@@ -321,15 +330,217 @@ class _ExploreTabState extends State<_ExploreTab> {
     super.dispose();
   }
 
+  DateTime? _eventDateOnly(dynamic event) {
+    final s = (event is Map ? event['event_date'] : null)?.toString();
+    if (s == null || s.isEmpty) return null;
+    final d = DateTime.tryParse(s.replaceAll(' ', 'T'));
+    if (d == null) return null;
+    return DateTime(d.year, d.month, d.day);
+  }
+
+  bool _exploreApproved(dynamic e) {
+    final st = (e is Map ? e['status'] : null)?.toString().toLowerCase() ?? '';
+    return st == 'approved' || st.isEmpty;
+  }
+
+  bool _isLiveTodayEvent(dynamic e) {
+    if (!_exploreApproved(e)) return false;
+    final ed = _eventDateOnly(e);
+    if (ed == null) return false;
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    return ed.year == today.year && ed.month == today.month && ed.day == today.day;
+  }
+
+  /// Featured slider: "Registration open" when the event is not on today's date (and not already past).
+  bool _showRegistrationOpenTagForFeatured(dynamic e) {
+    if (!_exploreApproved(e)) return false;
+    if (_isLiveTodayEvent(e)) return false;
+    final ed = _eventDateOnly(e);
+    if (ed == null) return true;
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    return !ed.isBefore(today);
+  }
+
+  bool _isUpcomingFutureDay(dynamic e) {
+    if (!_exploreApproved(e)) return false;
+    final ed = _eventDateOnly(e);
+    if (ed == null) return false;
+    final n = DateTime.now();
+    final today = DateTime(n.year, n.month, n.day);
+    return ed.isAfter(today);
+  }
+
+  bool _categoryMatch(dynamic e, String selected) {
+    if (selected == "All") return true;
+    final c = (e is Map ? e['category'] : null)?.toString() ?? '';
+    return c == selected;
+  }
+
+  (DateTime, DateTime)? _browseRangeBounds() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    switch (_browsePreset) {
+      case _BrowseDatePreset.any:
+        return null;
+      case _BrowseDatePreset.next7:
+        return (today, today.add(const Duration(days: 6)));
+      case _BrowseDatePreset.next15:
+        return (today, today.add(const Duration(days: 14)));
+      case _BrowseDatePreset.thisMonth:
+        final start = DateTime(today.year, today.month, 1);
+        final end = DateTime(today.year, today.month + 1, 0);
+        return (start, end);
+      case _BrowseDatePreset.custom:
+        if (_browseCustomStart == null || _browseCustomEnd == null) return null;
+        final a = DateTime(_browseCustomStart!.year, _browseCustomStart!.month, _browseCustomStart!.day);
+        final b = DateTime(_browseCustomEnd!.year, _browseCustomEnd!.month, _browseCustomEnd!.day);
+        if (a.isAfter(b)) return (b, a);
+        return (a, b);
+    }
+  }
+
+  bool _browseRangeMatch(dynamic e) {
+    final bounds = _browseRangeBounds();
+    if (bounds == null) return true;
+    final ed = _eventDateOnly(e);
+    if (ed == null) return false;
+    return !ed.isBefore(bounds.$1) && !ed.isAfter(bounds.$2);
+  }
+
+  Future<void> _pickCustomBrowseRange() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: today.subtract(const Duration(days: 365)),
+      lastDate: DateTime(now.year + 3),
+      initialDateRange: _browseCustomStart != null && _browseCustomEnd != null
+          ? DateTimeRange(start: _browseCustomStart!, end: _browseCustomEnd!)
+          : DateTimeRange(start: today, end: today.add(const Duration(days: 7))),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
+    );
+    if (!mounted) return;
+    if (range != null) {
+      setState(() {
+        _browsePreset = _BrowseDatePreset.custom;
+        _browseCustomStart = range.start;
+        _browseCustomEnd = range.end;
+      });
+    }
+  }
+
+  void _setBrowsePreset(_BrowseDatePreset p) {
+    if (p == _BrowseDatePreset.custom) {
+      _pickCustomBrowseRange();
+      return;
+    }
+    setState(() {
+      _browsePreset = p;
+      _browseCustomStart = null;
+      _browseCustomEnd = null;
+    });
+  }
+
+  String _browseFilterSummary() {
+    switch (_browsePreset) {
+      case _BrowseDatePreset.any:
+        return 'Any dates';
+      case _BrowseDatePreset.next7:
+        return 'Next 7 days';
+      case _BrowseDatePreset.next15:
+        return 'Next 15 days';
+      case _BrowseDatePreset.thisMonth:
+        return 'This month';
+      case _BrowseDatePreset.custom:
+        if (_browseCustomStart != null && _browseCustomEnd != null) {
+          return '${DateFormat.yMMMd().format(_browseCustomStart!)} – ${DateFormat.yMMMd().format(_browseCustomEnd!)}';
+        }
+        return 'Custom range';
+    }
+  }
+
+  bool _searchMatchExplore(dynamic e, String q) {
+    final t = q.trim();
+    if (t.isEmpty) return true;
+    if (e is! Map) return false;
+    final low = t.toLowerCase();
+    final title = (e['title'] ?? '').toString().toLowerCase();
+    final venue = (e['venue'] ?? '').toString().toLowerCase();
+    final org = (e['organizer_name'] ?? '').toString().toLowerCase();
+    return title.contains(low) || venue.contains(low) || org.contains(low);
+  }
+
+  Widget _exploreCategoryChips({
+    required String selected,
+    required ValueChanged<String> onSelect,
+  }) {
+    return SizedBox(
+      height: 38.h,
+      child: ListView.separated(
+        padding: EdgeInsets.symmetric(horizontal: 20.w),
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: categories.length,
+        separatorBuilder: (_, __) => SizedBox(width: 12.w),
+        itemBuilder: (context, index) {
+          final cat = categories[index];
+          final isSelected = selected == cat;
+          return GestureDetector(
+            onTap: () => onSelect(cat),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                gradient: isSelected ? const LinearGradient(colors: [Color(0xFFFF5F15), Color(0xFFFF9068)]) : null,
+                color: isSelected ? null : Colors.white,
+                borderRadius: BorderRadius.circular(25),
+                border: Border.all(color: isSelected ? Colors.transparent : Colors.grey[300]!),
+                boxShadow: isSelected
+                    ? [BoxShadow(color: const Color(0xFFFF5F15).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                    : null,
+              ),
+              child: Center(
+                child: Text(
+                  cat,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey[700],
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    fontSize: 14.sp,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _onSearchChanged(String val) {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 400), () {
       if (!mounted) return;
-      controller.fetchEvents(
-        search: val.isEmpty ? null : val,
-        category: selectedCategory == "All" ? null : selectedCategory,
-      );
+      setState(() {});
     });
+  }
+
+  Widget _browseDateChip(String label, _BrowseDatePreset preset) {
+    final customOk =
+        preset != _BrowseDatePreset.custom || (_browseCustomStart != null && _browseCustomEnd != null);
+    final selected = _browsePreset == preset && customOk;
+    return FilterChip(
+      label: Text(label, style: TextStyle(fontSize: 11.sp)),
+      selected: selected,
+      onSelected: (_) => _setBrowsePreset(preset),
+      selectedColor: const Color(0xFFFF5F15).withOpacity(0.22),
+      checkmarkColor: const Color(0xFFFF5F15),
+      labelStyle: TextStyle(
+        color: selected ? const Color(0xFFFF5F15) : Colors.black87,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+      ),
+      side: BorderSide(color: selected ? const Color(0xFFFF5F15) : Colors.grey.shade300),
+    );
   }
 
   @override
@@ -337,11 +548,23 @@ class _ExploreTabState extends State<_ExploreTab> {
     return RefreshIndicator(
       onRefresh: _refreshData,
       color: const Color(0xFFFF5F15),
-      child: SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-          cacheExtent: 400,
-        slivers: [
+      child: Obx(() {
+        final catalog = List<dynamic>.from(controller.liveEventCatalog);
+        final loading = controller.isLoading.value;
+        final searchQ = searchCtrl.text;
+        final liveTodayFiltered =
+            catalog.where(_isLiveTodayEvent).where((e) => _categoryMatch(e, liveTodayCategory)).toList();
+        final upcomingFiltered = catalog
+            .where(_isUpcomingFutureDay)
+            .where((e) => _categoryMatch(e, browseCategory))
+            .where(_browseRangeMatch)
+            .where((e) => _searchMatchExplore(e, searchQ))
+            .toList();
+        return SafeArea(
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+            cacheExtent: 400,
+            slivers: [
           // Header with gradient
           SliverToBoxAdapter(
             child: Container(
@@ -421,7 +644,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                     controller: searchCtrl,
                     style: const TextStyle(color: Colors.black87),
                     decoration: InputDecoration(
-                      hintText: "Search events, venues...",
+                      hintText: "Search upcoming events (not featured)",
                       hintStyle: TextStyle(color: Colors.grey[600]),
                       prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
                       filled: true,
@@ -444,35 +667,36 @@ class _ExploreTabState extends State<_ExploreTab> {
             child: _UpcomingRemindersSection(),
           ),
 
-          // Featured Events Slider
+          // Featured Events Slider (never filtered by category, date, or search)
           SliverToBoxAdapter(
-            child: Obx(() {
-              if (controller.isLoading.value) {
+            child: () {
+              if (loading && catalog.isEmpty) {
                 return SizedBox(
                   height: 280.h,
                   child: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
                 );
               }
-              
-            // Get all events without filtering for featured slider
-            final allEvents = controller.eventList;
-            if (allEvents.isEmpty) return const SizedBox.shrink();
-
-            final featuredEvents = allEvents.take(5).toList();
-
+              if (catalog.isEmpty) return const SizedBox.shrink();
+              final featuredEvents = catalog.take(5).toList();
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(height: 15.h),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20.w),
-                    child: Text(
-                      "Featured Events",
-                      style: TextStyle(
-                        fontSize: 20.sp,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "Featured Events",
+                            style: TextStyle(
+                              fontSize: 20.sp,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   SizedBox(height: 10.h),
@@ -488,13 +712,17 @@ class _ExploreTabState extends State<_ExploreTab> {
                       enableInfiniteScroll: featuredEvents.length > 1,
                     ),
                     itemBuilder: (context, index, realIndex) {
-                      return _FeaturedEventCard(event: featuredEvents[index]);
+                      final ev = featuredEvents[index];
+                      return _FeaturedEventCard(
+                        event: ev,
+                        showRegistrationOpenTag: _showRegistrationOpenTagForFeatured(ev),
+                      );
                     },
                   ),
                   SizedBox(height: 20.h),
                 ],
               );
-            }),
+            }(),
           ),
 
           // Winners section — horizontal swiper of winner cards
@@ -649,126 +877,174 @@ class _ExploreTabState extends State<_ExploreTab> {
             ),
           ),
 
-          // Category Filter (Moved here - above All Events)
+          // Live today (category filter only) + browse filters + upcoming
           SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 8.h),
-                SizedBox(
-                  height: 38.h,
-                  child: ListView.separated(
-                    padding: EdgeInsets.symmetric(horizontal: 20.w),
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: categories.length,
-                    separatorBuilder: (_, __) => SizedBox(width: 12.w),
-                    itemBuilder: (context, index) {
-                      final cat = categories[index];
-                      final isSelected = selectedCategory == cat;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() => selectedCategory = cat);
-                          controller.fetchEvents(
-                            search: searchCtrl.text, 
-                            category: cat == "All" ? null : cat
-                          );
-                        },
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                          decoration: BoxDecoration(
-                            gradient: isSelected 
-                              ? const LinearGradient(colors: [Color(0xFFFF5F15), Color(0xFFFF9068)])
-                              : null,
-                            color: isSelected ? null : Colors.white,
-                            borderRadius: BorderRadius.circular(25),
-                            border: Border.all(color: isSelected ? Colors.transparent : Colors.grey[300]!),
-                            boxShadow: isSelected ? [
-                              BoxShadow(color: const Color(0xFFFF5F15).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
-                            ] : null,
-                          ),
-                          child: Center(
+            child: loading && catalog.isEmpty
+                ? const SizedBox.shrink()
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: 8.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w),
+                        child: Text(
+                          "Live today",
+                          style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w),
+                        child: Text(
+                          "Filter by event type",
+                          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      _exploreCategoryChips(
+                        selected: liveTodayCategory,
+                        onSelect: (c) => setState(() => liveTodayCategory = c),
+                      ),
+                      SizedBox(height: 10.h),
+                      if (liveTodayFiltered.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20.w),
+                          child: Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.symmetric(vertical: 18.h, horizontal: 16.w),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
                             child: Text(
-                              cat,
-                              style: TextStyle(
-                                color: isSelected ? Colors.white : Colors.grey[700],
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                fontSize: 14.sp
-                              ),
+                              catalog.where(_isLiveTodayEvent).isEmpty
+                                  ? "No live events today"
+                                  : "No live events today for this type",
+                              style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
+                      else
+                        SizedBox(
+                          height: 350.h,
+                          child: ListView.separated(
+                            padding: EdgeInsets.symmetric(horizontal: 20.w),
+                            scrollDirection: Axis.horizontal,
+                            itemCount: liveTodayFiltered.length,
+                            separatorBuilder: (_, __) => SizedBox(width: 16.w),
+                            itemBuilder: (context, i) => RepaintBoundary(
+                              child: _AllEventCard(event: liveTodayFiltered[i]),
                             ),
                           ),
                         ),
-                      );
-                    },
+                      SizedBox(height: 24.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w),
+                        child: Text(
+                          "Upcoming events — filters",
+                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w),
+                        child: Text(
+                          "Category, date range, and search apply to the upcoming list below.",
+                          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                        ),
+                      ),
+                      SizedBox(height: 10.h),
+                      _exploreCategoryChips(
+                        selected: browseCategory,
+                        onSelect: (c) => setState(() => browseCategory = c),
+                      ),
+                      SizedBox(height: 10.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Event date range',
+                              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.black87),
+                            ),
+                            SizedBox(height: 4.h),
+                            Text(
+                              _browseFilterSummary(),
+                              style: TextStyle(fontSize: 12.sp, color: Colors.grey[700]),
+                            ),
+                            SizedBox(height: 8.h),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  _browseDateChip('Any', _BrowseDatePreset.any),
+                                  SizedBox(width: 8.w),
+                                  _browseDateChip('Next 7 days', _BrowseDatePreset.next7),
+                                  SizedBox(width: 8.w),
+                                  _browseDateChip('Next 15 days', _BrowseDatePreset.next15),
+                                  SizedBox(width: 8.w),
+                                  _browseDateChip('This month', _BrowseDatePreset.thisMonth),
+                                  SizedBox(width: 8.w),
+                                  _browseDateChip('Custom range', _BrowseDatePreset.custom),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 20.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w),
+                        child: Text(
+                          "Upcoming events",
+                          style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                        ),
+                      ),
+                      SizedBox(height: 10.h),
+                      if (upcomingFiltered.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20.w),
+                          child: Text(
+                            catalog.where(_isUpcomingFutureDay).isEmpty
+                                ? "No upcoming events in the feed right now."
+                                : "No upcoming events match your filters.",
+                            style: TextStyle(fontSize: 13.sp, color: Colors.grey.shade600),
+                          ),
+                        )
+                      else
+                        SizedBox(
+                          height: 350.h,
+                          child: ListView.separated(
+                            padding: EdgeInsets.symmetric(horizontal: 20.w),
+                            scrollDirection: Axis.horizontal,
+                            itemCount: upcomingFiltered.length,
+                            separatorBuilder: (_, __) => SizedBox(width: 16.w),
+                            itemBuilder: (context, i) => RepaintBoundary(
+                              child: _AllEventCard(event: upcomingFiltered[i], showRegistrationOpenTag: true),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                ),
-                SizedBox(height: 20.h),
-                
-                // All Events Header
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Text(
-                    "All Events",
-                    style: TextStyle(
-                      fontSize: 20.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 12.h),
-              ],
-            ),
           ),
 
-          // All Events Horizontal Scrollable List
-          Obx(() {
-            if (controller.isLoading.value) {
-              return SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 300.h,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(color: Color(0xFFFF5F15)),
-                        SizedBox(height: 16.h),
-                        Text("Loading events...", style: TextStyle(color: Colors.grey[600])),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }
-            if (controller.eventList.isEmpty) {
-              return SliverToBoxAdapter(
-                child: SizedBox(height: 300.h, child: _buildEmptyState()),
-              );
-            }
-
-            return SliverToBoxAdapter(
-              child: SizedBox(
-                height: 350.h,
-                child: ListView.separated(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  cacheExtent: 200,
-                  itemCount: controller.eventList.length,
-                  separatorBuilder: (_, __) => SizedBox(width: 16.w),
-                  itemBuilder: (context, index) {
-                    return RepaintBoundary(child: _AllEventCard(event: controller.eventList[index]));
-                  },
-                ),
+          if (!loading && catalog.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 20.w),
+                child: SizedBox(height: 260.h, child: _buildEmptyState()),
               ),
-            );
-          }),
+            ),
 
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 30.h)),
         ],
       ),
-      )
+    );
+      }),
     );
   }
 
@@ -796,43 +1072,45 @@ class _ExploreTabState extends State<_ExploreTab> {
 // --- ALL EVENT CARD (Horizontal Scrollable - Poster Style) ---
 class _AllEventCard extends StatelessWidget {
   final dynamic event;
-  const _AllEventCard({required this.event});
+  final bool showRegistrationOpenTag;
+  const _AllEventCard({required this.event, this.showRegistrationOpenTag = false});
 
-  Future<bool> _canVolunteerOrParticipate() async {
+  /// Profile + organiser flag for home card actions (Join / Volunteer / Participate).
+  Future<Map<String, dynamic>> _eventCardJoinGates() async {
     try {
       final userId = await PrefService.getUserId();
       if (userId == null) {
         debugPrint("❌ No user ID found");
-        return false;
+        return {'success': false};
       }
-      
+
       final userResponse = await ApiService.getUserProfile(userId);
       final userIsStudentValue = userResponse.data['data']['is_student'];
-      
-      // Get organizer's is_student value from event data
       final organizerIsStudentValue = event['organizer_is_student'];
-      
-      // Convert to int safely, handling both string and int types
-      final int userIsStudentInt = userIsStudentValue is String 
-          ? int.tryParse(userIsStudentValue) ?? 1 
+
+      final int userIsStudentInt = userIsStudentValue is String
+          ? int.tryParse(userIsStudentValue) ?? 1
           : (userIsStudentValue as int? ?? 1);
-          
-      final int organizerIsStudentInt = organizerIsStudentValue is String 
-          ? int.tryParse(organizerIsStudentValue) ?? 1 
+      final int organizerIsStudentInt = organizerIsStudentValue is String
+          ? int.tryParse(organizerIsStudentValue) ?? 1
           : (organizerIsStudentValue as int? ?? 1);
-      
+
       final bool userIsStudent = userIsStudentInt == 1;
       final bool organizerIsStudent = organizerIsStudentInt == 1;
-      
+
       debugPrint("👤 User is student: $userIsStudent (raw: $userIsStudentValue, converted: $userIsStudentInt)");
       debugPrint("🎯 Organizer is student: $organizerIsStudent (raw: $organizerIsStudentValue, converted: $organizerIsStudentInt)");
-      debugPrint("✅ Can volunteer/participate: ${userIsStudent == organizerIsStudent}");
-      
-      // Return true only if BOTH are students OR BOTH are faculty
-      return userIsStudent == organizerIsStudent;
+
+      return {
+        'success': true,
+        'userId': userId,
+        'userIsStudent': userIsStudent,
+        'rolesMatch': userIsStudent == organizerIsStudent,
+        'isOrganizer': EventParticipationRules.isUserEventOrganizer(event, userId),
+      };
     } catch (e) {
-      debugPrint("❌ Error checking permissions: $e");
-      return false;
+      debugPrint("❌ Error checking join gates: $e");
+      return {'success': false};
     }
   }
 
@@ -898,27 +1176,45 @@ class _AllEventCard extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Category Badge
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF5F15),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 8,
-                              )
-                            ]
-                          ),
-                          child: Text(
-                            event['category'] ?? "Event",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF5F15),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 8,
+                                  )
+                                ]
+                              ),
+                              child: Text(
+                                event['category'] ?? "Event",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                ),
+                              ),
                             ),
-                          ),
+                            if (showRegistrationOpenTag) ...[
+                              SizedBox(width: 8.w),
+                              Container(
+                                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2E7D32),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  "Registration open",
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10.sp),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         // Favorite Button
                         Container(
@@ -994,172 +1290,194 @@ class _AllEventCard extends StatelessWidget {
                         ),
                         SizedBox(height: 12.h),
                         // Action Buttons
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Obx(() {
-                                final isJoined = controller.attendingList.any((e) => e['id'].toString() == event['id'].toString());
-                                final status = (event['status'] ?? '').toString().toLowerCase();
-                                final isApproved = status == 'approved' || status.isEmpty; // Live feed should be approved
-                                return ElevatedButton(
-                                  onPressed: (!isApproved || isJoined)
-                                      ? null
-                                      : () => controller.joinEvent(event['id'].toString()),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isJoined ? Colors.grey[300] : Colors.white,
-                                    foregroundColor: isJoined ? Colors.grey[600] : const Color(0xFFFF5F15),
-                                    disabledBackgroundColor: Colors.grey[300],
-                                    disabledForegroundColor: Colors.grey[600],
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
+                        FutureBuilder<Map<String, dynamic>>(
+                          future: _eventCardJoinGates(),
+                          builder: (context, snap) {
+                            final waiting = snap.connectionState == ConnectionState.waiting;
+                            final g = snap.data;
+                            final ready = g != null && g['success'] == true;
+                            final isOrganizer = ready && g['isOrganizer'] == true;
+                            final rolesMatch = ready && g['rolesMatch'] == true;
+                            final userId = ready ? g['userId'] as String? : null;
+                            final userIsStudent = ready ? g['userIsStudent'] as bool? : null;
+                            final showJoin = !isOrganizer;
+                            final showVolPart = ready && rolesMatch;
+                            final eid = event['id'].toString();
+                            final status = (event['status'] ?? '').toString().toLowerCase();
+                            final isApproved = status == 'approved' || status.isEmpty;
+
+                            if (waiting) {
+                              return SizedBox(
+                                height: 40.h,
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF5F15)),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            if (isOrganizer) {
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: null,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.white.withOpacity(0.28),
+                                        foregroundColor: Colors.white,
+                                        disabledBackgroundColor: Colors.white.withOpacity(0.28),
+                                        disabledForegroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        padding: EdgeInsets.symmetric(vertical: 8.h),
+                                      ),
+                                      child: Text(
+                                        'Your event',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.sp),
+                                      ),
                                     ),
-                                    padding: EdgeInsets.symmetric(vertical: 8.h),
-                                    elevation: isJoined ? 0 : 2,
                                   ),
-                                  child: Text(
-                                    isJoined ? "Joined" : "Join",
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              children: [
+                                if (showJoin)
+                                  Expanded(
+                                    child: Obx(() {
+                                      final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
+                                      final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
+                                          (userId != null && EventParticipationRules.userInVolunteerList(event, userId));
+                                      final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
+                                          (userId != null && EventParticipationRules.userInParticipantList(event, userId));
+                                      final blockJoin = volunteering || participating;
+                                      return ElevatedButton(
+                                        onPressed: (!isApproved || attending || blockJoin)
+                                            ? null
+                                            : () => controller.joinEvent(
+                                                  eid,
+                                                  organizerId: event['organizer_id']?.toString(),
+                                                  eventSnapshot: event,
+                                                  userIsStudent: userIsStudent,
+                                                ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: attending ? Colors.grey[300] : Colors.white,
+                                          foregroundColor: attending ? Colors.grey[600] : const Color(0xFFFF5F15),
+                                          disabledBackgroundColor: Colors.grey[300],
+                                          disabledForegroundColor: Colors.grey[600],
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          padding: EdgeInsets.symmetric(vertical: 8.h),
+                                          elevation: attending ? 0 : 2,
+                                        ),
+                                        child: Text(
+                                          attending ? "Joined" : "Join",
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                        ),
+                                      );
+                                    }),
                                   ),
-                                );
-                              }),
-                            ),
-                            SizedBox(width: 8.w),
-                            Expanded(
-                              flex: 2, // Give more space to the buttons row
-                              child: FutureBuilder<bool>(
-                                future: _canVolunteerOrParticipate(),
-                                builder: (context, snapshot) {
-                                  final canAccess = snapshot.data ?? false;
-                                  final isLoading = snapshot.connectionState == ConnectionState.waiting;
-                                  
-                                  // Don't show buttons at all if user can't access
-                                  if (!isLoading && !canAccess) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  
-                                  return Row(
-                                    children: [
-                                      Expanded(
-                                        child: Obx(() {
-                                          final isVolunteering = controller.volunteeringList.any((e) => e['id'].toString() == event['id'].toString());
-                                          final status = (event['status'] ?? '').toString().toLowerCase();
-                                          final isApproved = status == 'approved' || status.isEmpty;
-                                          return ElevatedButton(
-                                            onPressed: (isLoading || isVolunteering || !isApproved)
-                                                ? null 
-                                                : () {
-                                                    showDialog(
-                                                      context: context,
-                                                      builder: (context) => VolunteerDialog(event: event),
-                                                    );
-                                                  },
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: (isLoading || isVolunteering) 
-                                                  ? Colors.grey[300]
-                                                  : const Color(0xFFFF5F15),
-                                              foregroundColor: (isLoading || isVolunteering)
-                                                  ? Colors.grey[600]
-                                                  : Colors.white,
-                                              disabledBackgroundColor: Colors.grey[300],
-                                              disabledForegroundColor: Colors.grey[600],
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(10),
-                                              ),
-                                              padding: EdgeInsets.symmetric(vertical: 8.h),
-                                              elevation: (isLoading || isVolunteering) ? 0 : 2,
-                                            ),
-                                            child: isLoading
-                                                ? SizedBox(
-                                                    width: 14,
-                                                    height: 14,
-                                                    child: CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.grey[600]!),
-                                                    ),
-                                                  )
-                                                : Text(
-                                                    isVolunteering ? "Volunteered" : "Volunteer",
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 11,
-                                                    ),
-                                                  ),
-                                          );
-                                        }),
-                                      ),
-                                      SizedBox(width: 6.w),
-                                      Expanded(
-                                        child: Obx(() {
-                                          final isParticipating = controller.participatingList.any((e) => e['id'].toString() == event['id'].toString());
-                                          final status = (event['status'] ?? '').toString().toLowerCase();
-                                          final isApproved = status == 'approved' || status.isEmpty;
-                                          return ElevatedButton(
-                                            onPressed: (isLoading || isParticipating || !isApproved)
-                                                ? null 
-                                                : () {
-                                                    // Show participate confirmation dialog
-                                                    ArtSweetAlert.show(
-                                                      context: context,
-                                                      title: const Text("Participate"),
-                                                      content: const Text("Do you want to participate in this event?"),
-                                                      type: ArtAlertType.question,
-                                                      actions: [
-                                                        ArtAlertButton(
-                                                          onPressed: () => Navigator.pop(context),
-                                                          child: const Text("Cancel"),
-                                                          backgroundColor: Colors.grey,
+                                if (showJoin && showVolPart) SizedBox(width: 8.w),
+                                if (showVolPart) ...[
+                                  Expanded(
+                                    flex: 2,
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Obx(() {
+                                            final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
+                                            final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
+                                                (userId != null && EventParticipationRules.userInVolunteerList(event, userId));
+                                            final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
+                                                (userId != null && EventParticipationRules.userInParticipantList(event, userId));
+                                            return ElevatedButton(
+                                              onPressed: (volunteering || attending || participating || !isApproved)
+                                                  ? null
+                                                  : () {
+                                                      showDialog(
+                                                        context: context,
+                                                        builder: (context) => VolunteerDialog(
+                                                          event: event,
+                                                          userIsStudent: userIsStudent,
                                                         ),
-                                                        ArtAlertButton(
-                                                          onPressed: () {
-                                                            Navigator.pop(context);
-                                                            controller.participate(event['id'].toString());
-                                                          },
-                                                          child: const Text("Yes"),
-                                                          backgroundColor: const Color(0xFFFF5F15),
-                                                        ),
-                                                      ],
-                                                    );
-                                                  },
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: (isLoading || isParticipating) 
-                                                  ? Colors.grey[300]
-                                                  : const Color(0xFF4CAF50), // Blue color to differentiate
-                                              foregroundColor: (isLoading || isParticipating)
-                                                  ? Colors.grey[600]
-                                                  : Colors.white,
-                                              disabledBackgroundColor: Colors.grey[300],
-                                              disabledForegroundColor: Colors.grey[600],
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(10),
+                                                      );
+                                                    },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: volunteering ? Colors.grey[300] : const Color(0xFFFF5F15),
+                                                foregroundColor: volunteering ? Colors.grey[600] : Colors.white,
+                                                disabledBackgroundColor: Colors.grey[300],
+                                                disabledForegroundColor: Colors.grey[600],
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                padding: EdgeInsets.symmetric(vertical: 8.h),
+                                                elevation: volunteering ? 0 : 2,
                                               ),
-                                              padding: EdgeInsets.symmetric(vertical: 8.h),
-                                              elevation: (isLoading || isParticipating) ? 0 : 2,
-                                            ),
-                                            child: isLoading
-                                                ? SizedBox(
-                                                    width: 14,
-                                                    height: 14,
-                                                    child: CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.grey[600]!),
-                                                    ),
-                                                  )
-                                                : Text(
-                                                    isParticipating ? "Participating" : "Participate",
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 11,
-                                                    ),
-                                                  ),
-                                          );
-                                        }),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
+                                              child: Text(
+                                                volunteering ? "Volunteered" : "Volunteer",
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                        ),
+                                        SizedBox(width: 6.w),
+                                        Expanded(
+                                          child: Obx(() {
+                                            final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
+                                            final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
+                                                (userId != null && EventParticipationRules.userInVolunteerList(event, userId));
+                                            final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
+                                                (userId != null && EventParticipationRules.userInParticipantList(event, userId));
+                                            return ElevatedButton(
+                                              onPressed: (participating || attending || volunteering || !isApproved)
+                                                  ? null
+                                                  : () {
+                                                      showParticipateRegistrationSheet(
+                                                        context,
+                                                        eventId: eid,
+                                                        eventTitle: (event['title'] ?? 'Event').toString(),
+                                                        organizerId: event['organizer_id']?.toString(),
+                                                        eventSnapshot: event,
+                                                        userIsStudent: userIsStudent,
+                                                      );
+                                                    },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: participating ? Colors.grey[300] : const Color(0xFF4CAF50),
+                                                foregroundColor: participating ? Colors.grey[600] : Colors.white,
+                                                disabledBackgroundColor: Colors.grey[300],
+                                                disabledForegroundColor: Colors.grey[600],
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                padding: EdgeInsets.symmetric(vertical: 8.h),
+                                                elevation: participating ? 0 : 2,
+                                              ),
+                                              child: Text(
+                                                participating ? "Participating" : "Participate",
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -1189,7 +1507,12 @@ class _AllEventCard extends StatelessWidget {
 // --- FEATURED EVENT CARD (Slider) ---
 class _FeaturedEventCard extends StatelessWidget {
   final dynamic event;
-  const _FeaturedEventCard({required this.event});
+  final bool showRegistrationOpenTag;
+
+  const _FeaturedEventCard({
+    required this.event,
+    this.showRegistrationOpenTag = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1247,24 +1570,46 @@ class _FeaturedEventCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.end,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Category Badge
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF5F15),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        event['category'] ?? "Event",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF5F15),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            event['category'] ?? "Event",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (showRegistrationOpenTag) ...[
+                          SizedBox(width: 8.w),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2E7D32),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              "Registration open",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 10.sp,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     SizedBox(height: 12.h),
-                    
+
                     // Event Title
                     Text(
                       event['title'] ?? "Untitled Event",
@@ -1647,13 +1992,19 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
         );
       }
 
-      // --- Hosted events: show Approved vs Pending sections ---
+      // --- Hosted events: Pending / Rejected / Approved ---
       if (widget.type == 'hosted') {
-        final approved = eventsList
-            .where((e) => (e is Map ? e['status'] : null)?.toString().toLowerCase() == 'approved')
-            .toList();
-        final nonApproved = eventsList
-            .where((e) => (e is Map ? e['status'] : null)?.toString().toLowerCase() != 'approved')
+        String hostNormStatus(dynamic e) =>
+            (e is Map ? e['status'] : null)?.toString().toLowerCase().trim() ?? '';
+        final approved =
+            eventsList.where((e) => hostNormStatus(e) == 'approved').toList();
+        final rejected =
+            eventsList.where((e) => hostNormStatus(e) == 'rejected').toList();
+        final pending = eventsList
+            .where((e) {
+              final s = hostNormStatus(e);
+              return s != 'approved' && s != 'rejected';
+            })
             .toList();
 
         Widget buildSection({
@@ -1723,14 +2074,19 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
               buildSection(
                 title: "Pending",
                 chipColor: Colors.orange,
-                items: nonApproved,
+                items: pending,
+              ),
+              buildSection(
+                title: "Rejected",
+                chipColor: Colors.red,
+                items: rejected,
               ),
               buildSection(
                 title: "Approved",
                 chipColor: Colors.green,
                 items: approved,
               ),
-              if (approved.isEmpty && nonApproved.isEmpty)
+              if (approved.isEmpty && pending.isEmpty && rejected.isEmpty)
                 Padding(
                   padding: EdgeInsets.all(40.w),
                   child: Center(
@@ -2080,6 +2436,35 @@ class _ProfileTab extends StatelessWidget {
                             ],
                           ),
                         ),
+                        if (user.departmentClass != null && user.departmentClass!.trim().isNotEmpty) ...[
+                          SizedBox(height: 10.h),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.school_outlined, size: 14, color: Colors.green.shade800),
+                                SizedBox(width: 6.w),
+                                Flexible(
+                                  child: Text(
+                                    user.departmentClass!.trim(),
+                                    style: TextStyle(
+                                      color: Colors.green.shade900,
+                                      fontSize: 12.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

@@ -6,8 +6,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
 import '../utils/sweetalert_helper.dart';
-import 'template_gallery_view.dart'; 
+import 'template_gallery_view.dart';
 import 'home_view.dart';
+import '../widgets/app_calendar_theme.dart';
 
 class CreateEventView extends StatefulWidget {
   final dynamic existingEvent; // if provided => edit (pending) mode
@@ -20,6 +21,7 @@ class CreateEventView extends StatefulWidget {
 class CreateEventViewState extends State<CreateEventView> {
   final titleCtrl = TextEditingController();
   final descCtrl = TextEditingController();
+  final rulesCtrl = TextEditingController();
   final dateCtrl = TextEditingController();
   final venueCtrl = TextEditingController();
   String selectedCategory = "IT/Tech";
@@ -42,6 +44,7 @@ class CreateEventViewState extends State<CreateEventView> {
     if (e is Map) {
       titleCtrl.text = (e['title'] ?? '').toString();
       descCtrl.text = (e['description'] ?? '').toString();
+      rulesCtrl.text = (e['rules'] ?? '').toString();
       venueCtrl.text = (e['venue'] ?? '').toString();
 
       final cat = (e['category'] ?? '').toString();
@@ -70,6 +73,7 @@ class CreateEventViewState extends State<CreateEventView> {
   void dispose() {
     titleCtrl.dispose();
     descCtrl.dispose();
+    rulesCtrl.dispose();
     dateCtrl.dispose();
     venueCtrl.dispose();
     Get.delete<CreateEventViewState>();
@@ -120,6 +124,7 @@ class CreateEventViewState extends State<CreateEventView> {
             newBanner: selectedImage,
             existingBannerName:
                 _removeExistingBanner ? null : _existingBannerName,
+            rules: rulesCtrl.text.trim(),
           )
         : await controller.createEvent(
             titleCtrl.text.trim(),
@@ -128,6 +133,7 @@ class CreateEventViewState extends State<CreateEventView> {
             selectedCategory,
             venueCtrl.text.trim(),
             selectedImage,
+            rules: rulesCtrl.text.trim(),
           );
 
     if (success) {
@@ -312,6 +318,19 @@ class CreateEventViewState extends State<CreateEventView> {
               ),
             ),
 
+            SizedBox(height: 20.h),
+            Text("Event rules", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
+            SizedBox(height: 8.h),
+            TextField(
+              controller: rulesCtrl,
+              maxLines: 5,
+              decoration: InputDecoration(
+                hintText: "Rules, eligibility, dress code, judging criteria...",
+                prefixIcon: const Icon(Icons.gavel_outlined, color: Color(0xFFFF5F15)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+
             SizedBox(height: 40.h),
 
             Obx(() => controller.isLoading.value
@@ -401,7 +420,13 @@ class CreateEventViewState extends State<CreateEventView> {
   }
 
   Future<void> _selectDate() async {
-    final DateTime? picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2100));
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
+    );
     if (picked != null) setState(() { selectedDate = picked; _updateDateTimeController(); });
   }
 
