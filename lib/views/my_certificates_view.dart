@@ -2,11 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
-import '../base/constant.dart';
-import '../utils/sweetalert_helper.dart';
+import '../utils/certificate_helper.dart';
 
 /// Lists e-certificates for the logged-in user (uploaded by admin for past events).
 /// User sees only their own certificates.
@@ -65,13 +63,6 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
         _error = 'Network error.';
       });
     }
-  }
-
-  String _certificateUrl(String filePath) {
-    if (filePath.isEmpty) return '';
-    if (filePath.startsWith('http')) return filePath;
-    String path = filePath.replaceFirst(RegExp(r'^certificates[/\\]'), '');
-    return '${Constant.uploadsBaseUrl}${Constant.certificatesPath}$path';
   }
 
   @override
@@ -164,8 +155,7 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
                       final eventTitle = (c is Map ? c['event_title'] : null)?.toString() ?? 'Event';
                       final eventDate = (c is Map ? c['event_date'] : null)?.toString() ?? '';
                       final type = (c is Map ? c['type'] : null)?.toString() ?? 'certificate';
-                      final filePath = (c is Map ? c['file_path'] : null)?.toString() ?? '';
-                      final url = _certificateUrl(filePath);
+                      final url = certificateUrlFromRecord(c);
                       return Card(
                         margin: EdgeInsets.only(bottom: 12.h),
                         elevation: 2,
@@ -184,16 +174,8 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
                             '${type.toUpperCase()} • $eventDate',
                             style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
                           ),
-                          trailing: const Icon(Icons.open_in_new),
-                          onTap: () async {
-                            if (url.isEmpty) return;
-                            final uri = Uri.tryParse(url);
-                            if (uri != null && await canLaunchUrl(uri)) {
-                              await launchUrl(uri, mode: LaunchMode.externalApplication);
-                            } else {
-                              SweetAlertHelper.showError(context, "Certificate", "Could not open link.");
-                            }
-                          },
+                          trailing: const Icon(Icons.more_vert),
+                          onTap: () => showCertificateViewDownloadSheet(context, url: url, title: eventTitle),
                         ),
                       );
                     },

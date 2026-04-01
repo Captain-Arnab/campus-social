@@ -391,17 +391,26 @@ class _EventDetailViewState extends State<EventDetailView> {
                 ),
                 onPressed: () => SweetAlertHelper.showInfo(context, "Share", "Share feature coming soon!"),
               ),
-              IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    shape: BoxShape.circle,
+              Obx(() {
+                final eid = _event['id'].toString();
+                final isFav = controller.favoriteList.any(
+                  (e) => e is Map && e['id']?.toString() == eid,
+                );
+                return IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isFav ? Icons.favorite : Icons.favorite_border,
+                      color: Colors.red,
+                    ),
                   ),
-                  child: const Icon(Icons.favorite_border, color: Colors.red),
-                ),
-                onPressed: () => controller.toggleFavorite(_event['id'].toString()),
-              ),
+                  onPressed: () => controller.toggleFavorite(eid),
+                );
+              }),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: banners.isNotEmpty

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -26,13 +27,16 @@ class EventController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Load catalog first so Explore can paint quickly; defer other lists to next event-loop turn.
     fetchLiveEventCatalog();
-    fetchFavorites();
-    fetchAttendingEvents();
-    fetchVolunteeringEvents();
-    fetchHostedEvents();
-    fetchParticipatingEvents();
-    fetchEditingEvents();
+    scheduleMicrotask(() {
+      fetchFavorites();
+      fetchAttendingEvents();
+      fetchVolunteeringEvents();
+      fetchHostedEvents();
+      fetchParticipatingEvents();
+      fetchEditingEvents();
+    });
   }
 
   /// Loads the full live events list (no server-side category or search). Home applies filters locally.

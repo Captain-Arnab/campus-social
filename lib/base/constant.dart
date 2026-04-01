@@ -8,6 +8,30 @@ class Constant {
   static const String uploadsBaseUrl = "https://micampus.co.in/admin/uploads/";
   static const String certificatesPath = "certificates/";
 
+  /// Absolute URL for a certificate [filePath] from the API.
+  /// Supports full http(s) URLs, bare filenames, `certificates/...`, and
+  /// `uploads/certificates/...` without duplicating path segments.
+  static String certificateFileUrl(String filePath) {
+    final trimmed = filePath.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    var p = trimmed.replaceAll('\\', '/');
+    p = p.replaceFirst(RegExp(r'^/+'), '');
+    // Paths from PHP often include "admin/" relative to site root; avoid doubling segments.
+    while (p.toLowerCase().startsWith('admin/')) {
+      p = p.substring('admin/'.length);
+    }
+    if (p.toLowerCase().startsWith('uploads/')) {
+      p = p.substring('uploads/'.length);
+    }
+    if (p.toLowerCase().startsWith('certificates/')) {
+      return '$uploadsBaseUrl$p';
+    }
+    return '$uploadsBaseUrl$certificatesPath$p';
+  }
+
   // Endpoints
   static const String loginEndpoint = "users.php"; 
   static const String registerEndpoint = "users.php"; 

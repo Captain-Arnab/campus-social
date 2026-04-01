@@ -20,7 +20,10 @@ class ApiService {
   );
 
   static Future<Options> _getAuthOptions() async {
-    String? token = await PrefService.getToken();
+    final token = await PrefService.getToken();
+    if (token == null || token.isEmpty) {
+      return Options();
+    }
     return Options(headers: {"Authorization": "Bearer $token"});
   }
 
@@ -681,13 +684,13 @@ class ApiService {
   static Future<Response> getCertificatesByUserId(String userId) async {
     try {
       return await _dio.get(
-        "event_certificates.php",
+        "certificates.php",
         queryParameters: {"user_id": userId.trim()},
         options: await _getAuthOptions(),
       );
     } on DioException catch (e) {
       return e.response ?? Response(
-        requestOptions: RequestOptions(path: 'event_certificates.php'),
+        requestOptions: RequestOptions(path: 'certificates.php'),
         statusCode: 0,
         data: {'status': 'error', 'message': 'Network error: ${e.message}'}
       );
@@ -697,13 +700,13 @@ class ApiService {
   static Future<Response> getCertificatesByEventId(int eventId) async {
     try {
       return await _dio.get(
-        "event_certificates.php",
+        "certificates.php",
         queryParameters: {"event_id": eventId},
         options: await _getAuthOptions(),
       );
     } on DioException catch (e) {
       return e.response ?? Response(
-        requestOptions: RequestOptions(path: 'event_certificates.php'),
+        requestOptions: RequestOptions(path: 'certificates.php'),
         statusCode: 0,
         data: {'status': 'error', 'message': 'Network error: ${e.message}'}
       );
@@ -725,13 +728,13 @@ class ApiService {
         "certificate": await MultipartFile.fromFile(file.path),
       });
       return await _dio.post(
-        "event_certificates.php",
+        "certificates.php",
         data: formData,
         options: await _getAuthOptions(),
       );
     } on DioException catch (e) {
       return e.response ?? Response(
-        requestOptions: RequestOptions(path: 'event_certificates.php'),
+        requestOptions: RequestOptions(path: 'certificates.php'),
         statusCode: 0,
         data: {'status': 'error', 'message': 'Network error: ${e.message}'}
       );
