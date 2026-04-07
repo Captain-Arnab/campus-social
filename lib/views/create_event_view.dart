@@ -140,7 +140,9 @@ class CreateEventViewState extends State<CreateEventView> {
       SweetAlertHelper.showSuccess(
         context,
         "Success",
-        isEdit ? "Event updated successfully (pending)." : "Event creation successful, please wait for admin to approve.",
+        isEdit
+            ? "Event updated successfully (pending). Administrators are notified by SMS."
+            : "Your event was submitted for approval. Administrators are notified by SMS so they can review it in the admin panel.",
         onConfirm: () {
           if (isEdit) {
             Get.offAll(() => const HomeView(initialBottomTabIndex: 1, initialMyEventsTabIndex: 1));

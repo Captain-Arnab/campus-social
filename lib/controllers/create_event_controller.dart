@@ -73,10 +73,15 @@ class CreateEventController extends GetxController {
         "event_date": dateController.text.trim(),
         "category": category,
         "venue": venueController.text.trim(),
+        "rules": "",
       }, imagesToUpload);
 
       if (response.data['status'] == 'success') {
-        SweetAlertHelper.showSuccess(Get.context, "Success 🎉", "Event submitted for admin approval!");
+        SweetAlertHelper.showSuccess(
+          Get.context,
+          "Success 🎉",
+          "Event submitted for admin approval. Administrators are notified by SMS.",
+        );
         
         _resetForm();
         

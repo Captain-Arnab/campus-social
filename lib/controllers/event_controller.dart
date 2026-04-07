@@ -717,19 +717,9 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       debugPrint("Create event response: ${response.data}");
 
       if (response.data['status'] == 'success') {
-        SweetAlertHelper.showSuccess(Get.context, "Success 🎉", "Event created successfully!");
-        
-        // Refresh lists
+        // Success UI and navigation are handled by CreateEventView (avoids duplicate dialogs).
         await fetchEvents();
         await fetchHostedEvents();
-        
-        // Navigate back after a short delay
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (Get.currentRoute.contains('create')) {
-            Get.back();
-          }
-        });
-        
         return true;
       } else {
         SweetAlertHelper.showError(Get.context, "Error", response.data['message'] ?? "Failed to create event");
