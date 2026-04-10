@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -99,8 +101,12 @@ class NotificationService {
 
   // ── Token refresh ─────────────────────────────────────────────────────────
   static void _onTokenRefresh(String token) async {
+    debugPrint('[FCM] Token refreshed (len=${token.length})');
+    if (!_isValidFcmToken(token)) {
+      debugPrint('[FCM] Refreshed token is invalid — ignoring');
+      return;
+    }
     _cachedToken = token;
-    debugPrint('[FCM] Token refreshed');
     final deviceId = await _getDeviceId();
     registerTokenWithBackend(token, deviceId: deviceId);
   }
@@ -169,14 +175,33 @@ class NotificationService {
     return '$type|$eventId';
   }
 
+  // ── FCM token format guard ────────────────────────────────────────────────
+  // Real FCM v1 tokens look like "dXXXX:APA91bXXX..." — they contain a colon
+  // and are typically 150+ characters.  Short hex strings (32-64 chars) are
+  // APNs device tokens or device fingerprints, NOT valid FCM tokens.
+  static bool _isValidFcmToken(String token) {
+    return token.length >= 100 && token.contains(':');
+  }
+
   // ── Get FCM token ─────────────────────────────────────────────────────────
   static Future<String?> getToken() async {
     if (_cachedToken != null) return _cachedToken;
     try {
-      _cachedToken = await _messaging.getToken();
-      if (_cachedToken == null) {
+      final token = await _messaging.getToken();
+      if (token == null) {
         debugPrint('[FCM] getToken returned null — check notification permission');
+        return null;
       }
+      if (!_isValidFcmToken(token)) {
+        debugPrint(
+          '[FCM] getToken returned an invalid token '
+          '(len=${token.length}, contains colon=${token.contains(":")}). '
+          'This looks like an APNs/device token, not an FCM token. '
+          'Ensure Firebase is configured with a valid APNs key.',
+        );
+        return null;
+      }
+      _cachedToken = token;
       return _cachedToken;
     } catch (e) {
       debugPrint('[FCM] getToken error: $e');
@@ -189,6 +214,13 @@ class NotificationService {
     String token, {
     String? deviceId,
   }) async {
+    if (!_isValidFcmToken(token)) {
+      debugPrint(
+        '[FCM] Refusing to register invalid token with backend '
+        '(len=${token.length}). Only real FCM tokens are accepted.',
+      );
+      return;
+    }
     final userId = await PrefService.getUserId();
     if (userId == null) return;
     try {
@@ -199,6 +231,8 @@ class NotificationService {
       );
       if (res.data is Map && res.data['status'] == 'success') {
         debugPrint('[FCM] Token registered with backend');
+      } else {
+        debugPrint('[FCM] Backend rejected token: ${res.data}');
       }
     } catch (e) {
       debugPrint('[FCM] Register token error: $e');
@@ -256,8 +290,14 @@ class NotificationService {
   static Future<String?> _getDeviceId() async {
     try {
       final info = DeviceInfoPlugin();
-      final androidInfo = await info.androidInfo;
-      return androidInfo.id; // unique Android device ID
+      if (Platform.isAndroid) {
+        final androidInfo = await info.androidInfo;
+        return androidInfo.id;
+      } else if (Platform.isIOS) {
+        final iosInfo = await info.iosInfo;
+        return iosInfo.identifierForVendor;
+      }
+      return null;
     } catch (e) {
       debugPrint('[FCM] getDeviceId error: $e');
       return null;
