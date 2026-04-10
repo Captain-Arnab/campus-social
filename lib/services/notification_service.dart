@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -34,72 +33,68 @@ class NotificationService {
   static FirebaseMessaging get _messaging => FirebaseMessaging.instance;
 
   static Future<void> init() async {
-    if (_initialized) return;
-    try {
-      // 1. Request permission (Android 13+)
-      final settings = await _messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      debugPrint('FCM permission: ${settings.authorizationStatus}');
+    if (!_initialized) {
+      try {
+        // 1. Request permission (Android 13+)
+        final settings = await _messaging.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        debugPrint('FCM permission: ${settings.authorizationStatus}');
 
-      // 2. Create Android notification channel
-      await _localNotif
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(_channel);
+        // 2. Create Android notification channel
+        await _localNotif
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>()
+            ?.createNotificationChannel(_channel);
 
-      // 3. Initialize flutter_local_notifications (for foreground display)
-      const initSettings = InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      );
-      await _localNotif.initialize(
-        initSettings,
-        onDidReceiveNotificationResponse: (response) {
-          // User tapped a notification shown while app was open
-          _handleNotificationTap(response.payload);
-        },
-      );
+        // 3. Initialize flutter_local_notifications (for foreground display)
+        const initSettings = InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        );
+        await _localNotif.initialize(
+          initSettings,
+          onDidReceiveNotificationResponse: (response) {
+            _handleNotificationTap(response.payload);
+          },
+        );
 
-      // 4. Set foreground presentation options
-      await _messaging.setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+        // 4. Set foreground presentation options
+        await _messaging.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
 
-      // 5. Listen for token refresh
-      _messaging.onTokenRefresh.listen(_onTokenRefresh);
+        // 5. Listen for token refresh
+        _messaging.onTokenRefresh.listen(_onTokenRefresh);
 
-      // 6. Foreground messages — show via local notifications
-      FirebaseMessaging.onMessage.listen(_onForegroundMessage);
+        // 6. Foreground messages — show via local notifications
+        FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
-      // 7. Background tap (app was minimized)
-      FirebaseMessaging.onMessageOpenedApp.listen((message) {
-        _handleNotificationPayload(message.data);
-      });
-
-      // 8. Terminated state tap (app was fully closed)
-      final initial = await _messaging.getInitialMessage();
-      if (initial != null) {
-        Future.delayed(const Duration(seconds: 1), () {
-          _handleNotificationPayload(initial.data);
+        // 7. Background tap (app was minimized)
+        FirebaseMessaging.onMessageOpenedApp.listen((message) {
+          _handleNotificationPayload(message.data);
         });
+
+        // 8. Terminated state tap (app was fully closed)
+        final initial = await _messaging.getInitialMessage();
+        if (initial != null) {
+          Future.delayed(const Duration(seconds: 1), () {
+            _handleNotificationPayload(initial.data);
+          });
+        }
+
+        _initialized = true;
+        debugPrint('[FCM] NotificationService initialized');
+      } catch (e, stack) {
+        debugPrint('NotificationService.init error: $e\n$stack');
       }
-
-      // 9. Get device ID and register token with backend
-      final deviceId = await _getDeviceId();
-      await getTokenAndRegisterIfLoggedIn(deviceId: deviceId);
-
-      // 10. Subscribe to FCM topics based on role
-      await _subscribeTopics();
-
-      _initialized = true;
-      debugPrint('[FCM] NotificationService initialized');
-    } catch (e, stack) {
-      debugPrint('NotificationService.init error: $e\n$stack');
     }
+
+    // Always register FCM token + topics on every launch (outside _initialized guard)
+    await ensureTokenRegistered();
   }
 
   // ── Token refresh ─────────────────────────────────────────────────────────
@@ -210,10 +205,18 @@ class NotificationService {
     }
   }
 
-  // ── Called on startup if already logged in ────────────────────────────────
-  static Future<void> getTokenAndRegisterIfLoggedIn({String? deviceId}) async {
-    final t = await getToken();
-    if (t != null) await registerTokenWithBackend(t, deviceId: deviceId);
+  /// Call on every app launch and after login to ensure the backend always
+  /// has the latest FCM token for this device. Safe to call multiple times.
+  static Future<void> ensureTokenRegistered() async {
+    try {
+      final token = await getToken();
+      if (token == null) return;
+      final deviceId = await _getDeviceId();
+      await registerTokenWithBackend(token, deviceId: deviceId);
+      await _subscribeTopics();
+    } catch (e) {
+      debugPrint('[FCM] ensureTokenRegistered error: $e');
+    }
   }
 
   // ── Topic subscriptions ───────────────────────────────────────────────────

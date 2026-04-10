@@ -7,20 +7,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'views/splash_view.dart';
 import 'services/notification_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  await NotificationService.init();
   runApp(const MyApp());
-  // Defer Firebase + FCM until after first frame so platform channel is ready
-  WidgetsBinding.instance.addPostFrameCallback((_) async {
-    try {
-      await Firebase.initializeApp();
-      await NotificationService.init();
-    } catch (e, st) {
-      debugPrint('Firebase init error: $e');
-      debugPrint('$st');
-    }
-  });
 }
 
 class MyApp extends StatelessWidget {

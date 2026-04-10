@@ -164,7 +164,7 @@ class AuthController extends GetxController {
         String token = data['token']?.toString() ?? "";
 
         await PrefService.saveUserSession(userId, name, token, isStudent: isStudent);
-        await NotificationService.registerTokenWithBackend(token);
+        await NotificationService.ensureTokenRegistered();
 
         Get.offAll(() => const HomeView());
         SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
