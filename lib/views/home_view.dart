@@ -3191,6 +3191,27 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
   bool _loading = true;
   String? _error;
 
+  DateTime? _notifyDateSortKey(dynamic d) {
+    final s = (d is Map ? d['notify_date'] : null)?.toString();
+    if (s == null || s.isEmpty) return null;
+    return DateTime.tryParse(s.replaceAll(' ', 'T'));
+  }
+
+  /// Nearest reminder only (earliest `notify_date`).
+  List<dynamic> _nearestRemindersOnly(List<dynamic> list) {
+    if (list.isEmpty) return [];
+    final sorted = List<dynamic>.from(list)
+      ..sort((a, b) {
+        final ta = _notifyDateSortKey(a);
+        final tb = _notifyDateSortKey(b);
+        if (ta == null && tb == null) return 0;
+        if (ta == null) return 1;
+        if (tb == null) return -1;
+        return ta.compareTo(tb);
+      });
+    return [sorted.first];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3245,6 +3266,8 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
     if (_error != null && _dates.isEmpty) return const SizedBox.shrink();
     if (_dates.isEmpty) return const SizedBox.shrink();
 
+    final remindersToShow = _nearestRemindersOnly(_dates);
+
     return Padding(
       padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 8.h),
       child: Column(
@@ -3261,7 +3284,7 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
             ],
           ),
           SizedBox(height: 10.h),
-          ...(_dates.take(10).map<Widget>((d) {
+          ...(remindersToShow.map<Widget>((d) {
             final title = (d is Map ? d['title'] : null)?.toString() ?? 'Reminder';
             final dateStr = (d is Map ? d['notify_date'] : null)?.toString() ?? '';
             final message = (d is Map ? d['message'] : null)?.toString() ?? '';

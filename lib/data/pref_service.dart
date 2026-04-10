@@ -5,13 +5,20 @@ class PrefService {
   static const String _userIdKey = "user_id";
   static const String _userNameKey = "user_name";
   static const String _isLoggedInKey = "is_logged_in";
+  static const String _isStudentKey = "is_student";
 
-  static Future<void> saveUserSession(String userId, String name, String token) async {
+  static Future<void> saveUserSession(
+    String userId,
+    String name,
+    String token, {
+    bool isStudent = true, 
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_userIdKey, userId);
     await prefs.setString(_userNameKey, name);
     await prefs.setString(_tokenKey, token);
     await prefs.setBool(_isLoggedInKey, true);
+    await prefs.setBool(_isStudentKey, isStudent); 
   }
 
   static Future<void> clearSession() async {
@@ -38,5 +45,10 @@ class PrefService {
   static Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_isLoggedInKey) ?? false;
+  }
+
+  static Future<bool> getIsStudent() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_isStudentKey) ?? true;
   }
 }

@@ -3,31 +3,40 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 
-/// Top-level handler for background FCM messages (must be top-level).
-/// Register with [FirebaseMessaging.onBackgroundMessage] in `main()` before [Firebase.initializeApp].
+// Top-level background handler — must stay here, not inside the class
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint('Background message: ${message.messageId}');
 }
 
+// Android notification channel — ID must match AndroidManifest meta-data
+const AndroidNotificationChannel _channel = AndroidNotificationChannel(
+  'high_importance_channel',
+  'MiCampus Notifications',
+  description: 'Event alerts and organizer messages',
+  importance: Importance.high,
+  playSound: true,
+);
+
 class NotificationService {
   static String? _cachedToken;
   static bool _initialized = false;
+  static final FlutterLocalNotificationsPlugin _localNotif =
+      FlutterLocalNotificationsPlugin();
 
   static FirebaseMessaging get _messaging => FirebaseMessaging.instance;
 
-  /// Initialize FCM (called after runApp so platform channel is ready).
   static Future<void> init() async {
     if (_initialized) return;
     try {
-      // Background handler is registered in main() before Firebase.initializeApp.
-
-      // Request permission (Android 13+)
+      // 1. Request permission (Android 13+)
       final settings = await _messaging.requestPermission(
         alert: true,
         badge: true,
@@ -35,99 +44,225 @@ class NotificationService {
       );
       debugPrint('FCM permission: ${settings.authorizationStatus}');
 
-      // Create Android notification channel (for display)
-      if (Platform.isAndroid) {
-        await _messaging.setForegroundNotificationPresentationOptions(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
-      }
+      // 2. Create Android notification channel
+      await _localNotif
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(_channel);
 
-      // Listen for token refresh
+      // 3. Initialize flutter_local_notifications (for foreground display)
+      const initSettings = InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      );
+      await _localNotif.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (response) {
+          // User tapped a notification shown while app was open
+          _handleNotificationTap(response.payload);
+        },
+      );
+
+      // 4. Set foreground presentation options
+      await _messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      // 5. Listen for token refresh
       _messaging.onTokenRefresh.listen(_onTokenRefresh);
 
-      // Foreground messages
+      // 6. Foreground messages — show via local notifications
       FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
-      // User tapped notification (app in background)
-      FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedApp);
+      // 7. Background tap (app was minimized)
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        _handleNotificationPayload(message.data);
+      });
 
-      // Get initial message (app opened from terminated state via notification)
+      // 8. Terminated state tap (app was fully closed)
       final initial = await _messaging.getInitialMessage();
-      if (initial != null) _handleNotificationPayload(initial);
+      if (initial != null) {
+        Future.delayed(const Duration(seconds: 1), () {
+          _handleNotificationPayload(initial.data);
+        });
+      }
 
-      // Get and optionally register token
-      await getTokenAndRegisterIfLoggedIn();
+      // 9. Get device ID and register token with backend
+      final deviceId = await _getDeviceId();
+      await getTokenAndRegisterIfLoggedIn(deviceId: deviceId);
+
+      // 10. Subscribe to FCM topics based on role
+      await _subscribeTopics();
 
       _initialized = true;
+      debugPrint('[FCM] NotificationService initialized');
     } catch (e, stack) {
-      debugPrint('NotificationService.init error: $e');
-      debugPrint('$stack');
+      debugPrint('NotificationService.init error: $e\n$stack');
     }
   }
 
-  static void _onTokenRefresh(String token) {
+  // ── Token refresh ─────────────────────────────────────────────────────────
+  static void _onTokenRefresh(String token) async {
     _cachedToken = token;
-    debugPrint('FCM token refreshed');
-    registerTokenWithBackend(token);
+    debugPrint('[FCM] Token refreshed');
+    final deviceId = await _getDeviceId();
+    registerTokenWithBackend(token, deviceId: deviceId);
   }
 
+  // ── Foreground message — show as local notification ───────────────────────
   static void _onForegroundMessage(RemoteMessage message) {
-    debugPrint('Foreground: ${message.notification?.title}');
-    final title = message.notification?.title ?? 'Notification';
-    final body = message.notification?.body ?? message.data['message']?.toString() ?? '';
-    _showInAppNotification(title, body);
+    debugPrint('[FCM] Foreground: ${message.notification?.title}');
+
+    final notification = message.notification;
+    if (notification == null) return;
+
+    // Show as a proper heads-up notification (not just a snackbar)
+    _localNotif.show(
+      message.hashCode,
+      notification.title,
+      notification.body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channel.id,
+          _channel.name,
+          channelDescription: _channel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+      // Payload carries data so tap handler knows where to navigate
+      payload: _buildPayloadString(message.data),
+    );
+
+    // Also show a GetX snackbar for in-app awareness
+    _showInAppSnackbar(
+      notification.title ?? 'Notification',
+      notification.body ?? '',
+    );
   }
 
-  static void _onMessageOpenedApp(RemoteMessage message) {
-    _handleNotificationPayload(message);
+  // ── Navigation on notification tap ───────────────────────────────────────
+  static void _handleNotificationTap(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    // payload is "type|event_id" format
+    final parts = payload.split('|');
+    final type = parts.isNotEmpty ? parts[0] : '';
+    final eventId = parts.length > 1 ? parts[1] : '';
+    _navigateFromNotification(type, eventId);
   }
 
-  static void _handleNotificationPayload(RemoteMessage message) {
-    final data = message.data;
-    if (data['type'] == 'organizer_message' && data['event_id'] != null) {
-      // Could navigate to event detail: Get.to(EventDetailView(eventId: data['event_id']));
-      debugPrint('Open event: ${data['event_id']}');
-    }
+  static void _handleNotificationPayload(Map<String, dynamic> data) {
+    final type = data['type']?.toString() ?? '';
+    final eventId = data['event_id']?.toString() ?? '';
+    _navigateFromNotification(type, eventId);
   }
 
-  /// Get current FCM token (cached after first fetch). Call after init() so permission is granted.
+  static void _navigateFromNotification(String type, String eventId) {
+    debugPrint('[FCM] Tap — type: $type, event_id: $eventId');
+    // Add your navigation logic here as you build screens:
+    // Example:
+    // if (type == 'organizer_message' && eventId.isNotEmpty) {
+    //   Get.toNamed('/event_detail', arguments: eventId);
+    // }
+  }
+
+  static String _buildPayloadString(Map<String, dynamic> data) {
+    final type = data['type']?.toString() ?? '';
+    final eventId = data['event_id']?.toString() ?? '';
+    return '$type|$eventId';
+  }
+
+  // ── Get FCM token ─────────────────────────────────────────────────────────
   static Future<String?> getToken() async {
     if (_cachedToken != null) return _cachedToken;
     try {
       _cachedToken = await _messaging.getToken();
-      if (_cachedToken == null) debugPrint('FCM getToken returned null (check notification permission on Android 13+)');
+      if (_cachedToken == null) {
+        debugPrint('[FCM] getToken returned null — check notification permission');
+      }
       return _cachedToken;
     } catch (e) {
-      debugPrint('FCM getToken error: $e');
+      debugPrint('[FCM] getToken error: $e');
       return null;
     }
   }
 
-  /// Register token with backend if user is logged in. Call after login.
-  static Future<void> registerTokenWithBackend([String? token]) async {
+  // ── Register token with your PHP server ──────────────────────────────────
+  static Future<void> registerTokenWithBackend(
+    String token, {
+    String? deviceId,
+  }) async {
     final userId = await PrefService.getUserId();
     if (userId == null) return;
-    final t = token ?? await getToken();
-    if (t == null || t.isEmpty) return;
     try {
-      final res = await ApiService.registerFcmToken(userId: userId, fcmToken: t);
-      if (res.data is Map && (res.data as Map)['status'] == 'success') {
-        debugPrint('FCM token registered with backend');
+      final res = await ApiService.registerFcmToken(
+        userId: userId,
+        fcmToken: token,
+        deviceId: deviceId,
+      );
+      if (res.data is Map && res.data['status'] == 'success') {
+        debugPrint('[FCM] Token registered with backend');
       }
     } catch (e) {
-      debugPrint('Register FCM token error: $e');
+      debugPrint('[FCM] Register token error: $e');
     }
   }
 
-  /// Fetch token and register with API when user is already logged in (e.g. app startup).
-  static Future<void> getTokenAndRegisterIfLoggedIn() async {
+  // ── Called on startup if already logged in ────────────────────────────────
+  static Future<void> getTokenAndRegisterIfLoggedIn({String? deviceId}) async {
     final t = await getToken();
-    if (t != null) await registerTokenWithBackend(t);
+    if (t != null) await registerTokenWithBackend(t, deviceId: deviceId);
   }
 
-  static void _showInAppNotification(String title, String body) {
+  // ── Topic subscriptions ───────────────────────────────────────────────────
+  static Future<void> _subscribeTopics() async {
+    try {
+      await _messaging.subscribeToTopic('all_users');
+      final isStudent = await PrefService.getIsStudent();
+      if (isStudent) {
+        await _messaging.subscribeToTopic('students');
+        await _messaging.unsubscribeFromTopic('faculty');
+      } else {
+        await _messaging.subscribeToTopic('faculty');
+        await _messaging.unsubscribeFromTopic('students');
+      }
+      debugPrint('[FCM] Topics subscribed');
+    } catch (e) {
+      debugPrint('[FCM] Topic subscribe error: $e');
+    }
+  }
+
+  // ── Call on logout ────────────────────────────────────────────────────────
+  static Future<void> onLogout() async {
+    try {
+      await _messaging.deleteToken();
+      await _messaging.unsubscribeFromTopic('all_users');
+      await _messaging.unsubscribeFromTopic('students');
+      await _messaging.unsubscribeFromTopic('faculty');
+      _cachedToken = null;
+      _initialized = false;
+      debugPrint('[FCM] Token deleted and topics unsubscribed');
+    } catch (e) {
+      debugPrint('[FCM] Logout cleanup error: $e');
+    }
+  }
+
+  // ── Get device ID ─────────────────────────────────────────────────────────
+  static Future<String?> _getDeviceId() async {
+    try {
+      final info = DeviceInfoPlugin();
+      final androidInfo = await info.androidInfo;
+      return androidInfo.id; // unique Android device ID
+    } catch (e) {
+      debugPrint('[FCM] getDeviceId error: $e');
+      return null;
+    }
+  }
+
+  // ── In-app snackbar (GetX) ────────────────────────────────────────────────
+  static void _showInAppSnackbar(String title, String body) {
     try {
       Get.snackbar(
         title,

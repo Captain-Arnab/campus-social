@@ -7,6 +7,9 @@ plugins {
 }
 
 dependencies {
+    // Required by flutter_local_notifications (java.time etc. on minSdk < 26)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
     // Firebase BoM (Manages versions automatically)
     implementation(platform("com.google.firebase:firebase-bom:34.9.0"))
 
@@ -22,6 +25,7 @@ android {
     ndkVersion = "28.0.13004108"
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }

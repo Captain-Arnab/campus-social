@@ -163,8 +163,8 @@ class AuthController extends GetxController {
         String name = data['user_name']?.toString() ?? "User";
         String token = data['token']?.toString() ?? "";
 
-        await PrefService.saveUserSession(userId, name, token);
-        await NotificationService.registerTokenWithBackend();
+        await PrefService.saveUserSession(userId, name, token, isStudent: isStudent);
+        await NotificationService.registerTokenWithBackend(token);
 
         Get.offAll(() => const HomeView());
         SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
@@ -215,6 +215,7 @@ class AuthController extends GetxController {
 
   // Logout
   Future<void> logout() async {
+    await NotificationService.onLogout();
     await PrefService.clearSession();
     Get.offAll(() => const LoginView());
   }
