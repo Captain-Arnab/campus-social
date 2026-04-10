@@ -34,14 +34,29 @@ class ApiService {
   }
 
   static String responseErrorHint(Response r) {
+    final code = r.statusCode;
     final m = responseDataMap(r.data);
-    if (m != null && m['message'] != null) return m['message'].toString();
+    if (m != null && m['message'] != null) {
+      return m['message'].toString();
+    }
     if (r.data is String) {
       final s = (r.data as String).trim();
-      if (s.length > 120) return '${s.substring(0, 120)}…';
-      return s.isEmpty ? 'Invalid response' : s;
+      if (s.isNotEmpty) {
+        if (s.length > 120) return '${s.substring(0, 120)}…';
+        return s;
+      }
     }
-    return r.statusCode != null ? 'HTTP ${r.statusCode}' : 'Request failed';
+    if (code != null && code >= 400) {
+      final emptyBody = r.data == null ||
+          (r.data is String && (r.data as String).trim().isEmpty);
+      if (emptyBody) {
+        return 'Server error (HTTP $code). No response body — check PHP '
+            'error_log; common causes: fatal error in send_event_notification.php '
+            '/ send_organizer_notification.php, FCM helper, or database.';
+      }
+      return 'HTTP $code';
+    }
+    return code != null ? 'HTTP $code' : 'Request failed';
   }
 
   // --- Auth ---
@@ -829,6 +844,12 @@ class ApiService {
     String recipientType = 'both',
   }) async {
     try {
+      final auth = await _getAuthOptions();
+      final opts = Options(
+        headers: auth.headers,
+        // Accept 5xx so we can read JSON error body (default Dio rejects >= 500).
+        validateStatus: (s) => s != null && s < 600,
+      );
       return await _dio.post(
         "send_event_notification.php",
         data: {
@@ -837,7 +858,7 @@ class ApiService {
           "message": message,
           "recipient_type": recipientType,
         },
-        options: await _getAuthOptions(),
+        options: opts,
       );
     } on DioException catch (e) {
       return e.response ?? Response(

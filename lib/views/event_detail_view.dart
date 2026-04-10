@@ -1,7 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
@@ -1577,13 +1579,45 @@ class _SendNotificationCardState extends State<_SendNotificationCard> {
       );
       if (mounted) {
         setState(() => _sending = false);
-        if (res.data is Map && (res.data as Map)['status'] == 'success') {
+        Map<String, dynamic>? data = ApiService.responseDataMap(res.data);
+        if (data == null && res.data is String) {
+          try {
+            data = ApiService.responseDataMap(jsonDecode(res.data as String));
+          } catch (_) {}
+        }
+        if (kDebugMode) {
+          debugPrint(
+            'sendEventNotification HTTP ${res.statusCode} '
+            'rawData=${res.data} statusMessage=${res.statusMessage}',
+          );
+        }
+        final statusOk =
+            data != null && data['status']?.toString().toLowerCase().trim() == 'success';
+        if (statusOk) {
           _messageController.clear();
-          final sent = res.data['push_sent'] ?? 0;
-          SweetAlertHelper.showSuccess(context, "Sent", "Notification sent to $sent recipient(s).");
+          final pushSentRaw = data['push_sent'];
+          final sent = pushSentRaw is int
+              ? pushSentRaw
+              : int.tryParse(pushSentRaw?.toString() ?? '') ?? 0;
+          final serverMsg = data['message']?.toString().trim() ?? '';
+          if (sent == 0 && serverMsg.isNotEmpty) {
+            SweetAlertHelper.showInfo(context, "Notice", serverMsg);
+          } else {
+            SweetAlertHelper.showSuccess(
+              context,
+              "Sent",
+              sent > 0
+                  ? "Notification sent to $sent device(s)."
+                  : (serverMsg.isNotEmpty ? serverMsg : "Request completed."),
+            );
+          }
           widget.onSent();
         } else {
-          SweetAlertHelper.showError(context, "Error", (res.data is Map ? res.data['message'] : null)?.toString() ?? "Failed to send.");
+          SweetAlertHelper.showError(
+            context,
+            "Error",
+            ApiService.responseErrorHint(res),
+          );
         }
       }
     } catch (e) {
