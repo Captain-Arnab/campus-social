@@ -173,14 +173,15 @@ class _NotificationTile extends StatelessWidget {
   String _formatTime(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return '';
     try {
-      final dt = DateTime.parse(dateStr);
-      final now = DateTime.now();
+      var dt = DateTime.parse(dateStr);
+      if (!dt.isUtc) dt = DateTime.utc(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.millisecond, dt.microsecond);
+      final now = DateTime.now().toUtc();
       final diff = now.difference(dt);
 
       if (diff.inMinutes < 1) return 'Just now';
       if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
       if (diff.inHours < 24) return '${diff.inHours}h ago';
-      return DateFormat('MMM d, h:mm a').format(dt);
+      return DateFormat('MMM d, h:mm a').format(dt.toLocal());
     } catch (_) {
       return dateStr;
     }
