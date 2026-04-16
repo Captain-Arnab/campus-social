@@ -467,6 +467,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     String? eventDate,
     String? category,
     String? rules,
+    String? eventEndDate,
   }) async {
     final idRaw = (event is Map) ? event['id'] : null;
     final id = (idRaw is int) ? idRaw : int.tryParse(idRaw?.toString() ?? '');
@@ -484,6 +485,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         eventDate: eventDate,
         category: category,
         rules: rules,
+        eventEndDate: eventEndDate,
       );
       final data = response.data;
       if (data is Map && data['status'] == 'success') {
@@ -513,6 +515,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     required String category,
     List<File>? bannerFiles,
     String? rules,
+    String? eventEndDate,
   }) async {
     final idRaw = (event is Map) ? event['id'] : null;
     final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
@@ -537,6 +540,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         category: category,
         bannerFiles: bannerFiles,
         rules: rules,
+        eventEndDate: eventEndDate,
       );
       final data = response.data;
       if (data is Map && data['status'] == 'success') {
@@ -619,6 +623,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     required File? newBanner,
     required String? existingBannerName,
     String rules = '',
+    String? eventEndDate,
   }) async {
     // Only pending events can be modified
     if (!_isPending(oldEvent)) {
@@ -656,7 +661,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       }
 
       // 1) Create a new pending event with updated details (uses existing API)
-      final createResp = await ApiService.createEvent({
+      final createFields = <String, dynamic>{
         "user_id": userId,
         "title": title,
         "description": desc,
@@ -664,7 +669,11 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         "category": category,
         "venue": venue,
         "rules": rules,
-      }, bannerToUpload != null ? [bannerToUpload] : []);
+      };
+      if (eventEndDate != null && eventEndDate.isNotEmpty) {
+        createFields["event_end_date"] = eventEndDate;
+      }
+      final createResp = await ApiService.createEvent(createFields, bannerToUpload != null ? [bannerToUpload] : []);
 
       final createData = createResp.data;
       if (createData is! Map || createData['status'] != 'success') {
@@ -692,7 +701,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
   }
 
   // Image is now optional - pass null if no image selected
-  Future<bool> createEvent(String title, String desc, String date, String category, String venue, File? image, {String rules = ''}) async {
+  Future<bool> createEvent(String title, String desc, String date, String category, String venue, File? image, {String rules = '', String? eventEndDate}) async {
     isLoading.value = true;
     try {
       String? userId = await PrefService.getUserId();
@@ -703,8 +712,8 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       }
 
       debugPrint("Creating event: $title");
-      
-      final response = await ApiService.createEvent({
+
+      final fields = <String, dynamic>{
         "user_id": userId,
         "title": title,
         "description": desc,
@@ -712,7 +721,12 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         "category": category,
         "venue": venue,
         "rules": rules,
-      }, image != null ? [image] : []);
+      };
+      if (eventEndDate != null && eventEndDate.isNotEmpty) {
+        fields["event_end_date"] = eventEndDate;
+      }
+      
+      final response = await ApiService.createEvent(fields, image != null ? [image] : []);
 
       debugPrint("Create event response: ${response.data}");
 

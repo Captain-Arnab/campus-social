@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/sweetalert_helper.dart';
@@ -69,6 +70,11 @@ class _EventDetailViewState extends State<EventDetailView> {
   }
 
   bool _isPastEvent() {
+    final endDateStr = (_event is Map ? _event['event_end_date'] : null)?.toString() ?? '';
+    if (endDateStr.isNotEmpty && endDateStr != '0000-00-00 00:00:00') {
+      final ed = DateTime.tryParse(endDateStr.replaceAll(' ', 'T'));
+      if (ed != null) return ed.isBefore(DateTime.now());
+    }
     final dateStr = (_event is Map ? _event['event_date'] : null)?.toString() ?? '';
     if (dateStr.isEmpty) return false;
     final d = DateTime.tryParse(dateStr.replaceAll(' ', 'T'));
@@ -98,6 +104,29 @@ class _EventDetailViewState extends State<EventDetailView> {
   DateTime _todayDateOnly() {
     final n = DateTime.now();
     return DateTime(n.year, n.month, n.day);
+  }
+
+  String _formatEventDateRange() {
+    final startStr = (_event is Map ? _event['event_date'] : null)?.toString() ?? '';
+    if (startStr.isEmpty) return 'Date TBD';
+    final start = DateTime.tryParse(startStr.replaceAll(' ', 'T'));
+    if (start == null) return startStr;
+
+    final endStr = (_event is Map ? _event['event_end_date'] : null)?.toString() ?? '';
+    final dateFmt = DateFormat('dd MMM yyyy');
+    final timeFmt = DateFormat('hh:mm a');
+
+    if (endStr.isEmpty || endStr == '0000-00-00 00:00:00') {
+      return '${dateFmt.format(start)}, ${timeFmt.format(start)}';
+    }
+    final end = DateTime.tryParse(endStr.replaceAll(' ', 'T'));
+    if (end == null) return '${dateFmt.format(start)}, ${timeFmt.format(start)}';
+
+    final sameDay = start.year == end.year && start.month == end.month && start.day == end.day;
+    if (sameDay) {
+      return '${dateFmt.format(start)}, ${timeFmt.format(start)} – ${timeFmt.format(end)}';
+    }
+    return '${dateFmt.format(start)}, ${timeFmt.format(start)}\n→ ${dateFmt.format(end)}, ${timeFmt.format(end)}';
   }
 
   /// Editing is allowed only before the event calendar day (not on or after).
@@ -348,7 +377,7 @@ class _EventDetailViewState extends State<EventDetailView> {
       );
     }
     final List banners = _event['banners'] ?? [];
-    final String organizerName = _event['organizer_name'] ?? _event['organizer'] ?? 'Campus Social';
+    final String organizerName = _event['organizer_name'] ?? _event['organizer'] ?? 'MiCampus';
     final String organizerAvatar = _event['organizer_avatar'] ?? 'default_avatar.png';
     final dynamic pendingEdit = _event['pending_edit'];
     final List winners = _winnersList.isNotEmpty ? _winnersList : (_event['winners'] is List ? _event['winners'] as List : []);
@@ -460,7 +489,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   _buildInfoTile(
                     Icons.calendar_today,
                     "Date & Time",
-                    _event['event_date'] ?? "Date TBD",
+                    _formatEventDateRange(),
                   ),
                   
                   SizedBox(height: 16.h),

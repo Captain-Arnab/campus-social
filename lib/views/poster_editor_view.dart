@@ -100,6 +100,17 @@ class _PosterEditorViewState extends State<PosterEditorView> {
   bool get isMusicFestivalTheme => widget.themeIndex == 3;
   bool get isBasketballTheme => widget.themeIndex == 4;
 
+  String _inferCategory() {
+    switch (widget.themeIndex) {
+      case 0: return 'Cultural';     // Graduation
+      case 1: return 'IT/Tech';      // Tech & Innovation
+      case 2: return 'Academic';     // Online Course / English
+      case 3: return 'Cultural';     // Music Festival
+      case 4: return 'Sports';       // Basketball
+      default: return 'IT/Tech';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -419,7 +430,26 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                     setState(() => _isProcessing = false);
 
                     if (posterFile != null) {
-                      Get.back(result: posterFile); 
+                      final result = <String, dynamic>{
+                        'file': posterFile,
+                        'title': isEnglishTheme
+                            ? controller.titleEnglish.value
+                            : controller.title.value,
+                        'description': controller.description.value,
+                        'venue': isBasketballTheme
+                            ? '${controller.stadiumName.value}, ${controller.address.value}'
+                            : isMusicFestivalTheme
+                                ? controller.location.value
+                                : controller.venue.value,
+                        'date': controller.dateStr.value,
+                        'time': isBasketballTheme
+                            ? controller.basketballStartTime.value
+                            : isMusicFestivalTheme
+                                ? controller.startTimings.value
+                                : controller.timeStr.value,
+                        'category': _inferCategory(),
+                      };
+                      Get.back(result: result);
                     } else {
                       SweetAlertHelper.showError(context, "Error", "Failed to generate poster");
                     }

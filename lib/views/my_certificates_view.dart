@@ -154,6 +154,10 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
                       final c = _list[index];
                       final eventTitle = (c is Map ? c['event_title'] : null)?.toString() ?? 'Event';
                       final eventDate = (c is Map ? c['event_date'] : null)?.toString() ?? '';
+                      final eventEndDate = (c is Map ? c['event_end_date'] : null)?.toString() ?? '';
+                      final dateDisplay = (eventEndDate.isNotEmpty && eventEndDate != '0000-00-00 00:00:00')
+                          ? '$eventDate → $eventEndDate'
+                          : eventDate;
                       final type = (c is Map ? c['type'] : null)?.toString() ?? 'certificate';
                       final url = certificateUrlFromRecord(c);
                       return Card(
@@ -171,7 +175,7 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp),
                           ),
                           subtitle: Text(
-                            '${type.toUpperCase()} • $eventDate',
+                            '${type.toUpperCase()} • $dateDisplay',
                             style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
                           ),
                           trailing: const Icon(Icons.more_vert),

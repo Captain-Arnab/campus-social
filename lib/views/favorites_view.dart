@@ -5,6 +5,14 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/event_controller.dart';
 import 'event_detail_view.dart';
 
+String _eventDateRange(dynamic event) {
+  final start = (event is Map ? event['event_date'] : null)?.toString() ?? '';
+  if (start.isEmpty) return 'Date TBD';
+  final end = (event is Map ? event['event_end_date'] : null)?.toString() ?? '';
+  if (end.isEmpty || end == '0000-00-00 00:00:00') return start;
+  return '$start → $end';
+}
+
 class FavoritesView extends StatelessWidget {
   const FavoritesView({super.key});
 
@@ -222,7 +230,7 @@ class _FavoriteEventCard extends StatelessWidget {
                       SizedBox(width: 6.w),
                       Expanded(
                         child: Text(
-                          event['event_date'] ?? "Date TBD",
+                          _eventDateRange(event),
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 12.sp,

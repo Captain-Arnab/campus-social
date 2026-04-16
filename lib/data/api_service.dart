@@ -461,6 +461,7 @@ class ApiService {
     String? eventDate,
     String? category,
     String? rules,
+    String? eventEndDate,
   }) async {
     try {
       final Map<String, dynamic> payload = {
@@ -473,6 +474,7 @@ class ApiService {
       if (eventDate != null && eventDate.isNotEmpty) payload["event_date"] = eventDate;
       if (category != null && category.isNotEmpty) payload["category"] = category;
       if (rules != null) payload["rules"] = rules;
+      if (eventEndDate != null) payload["event_end_date"] = eventEndDate;
       final response = await _dio.put(
         "events.php",
         data: payload,
@@ -502,6 +504,7 @@ class ApiService {
     required String category,
     List<File>? bannerFiles,
     String? rules,
+    String? eventEndDate,
   }) async {
     try {
       final Map<String, dynamic> data = {
@@ -515,6 +518,7 @@ class ApiService {
         "category": category,
         "rules": rules ?? '',
       };
+      if (eventEndDate != null) data["event_end_date"] = eventEndDate;
       final formData = FormData.fromMap(Map<String, dynamic>.from(data));
       if (bannerFiles != null && bannerFiles.isNotEmpty) {
         for (var file in bannerFiles) {
@@ -866,6 +870,79 @@ class ApiService {
         statusCode: 0,
         data: {'status': 'error', 'message': 'Network error: ${e.message}'}
       );
+    }
+  }
+
+  // --- Inbox Notifications ---
+
+  /// Fetch in-app notifications for [userId] within last [hours] (default 24, max 168).
+  static Future<Response> getInboxNotifications({
+    required String userId,
+    int hours = 24,
+  }) async {
+    try {
+      return await _dio.get(
+        "user_notifications.php",
+        queryParameters: {"user_id": userId, "hours": hours},
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'user_notifications.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
+    }
+  }
+
+  /// Mark specific notification IDs as read.
+  static Future<Response> markNotificationsRead({
+    required String userId,
+    required List<int> notificationIds,
+  }) async {
+    try {
+      return await _dio.post(
+        "user_notifications.php",
+        data: {
+          "user_id": int.tryParse(userId) ?? userId,
+          "action": "mark_read",
+          "notification_ids": notificationIds,
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'user_notifications.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
+    }
+  }
+
+  /// Mark all notifications as read within last [hours].
+  static Future<Response> markAllNotificationsRead({
+    required String userId,
+    int hours = 24,
+  }) async {
+    try {
+      return await _dio.post(
+        "user_notifications.php",
+        data: {
+          "user_id": int.tryParse(userId) ?? userId,
+          "action": "mark_all_read",
+          "hours": hours,
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'user_notifications.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
     }
   }
 

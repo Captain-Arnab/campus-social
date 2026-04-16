@@ -28,6 +28,8 @@ class _EditEventViewState extends State<EditEventView> {
   late String selectedCategory;
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
+  DateTime? selectedEndDate;
+  TimeOfDay? selectedEndTime;
   File? selectedImage;
   String? _existingBannerName;
   bool _removeExistingBanner = false;
@@ -52,6 +54,14 @@ class _EditEventViewState extends State<EditEventView> {
         selectedDate = DateTime(parsed.year, parsed.month, parsed.day);
         selectedTime = TimeOfDay(hour: parsed.hour, minute: parsed.minute);
         dateCtrl.text = rawDate;
+      }
+    }
+    final rawEndDate = (e['event_end_date'] ?? '').toString();
+    if (rawEndDate.isNotEmpty && rawEndDate != '0000-00-00 00:00:00') {
+      final parsedEnd = DateTime.tryParse(rawEndDate.replaceAll(' ', 'T'));
+      if (parsedEnd != null) {
+        selectedEndDate = DateTime(parsedEnd.year, parsedEnd.month, parsedEnd.day);
+        selectedEndTime = TimeOfDay(hour: parsedEnd.hour, minute: parsedEnd.minute);
       }
     }
     final banners = e['banners'];
@@ -89,8 +99,15 @@ class _EditEventViewState extends State<EditEventView> {
   }
 
   Future<void> _openPosterDesigner() async {
-    final File? posterFile = await Get.to(() => const TemplateGalleryView());
-    if (posterFile != null) setState(() => selectedImage = posterFile);
+    final result = await Get.to(() => const TemplateGalleryView());
+    if (result == null) return;
+    if (result is Map<String, dynamic>) {
+      setState(() {
+        if (result['file'] is File) selectedImage = result['file'] as File;
+      });
+    } else if (result is File) {
+      setState(() => selectedImage = result);
+    }
   }
 
   Future<void> _selectDate() async {
@@ -117,11 +134,35 @@ class _EditEventViewState extends State<EditEventView> {
     }
   }
 
+  Future<void> _selectEndDate() async {
+    final DateTime firstAllowed = selectedDate ?? DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: selectedEndDate ?? firstAllowed,
+      firstDate: firstAllowed,
+      lastDate: DateTime(2100),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
+    );
+    if (picked != null) setState(() => selectedEndDate = picked);
+  }
+
+  Future<void> _selectEndTime() async {
+    final TimeOfDay? picked = await showTimePicker(context: context, initialTime: selectedEndTime ?? TimeOfDay.now());
+    if (picked != null) setState(() => selectedEndTime = picked);
+  }
+
   void _updateDateTimeController() {
     if (selectedDate != null && selectedTime != null) {
       final full = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, selectedTime!.hour, selectedTime!.minute);
       dateCtrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(full);
     }
+  }
+
+  String? _buildEndDateString() {
+    if (selectedEndDate == null) return null;
+    final endTime = selectedEndTime ?? const TimeOfDay(hour: 23, minute: 59);
+    final full = DateTime(selectedEndDate!.year, selectedEndDate!.month, selectedEndDate!.day, endTime.hour, endTime.minute);
+    return DateFormat('yyyy-MM-dd HH:mm:ss').format(full);
   }
 
   bool _validateForm() {
@@ -132,6 +173,15 @@ class _EditEventViewState extends State<EditEventView> {
     if (selectedDate == null || selectedTime == null) {
       SweetAlertHelper.showError(context, "Required", "Please set date and time.");
       return false;
+    }
+    if (selectedEndDate != null) {
+      final startDt = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, selectedTime!.hour, selectedTime!.minute);
+      final endTime = selectedEndTime ?? const TimeOfDay(hour: 23, minute: 59);
+      final endDt = DateTime(selectedEndDate!.year, selectedEndDate!.month, selectedEndDate!.day, endTime.hour, endTime.minute);
+      if (endDt.isBefore(startDt)) {
+        SweetAlertHelper.showError(context, "Invalid Date", "End date must be on or after the start date.");
+        return false;
+      }
     }
     return true;
   }
@@ -157,6 +207,7 @@ class _EditEventViewState extends State<EditEventView> {
       category: selectedCategory,
       bannerFiles: bannerFiles,
       rules: rulesCtrl.text.trim(),
+      eventEndDate: _buildEndDateString(),
     );
     if (success && mounted) {
       SweetAlertHelper.showSuccess(
@@ -281,7 +332,7 @@ class _EditEventViewState extends State<EditEventView> {
               onChanged: (val) => setState(() => selectedCategory = val!),
             ),
             SizedBox(height: 20.h),
-            Text("Date & Time", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
+            Text("From (Start)", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
             SizedBox(height: 8.h),
             Row(
               children: [
@@ -298,7 +349,7 @@ class _EditEventViewState extends State<EditEventView> {
                         children: [
                           const Icon(Icons.calendar_today, color: Color(0xFFFF5F15), size: 20),
                           SizedBox(width: 12.w),
-                          Text(selectedDate != null ? DateFormat('yyyy-MM-dd').format(selectedDate!) : "Select Date"),
+                          Expanded(child: Text(selectedDate != null ? DateFormat('dd MMM yyyy').format(selectedDate!) : "Start Date", overflow: TextOverflow.ellipsis)),
                         ],
                       ),
                     ),
@@ -318,7 +369,79 @@ class _EditEventViewState extends State<EditEventView> {
                         children: [
                           const Icon(Icons.access_time, color: Color(0xFFFF5F15), size: 20),
                           SizedBox(width: 12.w),
-                          Text(selectedTime != null ? selectedTime!.format(context) : "Select Time"),
+                          Expanded(child: Text(selectedTime != null ? selectedTime!.format(context) : "Start Time", overflow: TextOverflow.ellipsis)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.h),
+            Row(
+              children: [
+                Expanded(child: Text("To (End) — Optional", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87))),
+                if (selectedEndDate != null)
+                  GestureDetector(
+                    onTap: () => setState(() { selectedEndDate = null; selectedEndTime = null; }),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.close, size: 16, color: Colors.red[400]),
+                        SizedBox(width: 4.w),
+                        Text("Clear", style: TextStyle(fontSize: 12.sp, color: Colors.red[400])),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            SizedBox(height: 8.h),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _selectEndDate,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: selectedEndDate != null ? Colors.grey[300]! : Colors.grey[200]!),
+                        borderRadius: BorderRadius.circular(12),
+                        color: selectedEndDate != null ? null : Colors.grey[50],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today, color: selectedEndDate != null ? const Color(0xFFFF5F15) : Colors.grey[400], size: 20),
+                          SizedBox(width: 12.w),
+                          Expanded(child: Text(
+                            selectedEndDate != null ? DateFormat('dd MMM yyyy').format(selectedEndDate!) : "End Date",
+                            style: TextStyle(color: selectedEndDate != null ? Colors.black87 : Colors.grey[500]),
+                            overflow: TextOverflow.ellipsis,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: selectedEndDate != null ? _selectEndTime : null,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: selectedEndDate != null ? Colors.grey[300]! : Colors.grey[200]!),
+                        borderRadius: BorderRadius.circular(12),
+                        color: selectedEndDate != null ? null : Colors.grey[50],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.access_time, color: selectedEndDate != null ? const Color(0xFFFF5F15) : Colors.grey[400], size: 20),
+                          SizedBox(width: 12.w),
+                          Expanded(child: Text(
+                            selectedEndTime != null ? selectedEndTime!.format(context) : "End Time",
+                            style: TextStyle(color: selectedEndTime != null ? Colors.black87 : Colors.grey[500]),
+                            overflow: TextOverflow.ellipsis,
+                          )),
                         ],
                       ),
                     ),

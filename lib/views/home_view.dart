@@ -8,11 +8,13 @@ import 'package:intl/intl.dart';
 import 'package:art_sweetalert_new/art_sweetalert_new.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/event_controller.dart';
+import '../controllers/inbox_notification_controller.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/certificate_helper.dart';
 import 'create_event_view.dart';
 import 'event_detail_view.dart';
 import 'favorites_view.dart';
+import 'notifications_view.dart';
 import 'winners_view.dart';
 import 'edit_profile_view.dart';
 import 'volunteer_dialog.dart';
@@ -30,12 +32,22 @@ int _eventPosterCacheWidth(BuildContext context, double widthFraction) {
 }
 
 /// Readable date/venue on cards when poster or API uses placeholder text.
-String _cardEventDateLine(dynamic raw) {
+String _cardEventDateLine(dynamic raw, [dynamic endRaw]) {
   final s = (raw ?? '').toString().trim();
   if (s.isEmpty) return 'Date TBD';
   final lower = s.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
   if (lower == 'date' || lower == 'date: date' || lower == 'date : date') return 'Date TBD';
-  return s;
+  final endStr = (endRaw ?? '').toString().trim();
+  if (endStr.isEmpty || endStr == '0000-00-00 00:00:00') return s;
+  final startDt = DateTime.tryParse(s.replaceAll(' ', 'T'));
+  final endDt = DateTime.tryParse(endStr.replaceAll(' ', 'T'));
+  if (startDt == null || endDt == null) return s;
+  final df = DateFormat('dd MMM yyyy');
+  final tf = DateFormat('hh:mm a');
+  if (startDt.year == endDt.year && startDt.month == endDt.month && startDt.day == endDt.day) {
+    return '${df.format(startDt)}, ${tf.format(startDt)} – ${tf.format(endDt)}';
+  }
+  return '${df.format(startDt)} – ${df.format(endDt)}';
 }
 
 String _cardVenueLine(dynamic raw) {
@@ -66,6 +78,7 @@ class _HomeViewState extends State<HomeView> {
   final AuthController authController = Get.put(AuthController());
   final EventController eventController = Get.put(EventController());
   final ProfileController profileController = Get.put(ProfileController());
+  final InboxNotificationController inboxController = Get.put(InboxNotificationController(), permanent: true);
 
   @override
   void initState() {
@@ -674,10 +687,41 @@ class _ExploreTabState extends State<_ExploreTab> {
                         children: [
                           const _CelebratingWinnersButton(),
                           SizedBox(width: 8.w),
-                          IconButton(
-                            icon: const Icon(Icons.favorite_outline, color: Colors.white),
-                            onPressed: () => Get.to(() => const FavoritesView(), transition: Transition.rightToLeft),
-                          ),
+                          Obx(() {
+                            final unread = Get.find<InboxNotificationController>().unreadCount.value;
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                                  onPressed: () => Get.to(() => const NotificationsView(), transition: Transition.rightToLeft),
+                                ),
+                                if (unread > 0)
+                                  Positioned(
+                                    right: 6,
+                                    top: 6,
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.h),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: Colors.white, width: 1.5),
+                                      ),
+                                      constraints: BoxConstraints(minWidth: 18.w, minHeight: 14.h),
+                                      child: Text(
+                                        unread > 99 ? '99+' : '$unread',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9.sp,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          }),
                         ],
                       ),
                     ],
@@ -1350,7 +1394,7 @@ class _AllEventCard extends StatelessWidget {
                             SizedBox(width: 6.w),
                             Expanded(
                               child: Text(
-                                _cardEventDateLine(event['event_date']),
+                                _cardEventDateLine(event['event_date'], event['event_end_date']),
                                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
                               ),
                             ),
@@ -1738,7 +1782,7 @@ class _FeaturedEventCard extends StatelessWidget {
                             SizedBox(width: 6.w),
                             Expanded(
                               child: Text(
-                                _cardEventDateLine(event['event_date']),
+                                _cardEventDateLine(event['event_date'], event['event_end_date']),
                                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
                               ),
                             ),
@@ -2962,7 +3006,7 @@ class _EventCard extends StatelessWidget {
                             SizedBox(width: 4.w),
                             Expanded(
                               child: Text(
-                                _cardEventDateLine(event['event_date']),
+                                _cardEventDateLine(event['event_date'], event['event_end_date']),
                                 style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -3115,7 +3159,10 @@ class _HostedEventTile extends StatelessWidget {
                   ),
                   SizedBox(height: 6.h),
                   Text(
-                    (event is Map ? event['event_date'] : null)?.toString() ?? "",
+                    _cardEventDateLine(
+                      event is Map ? event['event_date'] : null,
+                      event is Map ? event['event_end_date'] : null,
+                    ),
                     style: TextStyle(color: Colors.grey[700], fontSize: 12.sp),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

@@ -98,7 +98,10 @@ class _WinnersViewState extends State<WinnersView> {
                           final winners = id != null ? _winnersByEvent[id] : null;
                           if (winners == null || winners.isEmpty) return const SizedBox.shrink();
                           final title = e['title']?.toString() ?? 'Event';
-                          final date = e['event_date']?.toString() ?? '';
+                          final endDateRaw = e['event_end_date']?.toString() ?? '';
+                          final date = (endDateRaw.isNotEmpty && endDateRaw != '0000-00-00 00:00:00')
+                              ? '${e['event_date']?.toString() ?? ''} → $endDateRaw'
+                              : e['event_date']?.toString() ?? '';
                           final venue = e['venue']?.toString() ?? '';
                           final category = e['category']?.toString() ?? '';
                           return Card(

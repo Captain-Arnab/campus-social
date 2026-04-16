@@ -25,6 +25,8 @@ class _EditEventSheetState extends State<EditEventSheet> {
   late String selectedCategory;
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
+  DateTime? selectedEndDate;
+  TimeOfDay? selectedEndTime;
   final List<String> categories = ["IT/Tech", "Cultural", "Sports", "Academic", "Social"];
 
   @override
@@ -48,6 +50,14 @@ class _EditEventSheetState extends State<EditEventSheet> {
       }
     } else {
       dateCtrl = TextEditingController();
+    }
+    final rawEndDate = (e['event_end_date'] ?? '').toString();
+    if (rawEndDate.isNotEmpty && rawEndDate != '0000-00-00 00:00:00') {
+      final parsedEnd = DateTime.tryParse(rawEndDate.replaceAll(' ', 'T'));
+      if (parsedEnd != null) {
+        selectedEndDate = DateTime(parsedEnd.year, parsedEnd.month, parsedEnd.day);
+        selectedEndTime = TimeOfDay(hour: parsedEnd.hour, minute: parsedEnd.minute);
+      }
     }
   }
 
@@ -88,6 +98,38 @@ class _EditEventSheetState extends State<EditEventSheet> {
     }
   }
 
+  Future<void> _pickEndDate() async {
+    final firstAllowed = selectedDate ?? DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: selectedEndDate ?? firstAllowed,
+      firstDate: firstAllowed,
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
+    );
+    if (d != null && mounted) {
+      setState(() => selectedEndDate = d);
+      await _pickEndTime();
+    }
+  }
+
+  Future<void> _pickEndTime() async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: selectedEndTime ?? TimeOfDay.now(),
+    );
+    if (t != null && mounted) {
+      setState(() => selectedEndTime = t);
+    }
+  }
+
+  String? _buildEndDateString() {
+    if (selectedEndDate == null) return null;
+    final endTime = selectedEndTime ?? const TimeOfDay(hour: 23, minute: 59);
+    final d = selectedEndDate!;
+    return '${DateFormat('yyyy-MM-dd').format(d)} ${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}:00';
+  }
+
   void _save() async {
     if (titleCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty || venueCtrl.text.trim().isEmpty) {
       SweetAlertHelper.showError(context, "Required", "Please fill title, description and venue.");
@@ -96,6 +138,15 @@ class _EditEventSheetState extends State<EditEventSheet> {
     if (selectedDate == null || selectedTime == null) {
       SweetAlertHelper.showError(context, "Required", "Please set date and time.");
       return;
+    }
+    if (selectedEndDate != null) {
+      final startDt = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, selectedTime!.hour, selectedTime!.minute);
+      final endTime = selectedEndTime ?? const TimeOfDay(hour: 23, minute: 59);
+      final endDt = DateTime(selectedEndDate!.year, selectedEndDate!.month, selectedEndDate!.day, endTime.hour, endTime.minute);
+      if (endDt.isBefore(startDt)) {
+        SweetAlertHelper.showError(context, "Invalid Date", "End date must be on or after the start date.");
+        return;
+      }
     }
     final dateStr = '${DateFormat('yyyy-MM-dd').format(selectedDate!)} ${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}:00';
     final EventController controller = Get.find<EventController>();
@@ -106,6 +157,7 @@ class _EditEventSheetState extends State<EditEventSheet> {
       venue: venueCtrl.text.trim(),
       eventDate: dateStr,
       category: selectedCategory,
+      eventEndDate: _buildEndDateString(),
     );
     if (context.mounted) Get.back();
   }
@@ -156,11 +208,37 @@ class _EditEventSheetState extends State<EditEventSheet> {
                     OutlinedButton.icon(
                       onPressed: _pickDate,
                       icon: const Icon(Icons.calendar_today),
-                      label: Text(selectedDate != null ? dateCtrl.text : "Pick date & time"),
+                      label: Text(selectedDate != null ? "From: ${dateCtrl.text}" : "Pick start date & time"),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFFFF5F15),
                         side: const BorderSide(color: Color(0xFFFF5F15)),
                       ),
+                    ),
+                    SizedBox(height: 8.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pickEndDate,
+                            icon: const Icon(Icons.event),
+                            label: Text(
+                              selectedEndDate != null
+                                  ? "To: ${DateFormat('yyyy-MM-dd').format(selectedEndDate!)} ${selectedEndTime != null ? '${selectedEndTime!.hour.toString().padLeft(2, '0')}:${selectedEndTime!.minute.toString().padLeft(2, '0')}' : ''}"
+                                  : "Pick end date (optional)",
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: selectedEndDate != null ? const Color(0xFFFF5F15) : Colors.grey[600],
+                              side: BorderSide(color: selectedEndDate != null ? const Color(0xFFFF5F15) : Colors.grey[400]!),
+                            ),
+                          ),
+                        ),
+                        if (selectedEndDate != null)
+                          IconButton(
+                            onPressed: () => setState(() { selectedEndDate = null; selectedEndTime = null; }),
+                            icon: Icon(Icons.close, size: 20, color: Colors.red[400]),
+                            tooltip: "Clear end date",
+                          ),
+                      ],
                     ),
                     SizedBox(height: 24.h),
                     Obx(() {

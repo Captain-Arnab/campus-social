@@ -28,6 +28,8 @@ class CreateEventViewState extends State<CreateEventView> {
   File? selectedImage;
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
+  DateTime? selectedEndDate;
+  TimeOfDay? selectedEndTime;
   final List<String> categories = ["IT/Tech", "Cultural", "Sports", "Academic", "Social"];
 
   final EventController controller = Get.find<EventController>();
@@ -59,6 +61,15 @@ class CreateEventViewState extends State<CreateEventView> {
         if (parsed != null) {
           selectedDate = DateTime(parsed.year, parsed.month, parsed.day);
           selectedTime = TimeOfDay(hour: parsed.hour, minute: parsed.minute);
+        }
+      }
+
+      final rawEndDate = (e['event_end_date'] ?? '').toString();
+      if (rawEndDate.isNotEmpty && rawEndDate != '0000-00-00 00:00:00') {
+        final parsedEnd = DateTime.tryParse(rawEndDate.replaceAll(' ', 'T'));
+        if (parsedEnd != null) {
+          selectedEndDate = DateTime(parsedEnd.year, parsedEnd.month, parsedEnd.day);
+          selectedEndTime = TimeOfDay(hour: parsedEnd.hour, minute: parsedEnd.minute);
         }
       }
 
@@ -96,23 +107,122 @@ class CreateEventViewState extends State<CreateEventView> {
     }
   }
 
-  // FIXED: Navigate to template gallery and wait for result
   Future<void> _openPosterDesigner() async {
-    final File? posterFile = await Get.to(() => const TemplateGalleryView());
-    
-    if (posterFile != null) {
+    final result = await Get.to(() => const TemplateGalleryView());
+
+    if (result == null) return;
+
+    // result can be a Map (new flow with prefill data) or a File (legacy)
+    if (result is Map<String, dynamic>) {
       setState(() {
-        selectedImage = posterFile;
+        if (result['file'] is File) {
+          selectedImage = result['file'] as File;
+        }
+        _prefillFromPosterData(result);
       });
-      
+      SweetAlertHelper.showSuccess(context, "Success", "Poster & event details applied!");
+    } else if (result is File) {
+      setState(() => selectedImage = result);
       SweetAlertHelper.showSuccess(context, "Success", "Poster added successfully!");
     }
+  }
+
+  void _prefillFromPosterData(Map<String, dynamic> data) {
+    final title = (data['title'] ?? '').toString().trim();
+    if (title.isNotEmpty && _isUserFilled(title)) {
+      titleCtrl.text = title;
+    }
+
+    final description = (data['description'] ?? '').toString().trim();
+    if (description.isNotEmpty && _isUserFilled(description)) {
+      descCtrl.text = description;
+    }
+
+    final venue = (data['venue'] ?? '').toString().trim();
+    if (venue.isNotEmpty && _isUserFilled(venue)) {
+      venueCtrl.text = venue;
+    }
+
+    final category = (data['category'] ?? '').toString().trim();
+    if (category.isNotEmpty && categories.contains(category)) {
+      selectedCategory = category;
+    }
+
+    final dateRaw = (data['date'] ?? '').toString().trim();
+    final timeRaw = (data['time'] ?? '').toString().trim();
+    _applyPosterDateTime(dateRaw, timeRaw);
+  }
+
+  bool _isUserFilled(String value) {
+    final placeholder = value.toUpperCase();
+    const defaults = {
+      'DATE', 'TIME', 'MY AWESOME EVENT', 'JOIN US FOR AN AMAZING EVENT!',
+      'CAMPUS VENUE, MAIN HALL', 'ONLINE COURSE', 'SPOKEN ENGLISH',
+    };
+    return !defaults.contains(placeholder);
+  }
+
+  void _applyPosterDateTime(String dateRaw, String timeRaw) {
+    if (dateRaw.isEmpty || dateRaw.toUpperCase() == 'DATE') return;
+
+    final parsedDate = DateTime.tryParse(dateRaw);
+    if (parsedDate != null) {
+      selectedDate = DateTime(parsedDate.year, parsedDate.month, parsedDate.day);
+    } else {
+      try {
+        final formats = [
+          DateFormat('MMM dd, yyyy'),
+          DateFormat('dd MMM yyyy'),
+          DateFormat('yyyy-MM-dd'),
+          DateFormat('dd/MM/yyyy'),
+        ];
+        for (final fmt in formats) {
+          try {
+            final d = fmt.parseStrict(dateRaw);
+            selectedDate = DateTime(d.year, d.month, d.day);
+            break;
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    if (timeRaw.isNotEmpty && timeRaw.toUpperCase() != 'TIME') {
+      final timeParsed = _parseTimeString(timeRaw);
+      if (timeParsed != null) {
+        selectedTime = timeParsed;
+      }
+    }
+
+    _updateDateTimeController();
+  }
+
+  TimeOfDay? _parseTimeString(String raw) {
+    final cleaned = raw.trim().toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+    final match = RegExp(r'^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$').firstMatch(cleaned);
+    if (match == null) return null;
+    var hour = int.tryParse(match.group(1) ?? '') ?? 0;
+    final minute = int.tryParse(match.group(2) ?? '0') ?? 0;
+    final period = match.group(3);
+    if (period == 'PM' && hour < 12) hour += 12;
+    if (period == 'AM' && hour == 12) hour = 0;
+    if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
+      return TimeOfDay(hour: hour, minute: minute);
+    }
+    return null;
+  }
+
+  String? _buildEndDateString() {
+    if (selectedEndDate == null) return null;
+    final endTime = selectedEndTime ?? const TimeOfDay(hour: 23, minute: 59);
+    final full = DateTime(selectedEndDate!.year, selectedEndDate!.month, selectedEndDate!.day, endTime.hour, endTime.minute);
+    return DateFormat('yyyy-MM-dd HH:mm:ss').format(full);
   }
 
   void _publishEvent() async {
     if (!_validateForm()) return;
 
     final isEdit = widget.existingEvent != null;
+    final endDateStr = _buildEndDateString();
     final success = isEdit
         ? await controller.replacePendingHostedEvent(
             oldEvent: widget.existingEvent,
@@ -125,6 +235,7 @@ class CreateEventViewState extends State<CreateEventView> {
             existingBannerName:
                 _removeExistingBanner ? null : _existingBannerName,
             rules: rulesCtrl.text.trim(),
+            eventEndDate: endDateStr,
           )
         : await controller.createEvent(
             titleCtrl.text.trim(),
@@ -134,6 +245,7 @@ class CreateEventViewState extends State<CreateEventView> {
             venueCtrl.text.trim(),
             selectedImage,
             rules: rulesCtrl.text.trim(),
+            eventEndDate: endDateStr,
           );
 
     if (success) {
@@ -160,6 +272,15 @@ class CreateEventViewState extends State<CreateEventView> {
     if (titleCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty || selectedDate == null || selectedTime == null || venueCtrl.text.trim().isEmpty) {
       SweetAlertHelper.showError(context, "Required", "Please fill all fields");
       return false;
+    }
+    if (selectedEndDate != null) {
+      final startDt = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, selectedTime!.hour, selectedTime!.minute);
+      final endTime = selectedEndTime ?? const TimeOfDay(hour: 23, minute: 59);
+      final endDt = DateTime(selectedEndDate!.year, selectedEndDate!.month, selectedEndDate!.day, endTime.hour, endTime.minute);
+      if (endDt.isBefore(startDt)) {
+        SweetAlertHelper.showError(context, "Invalid Date", "End date must be on or after the start date.");
+        return false;
+      }
     }
     return true;
   }
@@ -378,7 +499,7 @@ class CreateEventViewState extends State<CreateEventView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Date & Time", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
+        Text("From (Start)", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
         SizedBox(height: 8.h),
         Row(
           children: [
@@ -392,7 +513,7 @@ class CreateEventViewState extends State<CreateEventView> {
                     children: [
                       const Icon(Icons.calendar_today, color: Color(0xFFFF5F15), size: 20),
                       SizedBox(width: 12.w),
-                      Text(selectedDate != null ? DateFormat('yyyy-MM-dd').format(selectedDate!) : "Select Date"),
+                      Expanded(child: Text(selectedDate != null ? DateFormat('dd MMM yyyy').format(selectedDate!) : "Start Date", overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                 ),
@@ -409,7 +530,79 @@ class CreateEventViewState extends State<CreateEventView> {
                     children: [
                       const Icon(Icons.access_time, color: Color(0xFFFF5F15), size: 20),
                       SizedBox(width: 12.w),
-                      Text(selectedTime != null ? selectedTime!.format(context) : "Select Time"),
+                      Expanded(child: Text(selectedTime != null ? selectedTime!.format(context) : "Start Time", overflow: TextOverflow.ellipsis)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 16.h),
+        Row(
+          children: [
+            Expanded(child: Text("To (End) — Optional", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87))),
+            if (selectedEndDate != null)
+              GestureDetector(
+                onTap: () => setState(() { selectedEndDate = null; selectedEndTime = null; }),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.close, size: 16, color: Colors.red[400]),
+                    SizedBox(width: 4.w),
+                    Text("Clear", style: TextStyle(fontSize: 12.sp, color: Colors.red[400])),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: 8.h),
+        Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: _selectEndDate,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: selectedEndDate != null ? Colors.grey[300]! : Colors.grey[200]!),
+                    borderRadius: BorderRadius.circular(12),
+                    color: selectedEndDate != null ? null : Colors.grey[50],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_today, color: selectedEndDate != null ? const Color(0xFFFF5F15) : Colors.grey[400], size: 20),
+                      SizedBox(width: 12.w),
+                      Expanded(child: Text(
+                        selectedEndDate != null ? DateFormat('dd MMM yyyy').format(selectedEndDate!) : "End Date",
+                        style: TextStyle(color: selectedEndDate != null ? Colors.black87 : Colors.grey[500]),
+                        overflow: TextOverflow.ellipsis,
+                      )),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: GestureDetector(
+                onTap: selectedEndDate != null ? _selectEndTime : null,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: selectedEndDate != null ? Colors.grey[300]! : Colors.grey[200]!),
+                    borderRadius: BorderRadius.circular(12),
+                    color: selectedEndDate != null ? null : Colors.grey[50],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.access_time, color: selectedEndDate != null ? const Color(0xFFFF5F15) : Colors.grey[400], size: 20),
+                      SizedBox(width: 12.w),
+                      Expanded(child: Text(
+                        selectedEndTime != null ? selectedEndTime!.format(context) : "End Time",
+                        style: TextStyle(color: selectedEndTime != null ? Colors.black87 : Colors.grey[500]),
+                        overflow: TextOverflow.ellipsis,
+                      )),
                     ],
                   ),
                 ),
@@ -424,7 +617,7 @@ class CreateEventViewState extends State<CreateEventView> {
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: selectedDate ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
       builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
@@ -433,8 +626,25 @@ class CreateEventViewState extends State<CreateEventView> {
   }
 
   Future<void> _selectTime() async {
-    final TimeOfDay? picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    final TimeOfDay? picked = await showTimePicker(context: context, initialTime: selectedTime ?? TimeOfDay.now());
     if (picked != null) setState(() { selectedTime = picked; _updateDateTimeController(); });
+  }
+
+  Future<void> _selectEndDate() async {
+    final DateTime firstAllowed = selectedDate ?? DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: selectedEndDate ?? firstAllowed,
+      firstDate: firstAllowed,
+      lastDate: DateTime(2100),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
+    );
+    if (picked != null) setState(() { selectedEndDate = picked; });
+  }
+
+  Future<void> _selectEndTime() async {
+    final TimeOfDay? picked = await showTimePicker(context: context, initialTime: selectedEndTime ?? TimeOfDay.now());
+    if (picked != null) setState(() { selectedEndTime = picked; });
   }
 
   void _updateDateTimeController() {

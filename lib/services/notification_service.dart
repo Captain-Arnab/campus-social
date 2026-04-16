@@ -7,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import '../controllers/inbox_notification_controller.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../views/event_detail_view.dart';
 
 // Top-level background handler — must stay here, not inside the class
 @pragma('vm:entry-point')
@@ -77,6 +79,7 @@ class NotificationService {
 
         // 7. Background tap (app was minimized)
         FirebaseMessaging.onMessageOpenedApp.listen((message) {
+          _refreshInbox();
           _handleNotificationPayload(message.data);
         });
 
@@ -84,6 +87,7 @@ class NotificationService {
         final initial = await _messaging.getInitialMessage();
         if (initial != null) {
           Future.delayed(const Duration(seconds: 1), () {
+            _refreshInbox();
             _handleNotificationPayload(initial.data);
           });
         }
@@ -116,13 +120,20 @@ class NotificationService {
     debugPrint('[FCM] Foreground: ${message.notification?.title}');
 
     final notification = message.notification;
-    if (notification == null) return;
 
-    // Show as a proper heads-up notification (not just a snackbar)
+    // Resolve display title/body from notification payload OR data payload
+    final displayTitle = notification?.title
+        ?? message.data['title']?.toString()
+        ?? 'Notification';
+    final displayBody = notification?.body
+        ?? message.data['body']?.toString()
+        ?? '';
+
+    // Show as a proper heads-up notification
     _localNotif.show(
       message.hashCode,
-      notification.title,
-      notification.body,
+      displayTitle,
+      displayBody,
       NotificationDetails(
         android: AndroidNotificationDetails(
           _channel.id,
@@ -133,15 +144,22 @@ class NotificationService {
           icon: '@mipmap/ic_launcher',
         ),
       ),
-      // Payload carries data so tap handler knows where to navigate
       payload: _buildPayloadString(message.data),
     );
 
     // Also show a GetX snackbar for in-app awareness
-    _showInAppSnackbar(
-      notification.title ?? 'Notification',
-      notification.body ?? '',
-    );
+    _showInAppSnackbar(displayTitle, displayBody);
+
+    // Refresh inbox so unread badge updates immediately
+    _refreshInbox();
+  }
+
+  static void _refreshInbox() {
+    try {
+      if (Get.isRegistered<InboxNotificationController>()) {
+        Get.find<InboxNotificationController>().fetchNotifications();
+      }
+    } catch (_) {}
   }
 
   // ── Navigation on notification tap ───────────────────────────────────────
@@ -162,11 +180,27 @@ class NotificationService {
 
   static void _navigateFromNotification(String type, String eventId) {
     debugPrint('[FCM] Tap — type: $type, event_id: $eventId');
-    // Add your navigation logic here as you build screens:
-    // Example:
-    // if (type == 'organizer_message' && eventId.isNotEmpty) {
-    //   Get.toNamed('/event_detail', arguments: eventId);
-    // }
+    if (eventId.isNotEmpty) {
+      final eid = int.tryParse(eventId);
+      if (eid != null && eid > 0) {
+        _openEventDetail(eid);
+      }
+    }
+  }
+
+  static Future<void> _openEventDetail(int eventId) async {
+    try {
+      final res = await ApiService.getEventById(eventId);
+      final data = res.data;
+      if (data is Map && data['status'] == 'success' && data['data'] != null) {
+        Get.to(
+          () => EventDetailView(event: data['data']),
+          transition: Transition.rightToLeft,
+        );
+      }
+    } catch (e) {
+      debugPrint('[FCM] _openEventDetail error: $e');
+    }
   }
 
   static String _buildPayloadString(Map<String, dynamic> data) {

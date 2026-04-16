@@ -76,7 +76,7 @@ class _LoginViewState extends State<LoginView> {
                   SizedBox(height: 24.h),
                   
                   Text(
-                    "Campus Social",
+                    "MiCampus",
                     style: TextStyle(
                       fontSize: 36.sp,
                       fontWeight: FontWeight.bold,

@@ -19,7 +19,7 @@ class _OnboardingViewState extends State<OnboardingView> {
   // Updated to 3 screens with your provided image assets
   final List<OnboardingData> _pages = [
     OnboardingData(
-      title: "Welcome to Campus Social",
+      title: "Welcome to MiCampus",
       description: "Your ultimate platform to discover and join exciting campus events and celebrations.",
       imagePath: 'assets/images/intro1.png', 
       color: const Color(0xFFFF5F15),

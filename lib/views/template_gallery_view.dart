@@ -1,9 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
-import '../widgets/poster_themes.dart';
 import 'poster_editor_view.dart';
 
 class TemplateGalleryView extends StatefulWidget {
@@ -143,13 +141,13 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
               height: 50.h,
               child: ElevatedButton(
                 onPressed: () async {
-                  final File? posterFile = await Get.to(
+                  final result = await Get.to(
                     () => PosterEditorView(themeIndex: currentIndex),
                     transition: Transition.rightToLeft,
                   );
                   
-                  if (posterFile != null) {
-                    Get.back(result: posterFile);
+                  if (result != null) {
+                    Get.back(result: result);
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -290,13 +288,13 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                           color: Colors.transparent,
                           child: InkWell(
                             onTap: () async {
-                              final File? posterFile = await Get.to(
+                              final result = await Get.to(
                                 () => PosterEditorView(themeIndex: index),
                                 transition: Transition.rightToLeft,
                               );
                               
-                              if (posterFile != null) {
-                                Get.back(result: posterFile);
+                              if (result != null) {
+                                Get.back(result: result);
                               }
                             },
                             borderRadius: BorderRadius.circular(12),

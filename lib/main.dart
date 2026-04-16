@@ -36,7 +36,7 @@ class MyApp extends StatelessWidget {
           ),
         );
         return GetMaterialApp(
-          title: 'Campus Social',
+          title: 'MiCampus',
           debugShowCheckedModeBanner: false,
           theme: base.copyWith(
             scaffoldBackgroundColor: const Color(0xFFF8F9FD),

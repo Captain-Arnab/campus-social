@@ -1,4 +1,4 @@
-# Campus Social (MiCampus)
+# MiCampus
 
 A Flutter app for discovering, creating, and managing campus events. Connect with your community, showcase events, sign up as a volunteer, and design event posters—all in one place.
 

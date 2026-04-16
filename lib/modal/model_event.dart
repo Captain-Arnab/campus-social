@@ -5,6 +5,7 @@ class ModelEvent {
   String? category;
   String? venue;
   String? eventDate;
+  String? eventEndDate;
   List<String>? banners;
   String? hostId;
   String? hostName;
@@ -21,6 +22,7 @@ class ModelEvent {
     this.category,
     this.venue,
     this.eventDate,
+    this.eventEndDate,
     this.banners,
     this.hostId,
     this.hostName,
@@ -39,6 +41,8 @@ class ModelEvent {
     category = json['category'];
     venue = json['venue'];
     eventDate = json['event_date'] ?? json['date'];
+    final rawEnd = json['event_end_date']?.toString();
+    eventEndDate = (rawEnd != null && rawEnd.isNotEmpty && rawEnd != '0000-00-00 00:00:00') ? rawEnd : null;
     banners = List<String>.from(json['banners'] ?? []);
     hostId = json['host_id']?.toString();
     hostName = json['host_name'] ?? json['created_by'];
@@ -58,6 +62,7 @@ class ModelEvent {
     data['category'] = category;
     data['venue'] = venue;
     data['event_date'] = eventDate;
+    data['event_end_date'] = eventEndDate;
     data['banners'] = banners;
     data['host_id'] = hostId;
     data['host_name'] = hostName;
