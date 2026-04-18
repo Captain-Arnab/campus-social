@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../data/app_branding.dart';
 import '../data/pref_service.dart';
 import 'login_view.dart';
 import 'home_view.dart';
@@ -124,10 +125,11 @@ class _OnboardingViewState extends State<OnboardingView> {
     return Container(
       width: 100.w, height: 60.w,
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: ClipRRect(
+      child: AppBranding.logoBox(
+        width: 100.w,
+        height: 60.w,
+        fit: BoxFit.cover,
         borderRadius: BorderRadius.circular(12),
-        child: Image.asset('assets/images/logo.jpeg', fit: BoxFit.cover, 
-          errorBuilder: (_, __, ___) => Icon(Icons.school, color: _pages[_currentPage].color)),
       ),
     );
   }

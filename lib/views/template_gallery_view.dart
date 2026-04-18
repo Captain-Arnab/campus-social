@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -48,13 +49,16 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: const Text(
-          "Select Template",
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: false,
+          title: const Text(
+            "Select Template",
+            style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+          ),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black87),
           onPressed: () => Get.back(),

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../data/api_service.dart';
 import 'event_detail_view.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 
 /// Full-screen list of winners by event (past events). Scroll to see who won which event.
 class WinnersView extends StatefulWidget {
@@ -62,7 +63,10 @@ class _WinnersViewState extends State<WinnersView> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: const Text("Winners", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: false,
+          title: const Text("Winners", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Get.back()),

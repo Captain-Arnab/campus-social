@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../base/constant.dart';
 import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/sweetalert_helper.dart';
@@ -14,7 +17,36 @@ import 'edit_event_view.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../widgets/participate_registration_sheet.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
+import '../widgets/app_bar_brand_action.dart';
 import '../utils/event_participation_rules.dart';
+
+List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
+  if (ev is! Map) return [];
+  final r = ev['review_files'];
+  if (r is! List) return [];
+  final out = <Map<String, dynamic>>[];
+  for (final e in r) {
+    if (e is Map<String, dynamic>) {
+      out.add(e);
+    } else if (e is Map) {
+      out.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
+    }
+  }
+  return out;
+}
+
+Future<void> openReviewFileUrl(BuildContext context, String path) async {
+  final url = Constant.uploadPublicUrl(path);
+  if (url.isEmpty) return;
+  final u = Uri.tryParse(url);
+  if (u == null) return;
+  final ok = await launchUrl(u, mode: LaunchMode.externalApplication);
+  if (!context.mounted) return;
+  if (!ok) {
+    SweetAlertHelper.showError(context, 'Open link', 'Could not open file URL.');
+  }
+}
 
 class EventDetailView extends StatefulWidget {
   final dynamic event;
@@ -372,7 +404,15 @@ class _EventDetailViewState extends State<EventDetailView> {
     if (_loadingFull) {
       return Scaffold(
         backgroundColor: Colors.white,
-        appBar: AppBar(backgroundColor: const Color(0xFFFF5F15), leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Get.back())),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFFFF5F15),
+          foregroundColor: Colors.white,
+          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Get.back()),
+          title: AppBarTitleWithBrandLogo(
+            onPrimaryBackground: true,
+            title: const Text('Loading…', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+        ),
         body: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
       );
     }
@@ -385,6 +425,7 @@ class _EventDetailViewState extends State<EventDetailView> {
     final List volunteerList = _event is Map && _event['volunteer_list'] is List ? _event['volunteer_list'] as List : [];
     final List participantList = _event is Map && _event['participant_list'] is List ? _event['participant_list'] as List : [];
     final String existingOrganizerReview = (_event is Map ? (_event['organizer_review'] ?? '').toString().trim() : '');
+    final List<Map<String, dynamic>> reviewFiles = reviewFilesFromEvent(_event);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -411,6 +452,7 @@ class _EventDetailViewState extends State<EventDetailView> {
               onPressed: () => Get.back(),
             ),
             actions: [
+              AppBarBrandLogoAction(),
               IconButton(
                 icon: Container(
                   padding: const EdgeInsets.all(8),
@@ -619,14 +661,16 @@ class _EventDetailViewState extends State<EventDetailView> {
                             padding: EdgeInsets.only(bottom: 24.h),
                             child: _OrganizerReviewEditor(
                               key: ValueKey(
-                                'rev_${_event['id']}_${existingOrganizerReview.hashCode}',
+                                'rev_${_event['id']}_${existingOrganizerReview.hashCode}_${reviewFiles.length}',
                               ),
                               event: Map<String, dynamic>.from(_event as Map),
                               onSaved: _loadFullEvent,
                             ),
                           );
                         }
-                        if (existingOrganizerReview.isEmpty) return const SizedBox.shrink();
+                        if (existingOrganizerReview.isEmpty && reviewFiles.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
                         return Padding(
                           padding: EdgeInsets.only(bottom: 24.h),
                           child: Column(
@@ -637,19 +681,43 @@ class _EventDetailViewState extends State<EventDetailView> {
                                 style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
                               ),
                               SizedBox(height: 12.h),
-                              Container(
-                                width: double.infinity,
-                                padding: EdgeInsets.all(16.w),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.blue.shade200),
+                              if (existingOrganizerReview.isNotEmpty)
+                                Container(
+                                  width: double.infinity,
+                                  padding: EdgeInsets.all(16.w),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.blue.shade200),
+                                  ),
+                                  child: Text(
+                                    existingOrganizerReview,
+                                    style: TextStyle(fontSize: 15.sp, color: Colors.blueGrey.shade900, height: 1.5),
+                                  ),
                                 ),
-                                child: Text(
-                                  existingOrganizerReview,
-                                  style: TextStyle(fontSize: 15.sp, color: Colors.blueGrey.shade900, height: 1.5),
+                              if (reviewFiles.isNotEmpty) ...[
+                                if (existingOrganizerReview.isNotEmpty) SizedBox(height: 12.h),
+                                Text(
+                                  'Attachments',
+                                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600, color: Colors.black87),
                                 ),
-                              ),
+                                SizedBox(height: 8.h),
+                                Wrap(
+                                  spacing: 8.w,
+                                  runSpacing: 8.h,
+                                  children: reviewFiles.map((f) {
+                                    final name = (f['original_name'] ?? 'File').toString();
+                                    final path = (f['file_path'] ?? '').toString();
+                                    final ft = (f['file_type'] ?? '').toString().toLowerCase();
+                                    final isPdf = ft.contains('pdf') || name.toLowerCase().endsWith('.pdf');
+                                    return ActionChip(
+                                      avatar: Icon(isPdf ? Icons.picture_as_pdf : Icons.image, size: 18, color: isPdf ? Colors.red.shade700 : Colors.blue.shade700),
+                                      label: Text(name, style: TextStyle(fontSize: 12.sp)),
+                                      onPressed: path.isEmpty ? null : () => openReviewFileUrl(context, path),
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
                             ],
                           ),
                         );
@@ -761,9 +829,19 @@ class _EventDetailViewState extends State<EventDetailView> {
                         if (snap.data != true) return const SizedBox.shrink();
                         return Padding(
                           padding: EdgeInsets.only(bottom: 16.h),
-                          child: _SendNotificationCard(
-                            event: _event,
-                            onSent: () {},
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _SendNotificationCard(
+                                event: _event,
+                                onSent: () {},
+                              ),
+                              SizedBox(height: 12.h),
+                              _OrganizerBroadcastAllCard(
+                                event: _event,
+                                onSent: () {},
+                              ),
+                            ],
                           ),
                         );
                       },
@@ -1460,6 +1538,7 @@ class _OrganizerReviewEditor extends StatefulWidget {
 class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
   late final TextEditingController _ctrl;
   bool _saving = false;
+  final List<PlatformFile> _pendingFiles = [];
 
   @override
   void initState() {
@@ -1483,6 +1562,24 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
     super.dispose();
   }
 
+  Future<void> _pickAttachments() async {
+    final res = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'],
+    );
+    if (res == null || !mounted) return;
+    setState(() {
+      for (final f in res.files) {
+        if (f.path != null && f.path!.isNotEmpty) _pendingFiles.add(f);
+      }
+    });
+  }
+
+  void _removePending(int i) {
+    setState(() => _pendingFiles.removeAt(i));
+  }
+
   Future<void> _submit() async {
     final text = _ctrl.text.trim();
     if (text.isEmpty) {
@@ -1494,15 +1591,24 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
     if (eid == null || oid == null) return;
     setState(() => _saving = true);
     try {
-      final r = await ApiService.eventOrganiserAction({
-        'action': 'set_review',
-        'event_id': eid,
-        'organizer_id': oid,
-        'organizer_review': text,
-      });
+      final files = <File>[];
+      for (final p in _pendingFiles) {
+        final path = p.path;
+        if (path != null && path.isNotEmpty) {
+          final f = File(path);
+          if (await f.exists()) files.add(f);
+        }
+      }
+      final r = await ApiService.eventOrganiserSetReviewMultipart(
+        eventId: eid,
+        organizerId: oid,
+        organizerReview: text,
+        reviewFiles: files,
+      );
       final ok = ApiService.responseDataMap(r.data)?['status'] == 'success';
       if (ok) {
         if (mounted) {
+          setState(() => _pendingFiles.clear());
           SweetAlertHelper.showSuccess(
             context,
             'Saved',
@@ -1522,6 +1628,7 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final existing = reviewFilesFromEvent(widget.event);
     return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
@@ -1547,6 +1654,49 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
+          SizedBox(height: 10.h),
+          Text(
+            'Attachments (images or PDF)',
+            style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.purple.shade900),
+          ),
+          SizedBox(height: 6.h),
+          if (existing.isNotEmpty) ...[
+            Text('Already uploaded', style: TextStyle(fontSize: 12.sp, color: Colors.purple.shade800)),
+            SizedBox(height: 6.h),
+            Wrap(
+              spacing: 6.w,
+              runSpacing: 6.h,
+              children: existing.map((f) {
+                final name = (f['original_name'] ?? 'File').toString();
+                final path = (f['file_path'] ?? '').toString();
+                return InputChip(
+                  label: Text(name, style: TextStyle(fontSize: 11.sp)),
+                  onPressed: path.isEmpty ? null : () => openReviewFileUrl(context, path),
+                );
+              }).toList(),
+            ),
+            SizedBox(height: 8.h),
+          ],
+          OutlinedButton.icon(
+            onPressed: _saving ? null : _pickAttachments,
+            icon: const Icon(Icons.attach_file, size: 18),
+            label: const Text('Add files'),
+          ),
+          if (_pendingFiles.isNotEmpty) ...[
+            SizedBox(height: 8.h),
+            ...List.generate(_pendingFiles.length, (i) {
+              final name = _pendingFiles[i].name;
+              return ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.sp)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: _saving ? null : () => _removePending(i),
+                ),
+              );
+            }),
+          ],
           SizedBox(height: 12.h),
           SizedBox(
             width: double.infinity,
@@ -1620,6 +1770,13 @@ class _SendNotificationCardState extends State<_SendNotificationCard> {
             'rawData=${res.data} statusMessage=${res.statusMessage}',
           );
         }
+        if (res.statusCode == 429) {
+          final msg = (data != null && data['message'] != null && data['message'].toString().trim().isNotEmpty)
+              ? data['message'].toString()
+              : 'Too many notifications today for this event.';
+          SweetAlertHelper.showWarning(context, "Limit reached", msg);
+          return;
+        }
         final statusOk =
             data != null && data['status']?.toString().toLowerCase().trim() == 'success';
         if (statusOk) {
@@ -1677,9 +1834,9 @@ class _SendNotificationCardState extends State<_SendNotificationCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Send notification to volunteers & participants", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+                    Text("Notify volunteers & participants", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
                     SizedBox(height: 2.h),
-                    Text("As the organizer, you can send meeting updates or reminders. They will receive a push notification.", style: TextStyle(fontSize: 12.sp, color: Colors.blue.shade800)),
+                    Text("Send updates only to people registered as volunteers or participants for this event.", style: TextStyle(fontSize: 12.sp, color: Colors.blue.shade800)),
                   ],
                 ),
               ),
@@ -1718,8 +1875,172 @@ class _SendNotificationCardState extends State<_SendNotificationCard> {
             child: ElevatedButton.icon(
               onPressed: _sending ? null : _send,
               icon: _sending ? SizedBox(width: 18.w, height: 18.h, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send, size: 18),
-              label: Text(_sending ? "Sending..." : "Send notification"),
+              label: Text(_sending ? "Sending..." : "Send to volunteers / participants"),
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF5F15), foregroundColor: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Broadcast to every active app user (inbox + push when tokens exist). Same daily cap as other organizer sends.
+class _OrganizerBroadcastAllCard extends StatefulWidget {
+  final dynamic event;
+  final VoidCallback onSent;
+
+  const _OrganizerBroadcastAllCard({required this.event, required this.onSent});
+
+  @override
+  State<_OrganizerBroadcastAllCard> createState() => _OrganizerBroadcastAllCardState();
+}
+
+class _OrganizerBroadcastAllCardState extends State<_OrganizerBroadcastAllCard> {
+  final TextEditingController _messageController = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final message = _messageController.text.trim();
+    if (message.isEmpty) {
+      SweetAlertHelper.showWarning(context, "Empty message", "Please type a message to send.");
+      return;
+    }
+    final eventId = int.tryParse((widget.event['id']).toString());
+    final organizerId = widget.event['organizer_id']?.toString() ?? widget.event['hostId']?.toString();
+    if (eventId == null || organizerId == null) return;
+    setState(() => _sending = true);
+    try {
+      final res = await ApiService.sendEventNotification(
+        eventId: eventId,
+        organizerId: organizerId,
+        message: message,
+        recipientType: 'all',
+      );
+      if (mounted) {
+        setState(() => _sending = false);
+        Map<String, dynamic>? data = ApiService.responseDataMap(res.data);
+        if (data == null && res.data is String) {
+          try {
+            data = ApiService.responseDataMap(jsonDecode(res.data as String));
+          } catch (_) {}
+        }
+        if (res.statusCode == 429) {
+          final msg = (data != null && data['message'] != null && data['message'].toString().trim().isNotEmpty)
+              ? data['message'].toString()
+              : 'Too many notifications today for this event.';
+          SweetAlertHelper.showWarning(context, "Limit reached", msg);
+          return;
+        }
+        final statusOk =
+            data != null && data['status']?.toString().toLowerCase().trim() == 'success';
+        if (statusOk) {
+          _messageController.clear();
+          final pushSentRaw = data['push_sent'];
+          final sent = pushSentRaw is int
+              ? pushSentRaw
+              : int.tryParse(pushSentRaw?.toString() ?? '') ?? 0;
+          final targeted = data['users_targeted'] ?? data['recipient_count'];
+          final n = targeted is int
+              ? targeted
+              : int.tryParse(targeted?.toString() ?? '') ?? 0;
+          final serverMsg = data['message']?.toString().trim() ?? '';
+          if (sent == 0 && serverMsg.isNotEmpty && n == 0) {
+            SweetAlertHelper.showInfo(context, "Notice", serverMsg);
+          } else {
+            SweetAlertHelper.showSuccess(
+              context,
+              "Sent",
+              n > 0
+                  ? "Message queued for $n user(s)${sent > 0 ? '; $sent push device(s).' : '.'}"
+                  : (serverMsg.isNotEmpty ? serverMsg : "Request completed."),
+            );
+          }
+          widget.onSent();
+        } else {
+          SweetAlertHelper.showError(
+            context,
+            "Error",
+            ApiService.responseErrorHint(res),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sending = false);
+        SweetAlertHelper.showError(context, "Error", "Failed to send: $e");
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.deepOrange.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.campaign, color: Colors.deepOrange.shade800, size: 22),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Notify all app users",
+                      style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.deepOrange.shade900),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      "Sends the same message to every active user (general notification in inbox + push). Use for important event-wide announcements.",
+                      style: TextStyle(fontSize: 12.sp, color: Colors.deepOrange.shade900.withOpacity(0.9)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          TextField(
+            controller: _messageController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: "Message to all MiCampus users about this event…",
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _sending ? null : _send,
+              icon: _sending
+                  ? SizedBox(
+                      width: 18.w,
+                      height: 18.h,
+                      child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.public, size: 18),
+              label: Text(_sending ? "Sending..." : "Send to all users"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepOrange.shade800,
+                foregroundColor: Colors.white,
+              ),
             ),
           ),
         ],

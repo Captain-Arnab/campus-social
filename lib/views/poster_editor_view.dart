@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/poster_controller.dart';
@@ -116,8 +117,12 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        toolbarHeight: 30.h,
-        title: const Text("Customize Poster", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        toolbarHeight: 44.h,
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: false,
+          logoUnit: 28,
+          title: const Text("Customize Poster", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),

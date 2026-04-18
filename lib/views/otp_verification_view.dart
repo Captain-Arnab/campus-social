@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import '../controllers/auth_controller.dart';
 import '../utils/sweetalert_helper.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 
 class OtpVerificationView extends StatefulWidget {
   final String emailOrPhone;
@@ -58,8 +59,11 @@ class _OtpVerificationViewState extends State<OtpVerificationView> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFFFF5F15),
-        title: const Text('Verify OTP'),
         foregroundColor: Colors.white,
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: true,
+          title: const Text('Verify OTP', style: TextStyle(fontWeight: FontWeight.w600)),
+        ),
       ),
       body: Padding(
         padding: EdgeInsets.all(24.w),

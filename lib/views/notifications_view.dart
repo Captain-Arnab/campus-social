@@ -6,6 +6,7 @@ import '../controllers/inbox_notification_controller.dart';
 import '../modal/model_inbox_notification.dart';
 import 'event_detail_view.dart';
 import '../data/api_service.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 
 class NotificationsView extends StatelessWidget {
   const NotificationsView({super.key});
@@ -21,13 +22,16 @@ class NotificationsView extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text(
-          "Notifications",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: true,
+          title: const Text(
+            "Notifications",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
         ),
         backgroundColor: const Color(0xFFFF5F15),
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Get.back(),

@@ -1,8 +1,8 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
@@ -99,8 +99,12 @@ class NotificationService {
       }
     }
 
-    // Always register FCM token + topics on every launch (outside _initialized guard)
-    await ensureTokenRegistered();
+    // Token fetch, DeviceInfo, registerFcmToken HTTP, and topic subscribe are
+    // async but were previously awaited here, so [init] did not return until
+    // all finished — extending the critical path on the UI isolate and
+    // contributing to jank when [main] awaited [init] before [runApp].
+    // Login still calls [ensureTokenRegistered] and awaits it when needed.
+    unawaited(ensureTokenRegistered());
   }
 
   // ── Token refresh ─────────────────────────────────────────────────────────

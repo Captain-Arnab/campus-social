@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
 import '../utils/sweetalert_helper.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 import 'template_gallery_view.dart';
 import '../widgets/app_calendar_theme.dart';
 
@@ -226,7 +227,10 @@ class _EditEventViewState extends State<EditEventView> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text("Edit Event", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: true,
+          title: const Text("Edit Event", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        ),
         backgroundColor: const Color(0xFFFF5F15),
         elevation: 0,
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Get.back()),

@@ -5,6 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../utils/certificate_helper.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 
 /// Lists e-certificates for the logged-in user (uploaded by admin for past events).
 /// User sees only their own certificates.
@@ -77,7 +78,10 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
       return Scaffold(
         backgroundColor: const Color(0xFFF8F9FD),
         appBar: AppBar(
-          title: const Text("My Certificates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+          title: AppBarTitleWithBrandLogo(
+            onPrimaryBackground: false,
+            title: const Text("My Certificates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+          ),
           backgroundColor: Colors.white,
           elevation: 0,
           leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Get.back()),
@@ -88,7 +92,10 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: const Text("My Certificates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: false,
+          title: const Text("My Certificates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Get.back()),

@@ -6,6 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/sweetalert_helper.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 
 class EditProfileView extends StatefulWidget {
   const EditProfileView({super.key});
@@ -102,9 +103,12 @@ class _EditProfileViewState extends State<EditProfileView> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: const Text(
-          "Edit Profile",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: true,
+          title: const Text(
+            "Edit Profile",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
         ),
         backgroundColor: const Color(0xFFFF5F15),
         elevation: 0,

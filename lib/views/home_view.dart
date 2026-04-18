@@ -19,7 +19,10 @@ import 'winners_view.dart';
 import 'edit_profile_view.dart';
 import 'volunteer_dialog.dart';
 import '../data/api_service.dart';
+import '../data/app_branding.dart';
 import '../data/pref_service.dart';
+import '../widgets/home_ad_carousel.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../widgets/app_calendar_theme.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../utils/event_participation_rules.dart';
@@ -321,10 +324,35 @@ class _ExploreTabState extends State<_ExploreTab> {
   final List<String> categories = ["All", "IT/Tech", "Cultural", "Sports", "Academic", "Social"];
   List<MapEntry<dynamic, List<dynamic>>> _winnersSwiperData = [];
   bool _winnersLoading = false;
+  List<Map<String, dynamic>> _adPosts = [];
   Timer? _searchDebounce;
 
   Future<void> _refreshData() async {
-    await controller.fetchLiveEventCatalog();
+    await Future.wait([
+      controller.fetchLiveEventCatalog(),
+      _loadAdPosts(),
+      AppBranding.refresh(),
+    ]);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadAdPosts() async {
+    try {
+      final r = await ApiService.getAdPosts();
+      final m = ApiService.responseDataMap(r.data);
+      if (m == null || m['status']?.toString() != 'success') return;
+      final list = m['data'];
+      if (list is! List) return;
+      final next = <Map<String, dynamic>>[];
+      for (final e in list) {
+        if (e is Map<String, dynamic>) {
+          next.add(e);
+        } else if (e is Map) {
+          next.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
+        }
+      }
+      if (mounted) setState(() => _adPosts = next);
+    } catch (_) {}
   }
 
   Future<void> _loadWinnersSwiper() async {
@@ -372,7 +400,10 @@ class _ExploreTabState extends State<_ExploreTab> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadWinnersSwiper());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadWinnersSwiper();
+      _loadAdPosts();
+    });
   }
 
   @override
@@ -617,6 +648,13 @@ class _ExploreTabState extends State<_ExploreTab> {
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             cacheExtent: 720,
             slivers: [
+          if (_adPosts.isNotEmpty)
+            SliverToBoxAdapter(
+              child: ColoredBox(
+                color: const Color(0xFFF8F9FD),
+                child: HomeAdCarousel(posts: _adPosts),
+              ),
+            ),
           // Header with gradient
           SliverToBoxAdapter(
             child: Container(
@@ -657,27 +695,11 @@ class _ExploreTabState extends State<_ExploreTab> {
                                 ),
                               ],
                             ),
-                            child: ClipRRect(
+                            child: AppBranding.logoBox(
+                              width: 60.w,
+                              height: 50.w,
+                              fit: BoxFit.contain,
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.asset(
-                                'assets/images/logo.jpeg',
-                                width: 40.w,
-                                height: 60.w,
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      Icons.event,
-                                      size: 40.w,
-                                      color: const Color(0xFFFF5F15),
-                                    ),
-                                  );
-                                },
-                              ),
                             ),
                           ),
                         ],
@@ -1961,7 +1983,10 @@ class _MyEventsTab extends StatelessWidget {
       child: Scaffold(
         backgroundColor: const Color(0xFFF8F9FD),
         appBar: AppBar(
-          title: const Text("My Activity", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+          title: AppBarTitleWithBrandLogo(
+            onPrimaryBackground: false,
+            title: const Text("My Activity", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+          ),
           backgroundColor: Colors.white,
           elevation: 0,
           bottom: TabBar(
@@ -2424,19 +2449,11 @@ class _ProfileTab extends StatelessWidget {
                     ],
                   ),
                   padding: const EdgeInsets.all(4),
-                  child: ClipRRect(
+                  child: AppBranding.logoBox(
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.contain,
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      'assets/images/logo.jpeg',
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) {
-                        return const Icon(
-                          Icons.event,
-                          color: Color(0xFFFF5F15),
-                          size: 26,
-                        );
-                      },
-                    ),
                   ),
                 ),
               ),

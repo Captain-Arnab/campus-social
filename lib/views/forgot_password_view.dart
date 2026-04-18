@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
 import '../utils/sweetalert_helper.dart';
+import '../data/app_branding.dart';
 
 class ForgotPasswordView extends StatefulWidget {
   const ForgotPasswordView({super.key});
@@ -37,12 +38,28 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    padding: EdgeInsets.all(20.w),
+                    width: 120.w,
+                    height: 120.w,
+                    padding: EdgeInsets.all(12.w),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white,
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
-                    child: Icon(Icons.lock_reset, size: 60.w, color: Colors.white),
+                    child: ClipOval(
+                      child: AppBranding.logoBox(
+                        width: 96.w,
+                        height: 96.w,
+                        fit: BoxFit.contain,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
                   ),
                   SizedBox(height: 24.h),
                   

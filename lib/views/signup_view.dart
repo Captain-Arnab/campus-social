@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
+import '../data/app_branding.dart';
 import '../utils/sweetalert_helper.dart';
 import 'login_view.dart';
 // import 'otp_verification_view.dart'; // OTP disabled temporarily
@@ -406,12 +407,11 @@ class _SignupViewState extends State<SignupView> {
                       ],
                     ),
                     child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/logo.jpeg',
+                      child: AppBranding.logoBox(
+                        width: 76.w,
+                        height: 76.w,
                         fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(Icons.event, size: 50.w, color: const Color(0xFFFF5F15));
-                        },
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
                   ),

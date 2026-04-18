@@ -1,6 +1,9 @@
 import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+
 import '../../base/constant.dart';
 import 'pref_service.dart';
 
@@ -840,7 +843,8 @@ class ApiService {
     }
   }
 
-  /// Organizer sends a text message as push notification to volunteers/participants (event_id, organizer_id, message, recipient_type: volunteers|participants|both).
+  /// Organizer sends push + inbox to volunteers/participants/all
+  /// (`recipient_type`: volunteers|participants|both|all). Server: send_organizer_notification.php.
   static Future<Response> sendEventNotification({
     required int eventId,
     required String organizerId,
@@ -851,11 +855,12 @@ class ApiService {
       final auth = await _getAuthOptions();
       final opts = Options(
         headers: auth.headers,
-        // Accept 5xx so we can read JSON error body (default Dio rejects >= 500).
         validateStatus: (s) => s != null && s < 600,
       );
-      return await _dio.post(
-        "send_event_notification.php",
+      const primary = 'send_organizer_notification.php';
+      const legacy = 'send_event_notification.php';
+      Response r = await _dio.post(
+        primary,
         data: {
           "event_id": eventId,
           "organizer_id": organizerId,
@@ -864,12 +869,66 @@ class ApiService {
         },
         options: opts,
       );
+      if (r.statusCode == 404) {
+        r = await _dio.post(
+          legacy,
+          data: {
+            "event_id": eventId,
+            "organizer_id": organizerId,
+            "message": message,
+            "recipient_type": recipientType,
+          },
+          options: opts,
+        );
+      }
+      return r;
     } on DioException catch (e) {
-      return e.response ?? Response(
-        requestOptions: RequestOptions(path: 'send_event_notification.php'),
-        statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'send_organizer_notification.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
+    }
+  }
+
+  /// Admin-configured app settings (e.g. logo path under uploads/app/).
+  static Future<Response> getAppSettings() async {
+    try {
+      return await _dio.get(
+        'app_settings.php',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 15),
+          sendTimeout: const Duration(seconds: 15),
+        ),
       );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'app_settings.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
+    }
+  }
+
+  /// Active home-screen advertisement posts.
+  static Future<Response> getAdPosts() async {
+    try {
+      return await _dio.get(
+        'ad_posts.php',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 15),
+        ),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'ad_posts.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
     }
   }
 
@@ -974,6 +1033,53 @@ class ApiService {
           'message':
               'Organizer API missing on server (404). Upload event_organizer.php to ${Constant.baseUrl} (same folder as events.php).',
         },
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'event_organizer.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
+    }
+  }
+
+  /// Organizer `set_review` with optional file attachments (`review_files[]`).
+  static Future<Response> eventOrganiserSetReviewMultipart({
+    required int eventId,
+    required int organizerId,
+    required String organizerReview,
+    List<File> reviewFiles = const [],
+  }) async {
+    try {
+      final auth = await _getAuthOptions();
+      final opts = Options(
+        headers: auth.headers,
+        validateStatus: (s) => s != null && s < 600,
+      );
+      final map = <String, dynamic>{
+        'action': 'set_review',
+        'event_id': eventId.toString(),
+        'organizer_id': organizerId.toString(),
+        'organizer_review': organizerReview,
+      };
+      final form = FormData.fromMap(map);
+      for (final f in reviewFiles) {
+        if (!await f.exists()) continue;
+        form.files.add(
+          MapEntry(
+            'review_files[]',
+            await MultipartFile.fromFile(
+              f.path,
+              filename: p.basename(f.path),
+            ),
+          ),
+        );
+      }
+      return await _dio.post(
+        'event_organizer.php',
+        data: form,
+        options: opts,
       );
     } on DioException catch (e) {
       return e.response ??

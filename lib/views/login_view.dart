@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
+import '../data/app_branding.dart';
 import '../utils/sweetalert_helper.dart';
 import 'signup_view.dart';
 // import 'forgot_password_view.dart'; // Email-based flow (disabled - SMS-only auth)
@@ -64,12 +65,11 @@ class _LoginViewState extends State<LoginView> {
                       ],
                     ),
                     child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/logo.jpeg',
+                      child: AppBranding.logoBox(
+                        width: 96.w,
+                        height: 96.w,
                         fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(Icons.event, size: 60.w, color: const Color(0xFFFF5F15));
-                        },
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
                   ),

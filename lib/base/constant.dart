@@ -32,6 +32,25 @@ class Constant {
     return '$uploadsBaseUrl$certificatesPath$p';
   }
 
+  /// Public URL for files stored under `uploads/` (ads, review files, app logo, etc.).
+  /// [filePath] is typically like `uploads/review_files/x.pdf` from the API.
+  static String uploadPublicUrl(String filePath) {
+    final trimmed = filePath.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    var p = trimmed.replaceAll('\\', '/');
+    p = p.replaceFirst(RegExp(r'^/+'), '');
+    while (p.toLowerCase().startsWith('admin/')) {
+      p = p.substring('admin/'.length);
+    }
+    if (p.toLowerCase().startsWith('uploads/')) {
+      p = p.substring('uploads/'.length);
+    }
+    return '$uploadsBaseUrl$p';
+  }
+
   // Endpoints
   static const String loginEndpoint = "users.php"; 
   static const String registerEndpoint = "users.php"; 
@@ -66,7 +85,7 @@ class Constant {
   ];
 
   // FCM: Android notification channel (must match AndroidManifest + MainActivity).
-  // Backend (send_event_notification.php) should send FCM with "notification" payload and
+  // Backend (send_organizer_notification.php) should send FCM with "notification" payload and
   // android_channel_id: "high_importance_channel" so notifications show when app is in background.
   static const String fcmAndroidChannelId = 'high_importance_channel';
 

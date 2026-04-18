@@ -9,6 +9,7 @@ import '../utils/sweetalert_helper.dart';
 import 'template_gallery_view.dart';
 import 'home_view.dart';
 import '../widgets/app_calendar_theme.dart';
+import '../widgets/app_bar_title_with_brand_logo.dart';
 
 class CreateEventView extends StatefulWidget {
   final dynamic existingEvent; // if provided => edit (pending) mode
@@ -291,9 +292,12 @@ class CreateEventViewState extends State<CreateEventView> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
-          isEdit ? "Edit Pending Event" : "Host an Event",
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        title: AppBarTitleWithBrandLogo(
+          onPrimaryBackground: true,
+          title: Text(
+            isEdit ? "Edit Pending Event" : "Host an Event",
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
         ),
         backgroundColor: const Color(0xFFFF5F15),
         elevation: 0,
