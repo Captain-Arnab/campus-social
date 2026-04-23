@@ -1640,7 +1640,7 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Your review (after the event)',
+            'Event Report',
             style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.purple.shade900),
           ),
           SizedBox(height: 8.h),

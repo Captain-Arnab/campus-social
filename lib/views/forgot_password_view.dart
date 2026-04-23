@@ -37,29 +37,10 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 120.w,
-                    height: 120.w,
-                    padding: EdgeInsets.all(12.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: AppBranding.logoBox(
-                        width: 96.w,
-                        height: 96.w,
-                        fit: BoxFit.contain,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
+                  AppBranding.dualAuthCircleMarks(
+                    diameter: 140.w,
+                    insetPadding: 6.w,
+                    innerLogoSize: 120.w,
                   ),
                   SizedBox(height: 24.h),
                   

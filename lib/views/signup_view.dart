@@ -391,29 +391,10 @@ class _SignupViewState extends State<SignupView> {
                 SizedBox(height: 20.h),
                 // Logo
                 Center(
-                  child: Container(
-                    width: 100.w,
-                    height: 100.w,
-                    padding: EdgeInsets.all(12.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: AppBranding.logoBox(
-                        width: 76.w,
-                        height: 76.w,
-                        fit: BoxFit.contain,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
+                  child: AppBranding.dualAuthCircleMarks(
+                    diameter: 118.w,
+                    insetPadding: 6.w,
+                    innerLogoSize: 100.w,
                   ),
                 ),
                 SizedBox(height: 20.h),

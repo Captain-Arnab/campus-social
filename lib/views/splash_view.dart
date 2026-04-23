@@ -122,15 +122,29 @@ class _OnboardingViewState extends State<OnboardingView> {
   }
 
   Widget _buildLogo() {
-    return Container(
-      width: 100.w, height: 60.w,
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: AppBranding.logoBox(
-        width: 100.w,
-        height: 60.w,
-        fit: BoxFit.cover,
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return ValueListenableBuilder<String?>(
+      valueListenable: AppBranding.logoUrlNotifier,
+      builder: (_, u, __) {
+        final hasAdmin = u != null && u.isNotEmpty;
+        final w = hasAdmin ? 188.w : 128.w;
+        final h = hasAdmin ? 76.w : 70.w;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: w,
+            height: h,
+            child: AppBranding.boundedDualLogos(
+              outerWidth: w,
+              outerHeight: h,
+              gap: 12,
+              horizontalInset: 4,
+              verticalInset: 3,
+              fit: BoxFit.contain,
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      },
     );
   }
 

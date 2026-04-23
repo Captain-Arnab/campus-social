@@ -3,41 +3,51 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../data/app_branding.dart';
 
-/// App bar title row: admin-configured brand logo + [title] (same asset as login/home).
+/// App bar title row: default MiCampus mark, optional admin logo from API, then [title].
+/// Marks are drawn without a filled chip so they sit directly on the app bar background.
 class AppBarTitleWithBrandLogo extends StatelessWidget {
   final Widget title;
 
-  /// Use solid white behind the logo on orange app bars; light grey on white app bars.
+  /// Reserved for callers that switch title contrast on orange vs white bars.
   final bool onPrimaryBackground;
 
-  /// Logical logo size before [.w] (toolbar-safe for dense bars).
+  /// Logical logo square (before [.w]) for each mark.
   final double logoUnit;
 
   const AppBarTitleWithBrandLogo({
     super.key,
     required this.title,
     this.onPrimaryBackground = false,
-    this.logoUnit = 32,
+    this.logoUnit = 46,
   });
 
   @override
   Widget build(BuildContext context) {
     final s = logoUnit.w;
+    final br = BorderRadius.circular(8);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Material(
-          color: onPrimaryBackground ? Colors.white : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(8),
-          clipBehavior: Clip.antiAlias,
-          child: AppBranding.logoBox(
+        ClipRRect(
+          borderRadius: br,
+          child: SizedBox(
             width: s,
             height: s,
-            fit: BoxFit.contain,
-            borderRadius: BorderRadius.circular(8),
+            child: AppBranding.defaultLogoBox(
+              width: s,
+              height: s,
+              fit: BoxFit.contain,
+              borderRadius: br,
+            ),
           ),
         ),
-        SizedBox(width: 10.w),
+        AppBranding.adminLogoChipSlot(
+          width: s,
+          height: s,
+          leadingGap: 12.w,
+          borderRadius: br,
+        ),
+        SizedBox(width: 12.w),
         Expanded(
           child: DefaultTextStyle.merge(
             overflow: TextOverflow.ellipsis,

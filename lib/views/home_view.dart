@@ -152,6 +152,24 @@ class _HomeViewState extends State<HomeView> {
   }
 }
 
+/// Explore header marks on the gradient — no filled plate behind the artwork.
+class _ExploreHeaderMark extends StatelessWidget {
+  final Widget child;
+  const _ExploreHeaderMark({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        width: 72.w,
+        height: 60.h,
+        child: Center(child: child),
+      ),
+    );
+  }
+}
+
 // --- Cracker burst painter: sparks bursting from a rounded rect border ---
 class _CrackerBurstPainter extends CustomPainter {
   final double progress;
@@ -674,35 +692,51 @@ class _ExploreTabState extends State<_ExploreTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Logo
-                          Container(
-                            width: 60.w,
-                            height: 50.w,
-                            padding: EdgeInsets.all(0.5.w),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.15),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: AppBranding.logoBox(
-                              width: 60.w,
-                              height: 50.w,
-                              fit: BoxFit.contain,
-                              borderRadius: BorderRadius.circular(12),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: ValueListenableBuilder<String?>(
+                              valueListenable: AppBranding.logoUrlNotifier,
+                              builder: (context, adminUrl, _) {
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _ExploreHeaderMark(
+                                      child: AppBranding.defaultLogoBox(
+                                        width: 68.w,
+                                        height: 56.h,
+                                        fit: BoxFit.contain,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    if (adminUrl != null && adminUrl.isNotEmpty)
+                                      Padding(
+                                        padding: EdgeInsets.only(left: 14.w),
+                                        child: _ExploreHeaderMark(
+                                          child: SizedBox(
+                                            width: 68.w,
+                                            height: 56.h,
+                                            child: Image.network(
+                                              adminUrl,
+                                              fit: BoxFit.cover,
+                                              alignment: Alignment.center,
+                                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
                             ),
                           ),
-                        ],
+                        ),
                       ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -2433,28 +2467,15 @@ class _ProfileTab extends StatelessWidget {
               pinned: true,
               backgroundColor: const Color(0xFFFF5F15),
 
-              leadingWidth: 80, // enough space for logo
+              leadingWidth: 196,
               leading: Padding(
                 padding: const EdgeInsets.all(8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(4),
-                  child: AppBranding.logoBox(
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.contain,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                child: AppBranding.logoBox(
+                  width: 64,
+                  height: 64,
+                  fit: BoxFit.contain,
+                  borderRadius: BorderRadius.circular(12),
+                  interLogoGap: 14,
                 ),
               ),
 

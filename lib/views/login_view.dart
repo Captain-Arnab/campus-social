@@ -48,30 +48,11 @@ class _LoginViewState extends State<LoginView> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Logo Image
-                  Container(
-                    width: 120.w,
-                    height: 120.w,
-                    padding: EdgeInsets.all(12.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: AppBranding.logoBox(
-                        width: 96.w,
-                        height: 96.w,
-                        fit: BoxFit.contain,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
+                  // Default MiCampus mark + optional admin logo from API
+                  AppBranding.dualAuthCircleMarks(
+                    diameter: 140.w,
+                    insetPadding: 6.w,
+                    innerLogoSize: 120.w,
                   ),
                   SizedBox(height: 24.h),
                   
