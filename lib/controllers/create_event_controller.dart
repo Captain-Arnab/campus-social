@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
+import '../base/constant.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../utils/sweetalert_helper.dart';
@@ -77,10 +78,13 @@ class CreateEventController extends GetxController {
       }, imagesToUpload);
 
       if (response.data['status'] == 'success') {
+        final msg = Constant.notifyAdminsBySmsOnEventSubmit
+            ? "Event submitted for admin approval. Administrators are notified by SMS."
+            : "Event submitted for admin approval.";
         SweetAlertHelper.showSuccess(
           Get.context,
           "Success 🎉",
-          "Event submitted for admin approval. Administrators are notified by SMS.",
+          msg,
         );
         
         _resetForm();

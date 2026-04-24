@@ -10,6 +10,7 @@ import 'template_gallery_view.dart';
 import 'home_view.dart';
 import '../widgets/app_calendar_theme.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
+import '../base/constant.dart';
 
 class CreateEventView extends StatefulWidget {
   final dynamic existingEvent; // if provided => edit (pending) mode
@@ -152,6 +153,15 @@ class CreateEventViewState extends State<CreateEventView> {
     final dateRaw = (data['date'] ?? '').toString().trim();
     final timeRaw = (data['time'] ?? '').toString().trim();
     _applyPosterDateTime(dateRaw, timeRaw);
+
+    final endRaw = (data['event_end_date'] ?? '').toString().trim();
+    if (endRaw.isNotEmpty) {
+      final parsedEnd = DateTime.tryParse(endRaw.replaceAll(' ', 'T'));
+      if (parsedEnd != null) {
+        selectedEndDate = DateTime(parsedEnd.year, parsedEnd.month, parsedEnd.day);
+        selectedEndTime = TimeOfDay(hour: parsedEnd.hour, minute: parsedEnd.minute);
+      }
+    }
   }
 
   bool _isUserFilled(String value) {
@@ -250,12 +260,17 @@ class CreateEventViewState extends State<CreateEventView> {
           );
 
     if (success) {
+      final String successBody = isEdit
+          ? (Constant.notifyAdminsBySmsOnEventSubmit
+              ? "Event updated successfully (pending). Administrators are notified by SMS."
+              : "Event updated successfully (pending). It will appear in your list once reviewed.")
+          : (Constant.notifyAdminsBySmsOnEventSubmit
+              ? "Your event was submitted for approval. Administrators are notified by SMS so they can review it in the admin panel."
+              : "Your event was submitted for approval. Administrators can review it in the admin panel.");
       SweetAlertHelper.showSuccess(
         context,
         "Success",
-        isEdit
-            ? "Event updated successfully (pending). Administrators are notified by SMS."
-            : "Your event was submitted for approval. Administrators are notified by SMS so they can review it in the admin panel.",
+        successBody,
         onConfirm: () {
           if (isEdit) {
             Get.offAll(() => const HomeView(initialBottomTabIndex: 1, initialMyEventsTabIndex: 1));

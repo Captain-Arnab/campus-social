@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:intl/intl.dart';
 import '../controllers/poster_controller.dart';
 import '../utils/sweetalert_helper.dart';
 import '../widgets/poster_themes.dart';
@@ -152,7 +153,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                         switch (widget.themeIndex) {
                           case 0: return PosterTheme.graduationTheme(
                             title: controller.title.value, 
-                            date: controller.dateStr.value, 
+                            date: controller.posterDateRangeLine(), 
                             venue: controller.venue.value, 
                             time: controller.timeStr.value,
                             description: desc,
@@ -162,7 +163,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                           );
                           case 1: return PosterTheme.techTheme(
                             title: controller.title.value, 
-                            date: controller.dateStr.value, 
+                            date: controller.posterDateRangeLine(), 
                             venue: controller.venue.value,
                             time: controller.timeStr.value,
                             mode: modeVal,
@@ -175,8 +176,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                           case 2: return PosterTheme.englishTheme(
                             title: controller.titleEnglish.value,
                             subtitle: controller.subtitle.value,
-                            startDay: controller.startDay.value,
-                            endDay: controller.endDay.value,
+                            courseDateLine: controller.posterDateRangeLine(),
                             startTime: controller.startTime.value,
                             endTime: controller.endTime.value,
                             coursePoints: controller.coursePoints.toList(),
@@ -186,7 +186,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                           );
                           case 3: return PosterTheme.musicFestivalTheme(
                             title: controller.title.value,
-                            date: controller.dateStr.value,
+                            date: controller.posterDateRangeLine(),
                             location: controller.location.value,
                             startTime: controller.startTimings.value,
                             endTime: controller.endTimings.value,
@@ -199,7 +199,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                             title: controller.title.value,
                             stadiumName: controller.stadiumName.value,
                             address: controller.address.value,
-                            date: controller.dateStr.value,
+                            date: controller.posterDateRangeLine(),
                             startTime: controller.basketballStartTime.value,
                             endTime: controller.basketballEndTime.value,
                             image: img,
@@ -223,6 +223,9 @@ class _PosterEditorViewState extends State<PosterEditorView> {
               child: ListView(
                 padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
                 children: [
+                   _buildPosterDateRangeSection(context),
+                   SizedBox(height: 10.h),
+
                    // Basketball Theme Fields
                    if (isBasketballTheme) ...[
                      _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v),
@@ -232,9 +235,6 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                      SizedBox(height: 10.h),
                      
                      _buildTextField("Address", Icons.location_on, addressController, (v) => controller.address.value = v),
-                     SizedBox(height: 10.h),
-                     
-                     _buildPickerButton("Date", Icons.calendar_today, controller.dateStr, () => controller.pickBasketballDate(context)),
                      SizedBox(height: 10.h),
                      
                      Row(
@@ -250,9 +250,6 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                    // Music Festival Theme Fields
                    if (isMusicFestivalTheme) ...[
                      _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v),
-                     SizedBox(height: 10.h),
-                     
-                     _buildPickerButton("Date", Icons.calendar_today, controller.dateStr, () => controller.pickDate(context)),
                      SizedBox(height: 10.h),
                      
                      _buildTextField("Location", Icons.location_on, locationController, (v) => controller.location.value = v),
@@ -276,9 +273,6 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                      _buildTextField("Title (e.g., ONLINE COURSE)", Icons.title, titleController, (v) => controller.titleEnglish.value = v),
                      SizedBox(height: 10.h),
                      
-                     _buildDaySelector(),
-                     SizedBox(height: 10.h),
-                     
                      _buildTimeRangeSelector(),
                      SizedBox(height: 10.h),
                      
@@ -295,13 +289,9 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                      SizedBox(height: 10.h),
                    ],
                    
-                   // Date & Time Row (for non-English, non-Music Festival, and non-Basketball themes)
+                   // Time (dates use shared From / To above)
                    if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme) ...[
-                     Row(children: [
-                       Expanded(child: _buildPickerButton("Date", Icons.calendar_today, controller.dateStr, () => controller.pickDate(context))),
-                       SizedBox(width: 10.w),
-                       Expanded(child: _buildPickerButton("Time", Icons.schedule, controller.timeStr, () => controller.pickTime(context))),
-                     ]),
+                     _buildPickerButton("Time", Icons.schedule, controller.timeStr, () => controller.pickTime(context)),
                      SizedBox(height: 10.h),
                    ],
                    
@@ -435,6 +425,34 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                     setState(() => _isProcessing = false);
 
                     if (posterFile != null) {
+                      if (controller.posterStartDate.value == null) {
+                        SweetAlertHelper.showError(context, "Required", "Please choose a start date.");
+                        setState(() => _isProcessing = false);
+                        return;
+                      }
+                      if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme &&
+                          controller.timeStr.value.toUpperCase() == 'TIME') {
+                        SweetAlertHelper.showError(context, "Required", "Please set the event time.");
+                        setState(() => _isProcessing = false);
+                        return;
+                      }
+                      final startTimeRaw = _posterSaveStartTimeRaw();
+                      final endTimeRaw = _posterSaveEndTimeRaw();
+                      final startIso = controller.posterEventStartDateTimeIso(startTimeRaw);
+                      final endIso = controller.posterEventEndDateTimeIso(endTimeRaw);
+                      if (endIso != null && startIso != null) {
+                        final a = DateTime.tryParse(startIso.replaceAll(' ', 'T'));
+                        final b = DateTime.tryParse(endIso.replaceAll(' ', 'T'));
+                        if (a != null && b != null && b.isBefore(a)) {
+                          SweetAlertHelper.showError(
+                            context,
+                            "Invalid",
+                            "End date and time must be on or after the start.",
+                          );
+                          setState(() => _isProcessing = false);
+                          return;
+                        }
+                      }
                       final result = <String, dynamic>{
                         'file': posterFile,
                         'title': isEnglishTheme
@@ -446,14 +464,13 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                             : isMusicFestivalTheme
                                 ? controller.location.value
                                 : controller.venue.value,
-                        'date': controller.dateStr.value,
-                        'time': isBasketballTheme
-                            ? controller.basketballStartTime.value
-                            : isMusicFestivalTheme
-                                ? controller.startTimings.value
-                                : controller.timeStr.value,
+                        'date': startIso ?? controller.dateStr.value,
+                        'time': startTimeRaw,
                         'category': _inferCategory(),
                       };
+                      if (endIso != null) {
+                        result['event_end_date'] = endIso;
+                      }
                       Get.back(result: result);
                     } else {
                       SweetAlertHelper.showError(context, "Error", "Failed to generate poster");
@@ -583,59 +600,131 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     ));
   }
 
-  Widget _buildDaySelector() {
-    final days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-    
-    return Obx(() => Container(
-      padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(10),
-        color: Colors.white,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.calendar_today, size: 18, color: Colors.orange),
-              SizedBox(width: 8.w),
-              Text("Schedule Days:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.sp)),
-            ],
-          ),
-          SizedBox(height: 10.h),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: controller.startDay.value,
-                  decoration: const InputDecoration(
-                    labelText: "From",
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(),
+  String _posterSaveStartTimeRaw() {
+    if (isEnglishTheme) return controller.startTime.value;
+    if (isMusicFestivalTheme) return controller.startTimings.value;
+    if (isBasketballTheme) return controller.basketballStartTime.value;
+    return controller.timeStr.value;
+  }
+
+  String _posterSaveEndTimeRaw() {
+    if (isEnglishTheme) return controller.endTime.value;
+    if (isMusicFestivalTheme) return controller.endTimings.value;
+    if (isBasketballTheme) return controller.basketballEndTime.value;
+    return controller.timeStr.value;
+  }
+
+  Widget _buildPosterDateRangeSection(BuildContext context) {
+    return Obx(() {
+      final start = controller.posterStartDate.value;
+      final end = controller.posterEndDate.value;
+      final df = DateFormat('dd MMM yyyy');
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 10.h),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black12),
+          borderRadius: BorderRadius.circular(10),
+          color: Colors.white,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 18, color: Colors.orange),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    "Event dates (shown on poster)",
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.sp),
                   ),
-                  items: days.map((day) => DropdownMenuItem(value: day, child: Text(day, style: TextStyle(fontSize: 11.sp)))).toList(),
-                  onChanged: (val) => controller.startDay.value = val!,
+                ),
+              ],
+            ),
+            SizedBox(height: 8.h),
+            Text("From (required)", style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: Colors.black87)),
+            SizedBox(height: 6.h),
+            GestureDetector(
+              onTap: () => controller.pickPosterStartDate(context),
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.event, color: Colors.orange, size: 20),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: Text(
+                        start != null ? df.format(start) : "Start date",
+                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: controller.endDay.value,
-                  decoration: const InputDecoration(
-                    labelText: "To",
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(),
+            ),
+            SizedBox(height: 12.h),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "To (optional)",
+                    style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: Colors.black87),
                   ),
-                  items: days.map((day) => DropdownMenuItem(value: day, child: Text(day, style: TextStyle(fontSize: 11.sp)))).toList(),
-                  onChanged: (val) => controller.endDay.value = val!,
+                ),
+                if (end != null)
+                  GestureDetector(
+                    onTap: controller.clearPosterEndDate,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.close, size: 16, color: Colors.red.shade400),
+                        SizedBox(width: 4.w),
+                        Text("Clear", style: TextStyle(fontSize: 12.sp, color: Colors.red.shade400)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            SizedBox(height: 6.h),
+            GestureDetector(
+              onTap: start == null ? null : () => controller.pickPosterEndDate(context),
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
+                decoration: BoxDecoration(
+                  border: Border.all(color: end != null ? Colors.grey.shade300 : Colors.grey.shade200),
+                  borderRadius: BorderRadius.circular(10),
+                  color: start == null ? Colors.grey.shade50 : null,
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.event_note, color: start == null ? Colors.grey : Colors.orange, size: 20),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: Text(
+                        end != null ? df.format(end) : "End date (optional)",
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w500,
+                          color: start == null ? Colors.grey : (end != null ? Colors.black87 : Colors.grey.shade600),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ],
-      ),
-    ));
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildTimeRangeSelector() {

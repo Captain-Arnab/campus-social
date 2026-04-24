@@ -28,8 +28,9 @@ class PosterController extends GetxController {
   // English template specific fields
   var titleEnglish = "Online Course".obs;
   var subtitle = "Spoken English".obs;
-  var startDay = "MONDAY".obs;
-  var endDay = "FRIDAY".obs;
+  /// Event / course run dates on all poster templates (end optional).
+  var posterStartDate = Rx<DateTime?>(null);
+  var posterEndDate = Rx<DateTime?>(null);
   var startTime = "8 AM".obs;
   var endTime = "2 PM".obs;
   var phoneNumber = "800 829 5550 / 51".obs;
@@ -58,6 +59,12 @@ class PosterController extends GetxController {
   var isPickingTrainer = false.obs;
   var isPickingQrCode = false.obs;
 
+  void _initPosterDates() {
+    final n = DateTime.now();
+    posterStartDate.value = DateTime(n.year, n.month, n.day);
+    posterEndDate.value = null;
+  }
+
   // --- INITIALIZE SAMPLE DATA FOR GRADUATION THEME ---
   void initializeGraduationData() {
     title.value = "Graduation Party";
@@ -65,6 +72,7 @@ class PosterController extends GetxController {
     dateStr.value = "DATE";
     timeStr.value = "TIME";
     venue.value = "Campus Venue, Main Hall";
+    _initPosterDates();
   }
 
   // --- LOAD SAMPLE IMAGES FOR GRADUATION THEME ---
@@ -91,6 +99,7 @@ class PosterController extends GetxController {
     dateStr.value = "DATE";
     timeStr.value = "TIME";
     venue.value = "Campus Venue, Main Hall";
+    _initPosterDates();
   }
 
   // --- LOAD SAMPLE IMAGES FOR TECH THEME ---
@@ -123,8 +132,7 @@ class PosterController extends GetxController {
     // Set other English theme defaults
     titleEnglish.value = "ONLINE COURSE";
     subtitle.value = "Spoken English";
-    startDay.value = "SUNDAY";
-    endDay.value = "THURSDAY";
+    _initPosterDates();
     startTime.value = "08 AM";
     endTime.value = "2 PM";
     phoneNumber.value = "800 829 5550 / 51";
@@ -153,6 +161,7 @@ class PosterController extends GetxController {
     startTimings.value = "10 AM";
     endTimings.value = "10 PM";
     dateStr.value = "DATE";
+    _initPosterDates();
   }
 
   // --- LOAD SAMPLE IMAGES FOR MUSIC FESTIVAL THEME ---
@@ -178,6 +187,7 @@ class PosterController extends GetxController {
     dateStr.value = "DATE";
     basketballStartTime.value = "2 PM";
     basketballEndTime.value = "5 PM";
+    _initPosterDates();
   }
 
   // --- LOAD SAMPLE IMAGES FOR BASKETBALL THEME ---
@@ -229,6 +239,108 @@ class PosterController extends GetxController {
 
   void clearCoursePoints() {
     coursePoints.clear();
+  }
+
+  /// Poster date line: single start date, or `from — to` when end is set.
+  String posterDateRangeLine() {
+    final s = posterStartDate.value;
+    if (s == null) return "Select start date";
+    final fmt = DateFormat('dd MMM yyyy');
+    final from = fmt.format(s);
+    final e = posterEndDate.value;
+    if (e == null) return from;
+    final endDay = DateTime(e.year, e.month, e.day);
+    final startDay = DateTime(s.year, s.month, s.day);
+    if (endDay.isBefore(startDay)) return from;
+    if (startDay == endDay) return from;
+    return "$from — ${fmt.format(e)}";
+  }
+
+  TimeOfDay? _parseLooseTime(String raw) {
+    final cleaned = raw.trim().toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+    final match = RegExp(r'^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$').firstMatch(cleaned);
+    if (match == null) return null;
+    var hour = int.tryParse(match.group(1) ?? '') ?? 0;
+    final minute = int.tryParse(match.group(2) ?? '0') ?? 0;
+    final period = match.group(3);
+    if (period == 'PM' && hour < 12) hour += 12;
+    if (period == 'AM' && hour == 12) hour = 0;
+    if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
+      return TimeOfDay(hour: hour, minute: minute);
+    }
+    return null;
+  }
+
+  /// Start datetime for event form prefill from poster start date + time string.
+  String? posterEventStartDateTimeIso(String startTimeRaw) {
+    final d = posterStartDate.value;
+    if (d == null) return null;
+    final t = _parseLooseTime(startTimeRaw) ?? const TimeOfDay(hour: 9, minute: 0);
+    final dt = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+    return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
+  }
+
+  /// Optional end datetime from poster end date + time string.
+  String? posterEventEndDateTimeIso(String endTimeRaw) {
+    final d = posterEndDate.value;
+    if (d == null) return null;
+    final t = _parseLooseTime(endTimeRaw) ?? const TimeOfDay(hour: 17, minute: 0);
+    final dt = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+    return DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
+  }
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  Future<void> pickPosterStartDate(BuildContext context) async {
+    final today = _dateOnly(DateTime.now());
+    final cur = posterStartDate.value;
+    final initial = cur == null
+        ? today
+        : (_dateOnly(cur).isBefore(today) ? today : _dateOnly(cur));
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: today,
+      lastDate: DateTime(2100),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
+    );
+    if (picked == null) return;
+    posterStartDate.value = DateTime(picked.year, picked.month, picked.day);
+    final end = posterEndDate.value;
+    if (end != null) {
+      final pDay = DateTime(picked.year, picked.month, picked.day);
+      final eDay = DateTime(end.year, end.month, end.day);
+      if (eDay.isBefore(pDay)) {
+        posterEndDate.value = null;
+      }
+    }
+  }
+
+  Future<void> pickPosterEndDate(BuildContext context) async {
+    final start = posterStartDate.value;
+    if (start == null) {
+      SweetAlertHelper.showError(context, "Start date", "Please choose a start date first.");
+      return;
+    }
+    final firstAllowed = DateTime(start.year, start.month, start.day);
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: () {
+        final cur = posterEndDate.value;
+        if (cur == null) return firstAllowed;
+        final c = DateTime(cur.year, cur.month, cur.day);
+        return c.isBefore(firstAllowed) ? firstAllowed : c;
+      }(),
+      firstDate: firstAllowed,
+      lastDate: DateTime(2100),
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
+    );
+    if (picked == null) return;
+    posterEndDate.value = DateTime(picked.year, picked.month, picked.day);
+  }
+
+  void clearPosterEndDate() {
+    posterEndDate.value = null;
   }
 
   // --- IMAGE PICKERS ---

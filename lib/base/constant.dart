@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 class Constant {
   // --- API Configuration ---
   static const String baseUrl = "https://micampus.co.in/admin/api/";
+
+  /// When false, [ApiService.createEvent] sends `notify_admin_sms=0` so new/pending
+  /// events should not trigger administrator SMS. The PHP API must honor this field.
+  /// Set to true if the client wants admin SMS again.
+  static const bool notifyAdminsBySmsOnEventSubmit = false;
   
   // Upload base URLs (for building certificate/banner URLs)
   static const String uploadsBaseUrl = "https://micampus.co.in/admin/uploads/";

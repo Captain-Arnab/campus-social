@@ -267,7 +267,11 @@ class ApiService {
 
   static Future<Response> createEvent(Map<String, dynamic> data, List<File> images) async {
     try {
-      FormData formData = FormData.fromMap(data);
+      final payload = Map<String, dynamic>.from(data);
+      if (!Constant.notifyAdminsBySmsOnEventSubmit) {
+        payload['notify_admin_sms'] = '0';
+      }
+      FormData formData = FormData.fromMap(payload);
       for (var file in images) {
         formData.files.add(MapEntry(
           "banners[]",

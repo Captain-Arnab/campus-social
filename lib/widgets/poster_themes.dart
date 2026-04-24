@@ -185,8 +185,8 @@ static Widget graduationTheme({
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Date
-                          _infoRow(Icons.calendar_today, date.toUpperCase()),
+                          // Date (from — optional to)
+                          _infoRowMultilineDate(Icons.calendar_today, date.toUpperCase()),
                           SizedBox(height: 10.h),
                           // Time
                           _infoRow(Icons.access_time, time),
@@ -315,6 +315,35 @@ static Widget graduationTheme({
               fontSize: 11.sp,
             ),
             maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Date range on graduation poster (may span two lines).
+  static Widget _infoRowMultilineDate(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(top: 2.h),
+          child: Icon(icon, color: gradBlue, size: 16.sp),
+        ),
+        SizedBox(width: 6.w),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: gradBlue,
+              fontFamily: 'Montserrat',
+              fontWeight: FontWeight.w600,
+              fontSize: 10.sp,
+              height: 1.25,
+            ),
+            maxLines: 2,
+            softWrap: true,
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -489,19 +518,24 @@ static Widget graduationTheme({
             Positioned(
               bottom: 100.h,
               right: 25.w,
+              left: 120.w,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Date & Time
+                  // Date & Time (width bounded so long ranges stay on-card)
                   Text(
                     date.toUpperCase(),
                     style: TextStyle(
-                      fontSize: 20.sp,
+                      fontSize: 16.sp,
                       fontFamily: 'RobotoSlab',
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
                       letterSpacing: 0.2,
+                      height: 1.15,
                     ),
+                    textAlign: TextAlign.right,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   // SizedBox(height: 4.h),
                   Text(
@@ -667,8 +701,7 @@ static Widget graduationTheme({
 static Widget englishTheme({
   String title = "ONLINE COURSE",
   String subtitle = "Spoken English",
-  required String startDay,
-  required String endDay,
+  required String courseDateLine,
   required String startTime,
   required String endTime,
   List<String> coursePoints = const [],
@@ -805,29 +838,37 @@ static Widget englishTheme({
             ),
           ),
 
-          // Schedule (Day and Time)
+          // Schedule (course dates + daily time; width capped so text does not run under the image)
           Positioned(
-            top: 135.h,
+            top: 132.h,
             left: 20.w,
+            right: 92.w,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "$startDay - $endDay",
+                  courseDateLine,
                   style: TextStyle(
-                    fontSize: 18.sp,
+                    fontSize: 15.sp,
                     fontWeight: FontWeight.w900,
                     color: engBlue,
+                    height: 1.2,
                   ),
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                // SizedBox(height: -2.h),
+                SizedBox(height: 2.h),
                 Text(
                   "$startTime - $endTime",
                   style: TextStyle(
-                    fontSize: 18.sp,
+                    fontSize: 17.sp,
                     fontWeight: FontWeight.w900,
                     color: engBlue,
+                    height: 1.15,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -835,7 +876,7 @@ static Widget englishTheme({
 
           // Our Course Section (Blue button style)
           Positioned(
-            top: 180.h,
+            top: 198.h,
             left: 20.w,
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
@@ -857,7 +898,7 @@ static Widget englishTheme({
           // Course Points List
           if (coursePoints.isNotEmpty)
             Positioned(
-              top: 210.h,
+              top: 228.h,
               left: 20.w,
               right: 100.w,
               child: Column(
@@ -1184,12 +1225,15 @@ static Widget englishTheme({
                     Text(
                       "DATE : $date",
                       style: GoogleFonts.nunito(
-                        fontSize: 16.sp,
+                        fontSize: 13.sp,
                         fontWeight: FontWeight.w900,
                         color: const Color(0xFF0D2847),
                         letterSpacing: 0.5,
-                        height: 0.8.h,
+                        height: 1.2,
                       ),
+                      maxLines: 3,
+                      softWrap: true,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     // SizedBox(height: 8.h),
                     Text(
@@ -1528,17 +1572,22 @@ static Widget englishTheme({
           Positioned(
             bottom: 20.h,
             left: 20.w,
+            right: 130.w,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   date.toUpperCase(),
                   style: GoogleFonts.roboto(
-                    fontSize: 22.sp,
+                    fontSize: 17.sp,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
-                    letterSpacing: -1.5,
+                    letterSpacing: -0.8,
+                    height: 1.1,
                   ),
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   "MORE INFORMATION:",
