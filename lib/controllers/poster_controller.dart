@@ -552,7 +552,11 @@ class PosterController extends GetxController {
        Uint8List? bytes = byteData?.buffer.asUint8List();
        
        if (bytes != null) {
-         await SaverGallery.saveImage(bytes, fileName: "gnu_poster_${DateTime.now().millisecondsSinceEpoch}.png", skipIfExists: false);
+         await SaverGallery.saveImage(
+           bytes,
+           name: "gnu_poster_${DateTime.now().millisecondsSinceEpoch}.png",
+           androidExistNotSave: false,
+         );
          SweetAlertHelper.showSuccess(Get.context, "Success", "Poster saved to Gallery!");
        }
      } catch(e) { 

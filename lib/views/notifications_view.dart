@@ -24,9 +24,14 @@ class NotificationsView extends StatelessWidget {
       appBar: AppBar(
         title: AppBarTitleWithBrandLogo(
           onPrimaryBackground: true,
-          title: const Text(
-            "Notifications",
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          logoUnit: 44,
+          titleMaxLines: 1,
+          title: Text(
+            'Notifications',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 17.sp),
           ),
         ),
         backgroundColor: const Color(0xFFFF5F15),

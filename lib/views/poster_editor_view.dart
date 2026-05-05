@@ -8,6 +8,34 @@ import '../controllers/poster_controller.dart';
 import '../utils/sweetalert_helper.dart';
 import '../widgets/poster_themes.dart';
 
+/// Character caps for poster fields (large type on fixed layouts — long text clips or overlaps).
+class _PosterCopyLimits {
+  static const int title = 48;
+  static const int description = 140;
+  static const int englishSubtitle = 36;
+  static const int englishTitle = 40;
+  static const int trainerName = 40;
+  static const int venue = 56;
+  static const int stadium = 48;
+  static const int address = 72;
+  static const int location = 56;
+  static const int phone = 32;
+
+  static String get titleGuidance =>
+      'Headlines use very large type. Aim for about 6–8 short words (max $title characters) so nothing is cut off.';
+  static String get descriptionGuidance =>
+      'Optional. About 2–3 short lines (max $description characters). Extra text may be clipped on the poster.';
+  static String get subtitleGuidance =>
+      'Short phrase only (max $englishSubtitle characters), e.g. “Spoken English”.';
+  static String get englishTitleGuidance =>
+      'Short banner text (max $englishTitle characters), e.g. “ONLINE COURSE”.';
+  static String get trainerGuidance => 'Max $trainerName characters so it fits next to the photo.';
+  static String get venueGuidance => 'Max $venue characters; long venue names may wrap or clip.';
+  static String get stadiumGuidance => 'Max $stadium characters.';
+  static String get addressGuidance => 'Max $address characters; use line breaks sparingly.';
+  static String get locationGuidance => 'Max $location characters.';
+}
+
 class PosterEditorView extends StatefulWidget {
   final int themeIndex;
   const PosterEditorView({super.key, required this.themeIndex});
@@ -223,18 +251,23 @@ class _PosterEditorViewState extends State<PosterEditorView> {
               child: ListView(
                 padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
                 children: [
+                   _buildPosterCopyGuidanceBanner(),
+                   SizedBox(height: 12.h),
                    _buildPosterDateRangeSection(context),
                    SizedBox(height: 10.h),
 
                    // Basketball Theme Fields
                    if (isBasketballTheme) ...[
-                     _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v),
+                     _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v,
+                         maxLength: _PosterCopyLimits.title, helperText: _PosterCopyLimits.titleGuidance),
                      SizedBox(height: 10.h),
                      
-                     _buildTextField("Stadium Name", Icons.stadium, stadiumNameController, (v) => controller.stadiumName.value = v),
+                     _buildTextField("Stadium Name", Icons.stadium, stadiumNameController, (v) => controller.stadiumName.value = v,
+                         maxLength: _PosterCopyLimits.stadium, helperText: _PosterCopyLimits.stadiumGuidance),
                      SizedBox(height: 10.h),
                      
-                     _buildTextField("Address", Icons.location_on, addressController, (v) => controller.address.value = v),
+                     _buildTextField("Address", Icons.location_on, addressController, (v) => controller.address.value = v,
+                         maxLength: _PosterCopyLimits.address, helperText: _PosterCopyLimits.addressGuidance),
                      SizedBox(height: 10.h),
                      
                      Row(
@@ -249,10 +282,12 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                    
                    // Music Festival Theme Fields
                    if (isMusicFestivalTheme) ...[
-                     _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v),
+                     _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v,
+                         maxLength: _PosterCopyLimits.title, helperText: _PosterCopyLimits.titleGuidance),
                      SizedBox(height: 10.h),
                      
-                     _buildTextField("Location", Icons.location_on, locationController, (v) => controller.location.value = v),
+                     _buildTextField("Location", Icons.location_on, locationController, (v) => controller.location.value = v,
+                         maxLength: _PosterCopyLimits.location, helperText: _PosterCopyLimits.locationGuidance),
                      SizedBox(height: 10.h),
                      
                      Row(
@@ -267,16 +302,19 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                    
                    // English Theme Fields
                    if (isEnglishTheme) ...[
-                     _buildTextField("Subtitle (e.g., Spoken English)", Icons.text_fields, subtitleController, (v) => controller.subtitle.value = v),
+                     _buildTextField("Subtitle (e.g., Spoken English)", Icons.text_fields, subtitleController, (v) => controller.subtitle.value = v,
+                         maxLength: _PosterCopyLimits.englishSubtitle, helperText: _PosterCopyLimits.subtitleGuidance),
                      SizedBox(height: 10.h),
                      
-                     _buildTextField("Title (e.g., ONLINE COURSE)", Icons.title, titleController, (v) => controller.titleEnglish.value = v),
+                     _buildTextField("Title (e.g., ONLINE COURSE)", Icons.title, titleController, (v) => controller.titleEnglish.value = v,
+                         maxLength: _PosterCopyLimits.englishTitle, helperText: _PosterCopyLimits.englishTitleGuidance),
                      SizedBox(height: 10.h),
                      
                      _buildTimeRangeSelector(),
                      SizedBox(height: 10.h),
                      
-                     _buildTextField("Phone Number", Icons.phone, phoneController, (v) => controller.phoneNumber.value = v),
+                     _buildTextField("Phone Number", Icons.phone, phoneController, (v) => controller.phoneNumber.value = v,
+                         maxLength: _PosterCopyLimits.phone, helperText: 'Keep short (max ${_PosterCopyLimits.phone} characters).'),
                      SizedBox(height: 10.h),
                      
                      _buildCoursePointsSection(),
@@ -285,7 +323,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                    
                    // Title Field (for non-English, non-Music Festival, and non-Basketball themes)
                    if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme) ...[
-                     _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v),
+                     _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v,
+                         maxLength: _PosterCopyLimits.title, helperText: _PosterCopyLimits.titleGuidance),
                      SizedBox(height: 10.h),
                    ],
                    
@@ -303,19 +342,24 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                    
                    // Venue Field (Hidden for Tech Online mode, English theme, Music Festival theme, and Basketball theme)
                    if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme && (!isTechTheme || controller.mode.value == "Offline")) ...[
-                     _buildTextField("Venue", Icons.location_on, venueController, (v) => controller.venue.value = v),
+                     _buildTextField("Venue", Icons.location_on, venueController, (v) => controller.venue.value = v,
+                         maxLength: _PosterCopyLimits.venue, helperText: _PosterCopyLimits.venueGuidance),
                      SizedBox(height: 10.h),
                    ],
                    
                    // Description Field (for non-English themes)
                    if (!isEnglishTheme && !isBasketballTheme) ...[
-                     _buildTextField("Description (Optional)", Icons.description, descriptionController, (v) => controller.description.value = v, maxLines: 3),
+                     _buildTextField("Description (Optional)", Icons.description, descriptionController, (v) => controller.description.value = v,
+                         maxLines: 3,
+                         maxLength: _PosterCopyLimits.description,
+                         helperText: _PosterCopyLimits.descriptionGuidance),
                      SizedBox(height: 10.h),
                    ],
                    
                    // Trainer Name (Only for Tech Theme)
                    if (isTechTheme) ...[
-                     _buildTextField("Trainer Name (Optional)", Icons.person, trainerNameController, (v) => controller.trainerName.value = v),
+                     _buildTextField("Trainer Name (Optional)", Icons.person, trainerNameController, (v) => controller.trainerName.value = v,
+                         maxLength: _PosterCopyLimits.trainerName, helperText: _PosterCopyLimits.trainerGuidance),
                      SizedBox(height: 10.h),
                    ],
                    
@@ -512,18 +556,57 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     );
   }
 
-  Widget _buildTextField(String label, IconData icon, TextEditingController textController, Function(String) onChanged, {int maxLines = 1}) {
+  Widget _buildPosterCopyGuidanceBanner() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.text_fields_rounded, color: Colors.orange.shade800, size: 22),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Text(
+              'Posters use large text in fixed areas. Use the limits under each field — '
+              'about ${_PosterCopyLimits.title} characters for titles and ${_PosterCopyLimits.description} for descriptions — '
+              'so nothing runs past the design or overlaps other lines.',
+              style: TextStyle(fontSize: 12.sp, color: Colors.orange.shade900, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField(
+    String label,
+    IconData icon,
+    TextEditingController textController,
+    Function(String) onChanged, {
+    int maxLines = 1,
+    int? maxLength,
+    String? helperText,
+  }) {
     return TextField(
       controller: textController,
       onChanged: onChanged,
       maxLines: maxLines,
+      maxLength: maxLength,
       decoration: InputDecoration(
         labelText: label,
+        helperText: helperText,
+        helperMaxLines: 4,
+        helperStyle: TextStyle(fontSize: 11.sp, color: Colors.grey[700], height: 1.3),
         prefixIcon: Icon(icon, color: Colors.orange, size: 20),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.black12)),
         contentPadding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 15.h),
-        filled: true, 
-        fillColor: Colors.white
+        filled: true,
+        fillColor: Colors.white,
       ),
     );
   }

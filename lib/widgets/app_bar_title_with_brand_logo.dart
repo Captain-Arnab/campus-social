@@ -14,11 +14,15 @@ class AppBarTitleWithBrandLogo extends StatelessWidget {
   /// Logical logo square (before [.w]) for each mark.
   final double logoUnit;
 
+  /// Max lines for the title area (use 1 to avoid awkward wraps, e.g. "Notifications").
+  final int titleMaxLines;
+
   const AppBarTitleWithBrandLogo({
     super.key,
     required this.title,
     this.onPrimaryBackground = false,
-    this.logoUnit = 46,
+    this.logoUnit = 52,
+    this.titleMaxLines = 2,
   });
 
   @override
@@ -51,7 +55,7 @@ class AppBarTitleWithBrandLogo extends StatelessWidget {
         Expanded(
           child: DefaultTextStyle.merge(
             overflow: TextOverflow.ellipsis,
-            maxLines: 2,
+            maxLines: titleMaxLines,
             child: title,
           ),
         ),

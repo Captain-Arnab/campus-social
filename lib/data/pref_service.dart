@@ -6,6 +6,7 @@ class PrefService {
   static const String _userNameKey = "user_name";
   static const String _isLoggedInKey = "is_logged_in";
   static const String _isStudentKey = "is_student";
+  static const String _onboardingDoneKey = "onboarding_completed";
 
   static Future<void> saveUserSession(
     String userId,
@@ -21,9 +22,14 @@ class PrefService {
     await prefs.setBool(_isStudentKey, isStudent); 
   }
 
+  /// Clears login session only. Preserves onboarding and other non-session prefs.
   static Future<void> clearSession() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_userIdKey);
+    await prefs.remove(_userNameKey);
+    await prefs.remove(_isLoggedInKey);
+    await prefs.remove(_isStudentKey);
   }
 
   static Future<String?> getToken() async {
@@ -50,5 +56,15 @@ class PrefService {
   static Future<bool> getIsStudent() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_isStudentKey) ?? true;
+  }
+
+  static Future<bool> isOnboardingCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_onboardingDoneKey) ?? false;
+  }
+
+  static Future<void> setOnboardingCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_onboardingDoneKey, true);
   }
 }

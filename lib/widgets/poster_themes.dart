@@ -3,9 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'dart:io';
-import 'dart:math' as math;
 
 class PosterTheme {
+  /// Keeps dynamic poster copy inside layout; use for titles and body on fixed regions.
+  static Widget boundedText(
+    String text,
+    TextStyle style, {
+    int maxLines = 4,
+    TextAlign textAlign = TextAlign.start,
+  }) {
+    return Text(
+      text,
+      style: style,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      textAlign: textAlign,
+      softWrap: true,
+    );
+  }
+
   // --- BRAND COLORS ---
   static const Color gradBg = Color(0xFFEEDCDC);
   static const Color gradBlue = Color(0xFF084883);
@@ -155,15 +171,17 @@ static Widget graduationTheme({
                 ),
               ),
               child: Center(
-                child: Text(
+                child: boundedText(
                   "DANCE • LIVE MUSIC • DINNER",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800, 
+                  TextStyle(
+                    fontWeight: FontWeight.w800,
                     fontFamily: 'Times New Roman',
-                    fontSize: 14.sp, 
-                    color: gradBlue, 
-                    letterSpacing: 1.8
+                    fontSize: 14.sp,
+                    color: gradBlue,
+                    letterSpacing: 1.8,
                   ),
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
                 ),
               ),
             ),
@@ -422,9 +440,9 @@ static Widget graduationTheme({
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Title Line 1 (Orange)
-                  Text(
+                  boundedText(
                     _getTitleFirstWord(title),
-                    style: TextStyle(
+                    TextStyle(
                       fontFamily: 'Aerial',
                       fontSize: 30.sp,
                       fontWeight: FontWeight.w700,
@@ -432,11 +450,12 @@ static Widget graduationTheme({
                       height: 0.9,
                       letterSpacing: 1,
                     ),
+                    maxLines: 2,
                   ),
                   // Title Line 2 (White)
-                  Text(
+                  boundedText(
                     _getTitleRestWords(title),
-                    style: TextStyle(
+                    TextStyle(
                       fontFamily: 'Aerial',
                       fontSize: 25.sp,
                       fontWeight: FontWeight.w700,
@@ -444,6 +463,7 @@ static Widget graduationTheme({
                       height: 0.9,
                       letterSpacing: 1,
                     ),
+                    maxLines: 3,
                   ),
                 ],
               ),
@@ -463,14 +483,17 @@ static Widget graduationTheme({
                       color: Colors.cyanAccent,
                     ),
                     SizedBox(width: 8.w),
-                    Text(
-                      "LET'S TALK ABOUT",
-                      style: TextStyle(
-                        fontSize: 10.sp,
-                        fontFamily: 'Aerial',
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 1.2,
+                    Expanded(
+                      child: boundedText(
+                        "LET'S TALK ABOUT",
+                        TextStyle(
+                          fontSize: 10.sp,
+                          fontFamily: 'Aerial',
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 1.2,
+                        ),
+                        maxLines: 2,
                       ),
                     ),
                   ],
@@ -481,15 +504,18 @@ static Widget graduationTheme({
             Positioned(
               top: 112.h,
               right: 25.w,
-              child: Text(
+              left: 120.w,
+              child: boundedText(
                 "THE FUTURE",
-                style: TextStyle(
+                TextStyle(
                   fontSize: 10.sp,
                   fontFamily: 'Aerial',
                   fontWeight: FontWeight.w800,
                   color: Colors.white70,
                   letterSpacing: 1.5,
                 ),
+                maxLines: 1,
+                textAlign: TextAlign.right,
               ),
             ),
 
@@ -538,25 +564,29 @@ static Widget graduationTheme({
                     overflow: TextOverflow.ellipsis,
                   ),
                   // SizedBox(height: 4.h),
-                  Text(
+                  boundedText(
                     "LIVE $time",
-                    style: TextStyle(
+                    TextStyle(
                       fontSize: 16.sp,
                       fontFamily: 'RobotoSlab',
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                     ),
+                    maxLines: 2,
+                    textAlign: TextAlign.right,
                   ),
                   // SizedBox(height: 8.h),
                   // Mode
-                  Text(
+                  boundedText(
                     "MODE: ${mode.toUpperCase()}",
-                    style: TextStyle(
+                    TextStyle(
                       fontSize: 16.sp,
                       fontFamily: 'Aerial',
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                     ),
+                    maxLines: 2,
+                    textAlign: TextAlign.right,
                   ),
                 ],
               ),
@@ -593,42 +623,46 @@ static Widget graduationTheme({
                     ),
                     SizedBox(width: 12.w),
                     // Trainer Info
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                          decoration: BoxDecoration(
-                            color: techOrange,
-                            borderRadius: BorderRadius.circular(4.r),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                            decoration: BoxDecoration(
+                              color: techOrange,
+                              borderRadius: BorderRadius.circular(4.r),
+                            ),
+                            child: Text(
+                              "Trainer",
+                              style: TextStyle(
+                                fontSize: 10.sp,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
-                          child: Text(
-                            "Trainer",
-                            style: TextStyle(
-                              fontSize: 10.sp,
+                          SizedBox(height: 4.h),
+                          boundedText(
+                            trainerName,
+                            TextStyle(
+                              fontSize: 16.sp,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
                             ),
+                            maxLines: 2,
                           ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          trainerName,
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                          boundedText(
+                            "Speaker",
+                            TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white70,
+                            ),
+                            maxLines: 1,
                           ),
-                        ),
-                        Text(
-                          "Speaker",
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white70,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -807,15 +841,17 @@ static Widget englishTheme({
           Positioned(
             top: 40.h,
             left: 20.w,
-            child: Text(
+            right: 100.w,
+            child: boundedText(
               subtitle,
-              style: TextStyle(
+              TextStyle(
                 fontFamily: 'Cursive',
                 fontSize: 32.sp,
                 color: engBlue,
                 fontWeight: FontWeight.w400,
                 fontStyle: FontStyle.italic,
               ),
+              maxLines: 2,
             ),
           ),
           // Title (Bold Orange)
@@ -927,14 +963,15 @@ static Widget englishTheme({
                           ),
                         ),
                         Expanded(
-                          child: Text(
+                          child: boundedText(
                             point,
-                            style: TextStyle(
+                            TextStyle(
                               fontSize: 14.sp,
                               fontWeight: FontWeight.w600,
                               color: engBlue,
                               height: 1.3,
                             ),
+                            maxLines: 3,
                           ),
                         ),
                       ],
@@ -979,33 +1016,36 @@ static Widget englishTheme({
           Positioned(
             bottom: 5.h,
             left: 12.5.w,
+            right: 12.w,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                boundedText(
                   "www.gnuindia.org",
-                  style: TextStyle(
+                  TextStyle(
                     fontSize: 13.sp,
                     fontWeight: FontWeight.w700,
                     color: engBlue,
                   ),
+                  maxLines: 1,
                 ),
-                // SizedBox(height: 4.h),
-                Text(
+                boundedText(
                   "Admissions Helpline:",
-                  style: TextStyle(
+                  TextStyle(
                     fontSize: 11.sp,
                     fontWeight: FontWeight.w600,
                     color: engBlue,
                   ),
+                  maxLines: 1,
                 ),
-                Text(
+                boundedText(
                   phoneNumber,
-                  style: TextStyle(
+                  TextStyle(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w900,
                     color: engBlue,
                   ),
+                  maxLines: 2,
                 ),
               ],
             ),
@@ -1106,15 +1146,16 @@ static Widget englishTheme({
               top: 35.h,
               left: 82.w,
               right: logoImage != null ? 75.w : 50.w,
-              child: Text(
+              child: boundedText(
                 "GURU NANAK UNIVERSITY",
-                style: GoogleFonts.raleway(
+                GoogleFonts.raleway(
                   fontSize: 13.sp,
                   fontWeight: FontWeight.w300,
                   color: Colors.white,
                   letterSpacing: 0.05,
                 ),
-                maxLines: 1,
+                maxLines: 2,
+                textAlign: TextAlign.center,
               ),
             ),
 
@@ -1127,19 +1168,26 @@ static Widget englishTheme({
                 width: 400.w,   // HARD WIDTH (VERY IMPORTANT)
                 height: 150.h,  // HARD HEIGHT
                 child: Stack(
-                  clipBehavior: Clip.none,
+                  clipBehavior: Clip.hardEdge,
                   children: [
                     // MUSIC
                     Positioned(
                       top: -12.h,
                       left: 10.w,
-                      child: Text(
-                        title.split(' ').first.toUpperCase(),
-                        style: GoogleFonts.leagueSpartan(
-                          fontSize: 60.sp,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 0.05,
+                      right: 8.w,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          title.split(' ').first.toUpperCase(),
+                          style: GoogleFonts.leagueSpartan(
+                            fontSize: 60.sp,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 0.05,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
@@ -1149,14 +1197,16 @@ static Widget englishTheme({
                       Positioned(
                         top: 32.h,
                         left: 10.w,
-                        child: Text(
+                        right: 8.w,
+                        child: boundedText(
                           title.split(' ').skip(1).join(' ').toUpperCase(),
-                          style: GoogleFonts.leagueSpartan(
+                          GoogleFonts.leagueSpartan(
                             fontSize: 42.sp,
                             fontWeight: FontWeight.w700,
                             color: Colors.white.withOpacity(0.9),
                             letterSpacing: 1.5,
                           ),
+                          maxLines: 2,
                         ),
                       ),
                   ],
@@ -1236,9 +1286,9 @@ static Widget englishTheme({
                       overflow: TextOverflow.ellipsis,
                     ),
                     // SizedBox(height: 8.h),
-                    Text(
+                    boundedText(
                       "LOCATION : $location",
-                      style: GoogleFonts.nunito(
+                      GoogleFonts.nunito(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w900,
                         color: const Color(0xFF0D2847),
@@ -1446,14 +1496,15 @@ static Widget englishTheme({
             top: 55.h,
             left: 25.w,
             right: logoImage != null ? 80.w : 25.w,
-            child: Text(
+            child: boundedText(
               "GURU NANAK UNIVERSITY",
-              style: GoogleFonts.roboto(
+              GoogleFonts.roboto(
                 fontSize: 12.sp,
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
                 letterSpacing: 0.5,
               ),
+              maxLines: 2,
             ),
           ),
 
@@ -1465,26 +1516,28 @@ static Widget englishTheme({
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                boundedText(
                   title.split(' ').first.toUpperCase(),
-                  style: GoogleFonts.anton(
+                  GoogleFonts.anton(
                     fontSize: 54.sp,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     height: 1,
                     letterSpacing: 0.2,
                   ),
+                  maxLines: 2,
                 ),
                 if (title.split(' ').length > 1)
-                  Text(
+                  boundedText(
                     title.split(' ').skip(1).join(' ').toUpperCase(),
-                    style: GoogleFonts.anton(
+                    GoogleFonts.anton(
                       fontSize: 50.sp,
                       fontWeight: FontWeight.w900,
                       color: const Color.fromARGB(255, 241, 129, 88),
                       height: 1,
                       letterSpacing: 0.2,
                     ),
+                    maxLines: 2,
                   ),
               ],
             ),
@@ -1543,25 +1596,27 @@ static Widget englishTheme({
               // ),
               child: Column(
                 children: [
-                  Text(
+                  boundedText(
                     stadiumName.toUpperCase(),
-                    style: GoogleFonts.anton(
+                    GoogleFonts.anton(
                       fontSize: 20.sp,
                       fontWeight: FontWeight.w500,
                       color: Colors.white,
                       letterSpacing: 0.5,
                     ),
+                    maxLines: 2,
                     textAlign: TextAlign.center,
                   ),
                   // SizedBox(height: -10.h),
-                  Text(
+                  boundedText(
                     address,
-                    style: GoogleFonts.roboto(
+                    GoogleFonts.roboto(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
                       letterSpacing: -1,
                     ),
+                    maxLines: 3,
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -1605,26 +1660,31 @@ static Widget englishTheme({
           Positioned(
             bottom: 20.h,
             right: 20.w,
+            left: 140.w,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
+                boundedText(
                   "$startTime - $endTime",
-                  style: GoogleFonts.roboto(
+                  GoogleFonts.roboto(
                     fontSize: 20.sp,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     letterSpacing: -1.5,
                   ),
+                  maxLines: 2,
+                  textAlign: TextAlign.right,
                 ),
-                Text(
+                boundedText(
                   "www.gnuindia.org",
-                  style: GoogleFonts.roboto(
+                  GoogleFonts.roboto(
                     fontSize: 11.sp,
                     fontWeight: FontWeight.w400,
                     color: Colors.white,
                     letterSpacing: -0.1,
                   ),
+                  maxLines: 1,
+                  textAlign: TextAlign.right,
                 ),
               ],
             ),

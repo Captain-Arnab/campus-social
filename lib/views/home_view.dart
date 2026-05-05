@@ -666,13 +666,6 @@ class _ExploreTabState extends State<_ExploreTab> {
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             cacheExtent: 720,
             slivers: [
-          if (_adPosts.isNotEmpty)
-            SliverToBoxAdapter(
-              child: ColoredBox(
-                color: const Color(0xFFF8F9FD),
-                child: HomeAdCarousel(posts: _adPosts),
-              ),
-            ),
           // Header with gradient
           SliverToBoxAdapter(
             child: Container(
@@ -709,8 +702,8 @@ class _ExploreTabState extends State<_ExploreTab> {
                                   children: [
                                     _ExploreHeaderMark(
                                       child: AppBranding.defaultLogoBox(
-                                        width: 68.w,
-                                        height: 56.h,
+                                        width: 100.w,
+                                        height: 80.h,
                                         fit: BoxFit.contain,
                                         borderRadius: BorderRadius.circular(12),
                                       ),
@@ -750,6 +743,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                                  iconSize: 32,
                                   onPressed: () => Get.to(() => const NotificationsView(), transition: Transition.rightToLeft),
                                 ),
                                 if (unread > 0)
@@ -1184,6 +1178,18 @@ class _ExploreTabState extends State<_ExploreTab> {
                   ),
           ),
 
+          // Promotional / admissions carousel — after "Upcoming events" list (user scrolls past featured, live today, filters, then upcoming)
+          if (_adPosts.isNotEmpty)
+            SliverToBoxAdapter(
+              child: ColoredBox(
+                color: const Color(0xFFF8F9FD),
+                child: Padding(
+                  padding: EdgeInsets.only(top: 8.h, bottom: 4.h),
+                  child: HomeAdCarousel(posts: _adPosts),
+                ),
+              ),
+            ),
+
           if (!loading && catalog.isEmpty)
             SliverToBoxAdapter(
               child: Padding(
@@ -1559,7 +1565,7 @@ class _AllEventCard extends StatelessWidget {
                                           elevation: attending ? 0 : 2,
                                         ),
                                         child: Text(
-                                          attending ? "Joined" : "Join",
+                                          attending ? "Viewer" : "Join",
                                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                         ),
                                       );
@@ -2031,7 +2037,7 @@ class _MyEventsTab extends StatelessWidget {
             labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
             isScrollable: true,
             tabs: const [
-              Tab(text: "Attending"),
+              Tab(text: "Viewing"),
               Tab(text: "Hosting"),
               Tab(text: "I can edit"),
               Tab(text: "Volunteering"),
@@ -2125,7 +2131,7 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
       switch(widget.type) {
         case 'attending':
           eventsList = controller.attendingList;
-          emptyMessage = "You haven't joined any events yet";
+          emptyMessage = "You aren't viewing any events yet";
           emptyIcon = Icons.event_available;
           break;
         case 'hosted':
@@ -2685,7 +2691,7 @@ class _ProfileTab extends StatelessWidget {
                           _buildStatItem(
                             Icons.people_rounded, 
                             eventController.attendingList.length.toString(), 
-                            "Attending"
+                            "Viewing"
                           ),
                           _buildDivider(),
                           _buildStatItem(

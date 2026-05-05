@@ -7,7 +7,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'data/app_branding.dart';
-import 'views/splash_view.dart';
+import 'views/app_home_gate.dart';
 import 'services/notification_service.dart';
 
 /// Work that used to run in [main] before [runApp], which blocked the first
@@ -95,7 +95,7 @@ class MyApp extends StatelessWidget {
               },
             ),
           ),
-          home: const OnboardingView(),
+          home: const AppHomeGate(),
         );
       },
     );

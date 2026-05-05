@@ -46,6 +46,7 @@ class _OnboardingViewState extends State<OnboardingView> {
   }
 
   Future<void> _finishOnboarding() async {
+    await PrefService.setOnboardingCompleted();
     bool isLoggedIn = await PrefService.isLoggedIn();
     if (mounted) {
       Get.off(

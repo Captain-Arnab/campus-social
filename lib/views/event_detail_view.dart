@@ -8,6 +8,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 import '../base/constant.dart';
 import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
@@ -79,15 +80,19 @@ class _EventDetailViewState extends State<EventDetailView> {
     final full = await controller.fetchEventById(id);
     if (full != null && mounted) {
       setState(() => _event = full);
-      // Fetch winners from event_winners.php (winners may not be in events.php response)
+      // Merge winners: keep event payload if API returns empty list (avoid unlocking attendance by mistake).
+      List<dynamic> winners = [];
+      if (full['winners'] is List && (full['winners'] as List).isNotEmpty) {
+        winners = List<dynamic>.from(full['winners'] as List);
+      }
       final winRes = await ApiService.getWinnersByEventId(id);
       if (mounted && winRes.data is Map && winRes.data['status'] == 'success') {
         final data = winRes.data['data'];
-        final list = data is List ? data : (full['winners'] is List ? full['winners'] as List : <dynamic>[]);
-        setState(() => _winnersList = list);
-      } else if (full['winners'] is List && (full['winners'] as List).isNotEmpty) {
-        setState(() => _winnersList = full['winners'] as List);
+        if (data is List && data.isNotEmpty) {
+          winners = List<dynamic>.from(data);
+        }
       }
+      if (mounted) setState(() => _winnersList = winners);
     }
     if (mounted) setState(() => _loadingFull = false);
   }
@@ -381,6 +386,132 @@ class _EventDetailViewState extends State<EventDetailView> {
     );
   }
 
+  bool _eventAttendanceLocked() {
+    if (_event is! Map) return false;
+    final m = _event as Map;
+    final al = m['attendance_locked'];
+    if (al == true || al == 1 || al == '1') return true;
+    final w = m['winners'];
+    if (w is List && w.isNotEmpty) return true;
+    if (_winnersList.isNotEmpty) return true;
+    return false;
+  }
+
+  Future<void> _shareEvent(BuildContext context) async {
+    if (_event is! Map) return;
+    final m = Map<String, dynamic>.from((_event as Map).map((k, v) => MapEntry(k.toString(), v)));
+    var url = (m['share_url'] ?? '').toString().trim();
+    var text = (m['share_text'] ?? '').toString().trim();
+    final title = (m['title'] ?? 'Event').toString();
+    final id = m['id']?.toString() ?? '';
+    if (url.isEmpty) {
+      url = 'https://micampus.co.in/event?id=$id';
+    }
+    if (text.isEmpty) {
+      text = '$title — $url';
+    }
+    try {
+      await Share.share(text, subject: title);
+    } catch (e) {
+      debugPrint('Share failed: $e');
+      if (context.mounted) {
+        SweetAlertHelper.showError(context, 'Share', 'Could not open the share sheet.');
+      }
+    }
+  }
+
+  Future<void> _promptEditVolunteerRole(BuildContext context, Map<String, dynamic> row) async {
+    final uid = int.tryParse(row['user_id']?.toString() ?? '');
+    final eid = int.tryParse(_event['id']?.toString() ?? '');
+    final oid = int.tryParse(_event['organizer_id']?.toString() ?? '');
+    if (uid == null || eid == null || oid == null) return;
+    final c = TextEditingController(text: (row['role'] ?? '').toString());
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Volunteer role'),
+        content: TextField(
+          controller: c,
+          decoration: const InputDecoration(labelText: 'Role (max 100 characters)'),
+          maxLength: 100,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF5F15)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (go != true || !context.mounted) return;
+    final role = c.text.trim();
+    if (role.isEmpty) {
+      SweetAlertHelper.showError(context, 'Error', 'Role is required.');
+      return;
+    }
+    final r = await ApiService.eventOrganiserAction({
+      'action': 'update_volunteer_role',
+      'event_id': eid,
+      'organizer_id': oid,
+      'target_user_id': uid,
+      'role': role,
+    });
+    if (ApiService.responseDataMap(r.data)?['status'] == 'success') {
+      await _loadFullEvent();
+      if (context.mounted) SweetAlertHelper.showSuccess(context, 'Saved', 'Volunteer role updated.');
+    } else if (context.mounted) {
+      SweetAlertHelper.showError(context, 'Error', ApiService.responseErrorHint(r));
+    }
+  }
+
+  Future<void> _promptEditParticipantDepartment(BuildContext context, Map<String, dynamic> row) async {
+    final uid = int.tryParse(row['user_id']?.toString() ?? '');
+    final eid = int.tryParse(_event['id']?.toString() ?? '');
+    final oid = int.tryParse(_event['organizer_id']?.toString() ?? '');
+    if (uid == null || eid == null || oid == null) return;
+    final c = TextEditingController(text: (row['department_class'] ?? '').toString());
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Department / class'),
+        content: TextField(
+          controller: c,
+          decoration: const InputDecoration(labelText: 'Shown as participant role on the list'),
+          maxLength: 255,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF5F15)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (go != true || !context.mounted) return;
+    final dept = c.text.trim();
+    if (dept.isEmpty) {
+      SweetAlertHelper.showError(context, 'Error', 'Department or class is required.');
+      return;
+    }
+    final r = await ApiService.eventOrganiserAction({
+      'action': 'update_participant_department',
+      'event_id': eid,
+      'organizer_id': oid,
+      'target_user_id': uid,
+      'department_class': dept,
+    });
+    if (ApiService.responseDataMap(r.data)?['status'] == 'success') {
+      await _loadFullEvent();
+      if (context.mounted) SweetAlertHelper.showSuccess(context, 'Saved', 'Participant details updated.');
+    } else if (context.mounted) {
+      SweetAlertHelper.showError(context, 'Error', ApiService.responseErrorHint(r));
+    }
+  }
+
   void _showParticipateDialog(BuildContext context, {required bool userIsStudent}) {
     if (!_isApprovedEvent()) {
       final st = _eventStatus();
@@ -462,7 +593,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   ),
                   child: const Icon(Icons.share, color: Colors.black87),
                 ),
-                onPressed: () => SweetAlertHelper.showInfo(context, "Share", "Share feature coming soon!"),
+                onPressed: () => _shareEvent(context),
               ),
               Obx(() {
                 final eid = _event['id'].toString();
@@ -524,6 +655,8 @@ class _EventDetailViewState extends State<EventDetailView> {
                   Text(
                     _event['title'] ?? "Untitled Event",
                     style: TextStyle(fontSize: 28.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   
                   SizedBox(height: 24.h),
@@ -541,6 +674,9 @@ class _EventDetailViewState extends State<EventDetailView> {
                     "Venue",
                     _event['venue'] ?? "Venue TBD",
                   ),
+
+                  SizedBox(height: 16.h),
+                  _buildEngagementCountsStrip(),
                   
                   SizedBox(height: 24.h),
                   Divider(color: Colors.grey[300]),
@@ -554,7 +690,8 @@ class _EventDetailViewState extends State<EventDetailView> {
                   
                   Text(
                     _event['description'] ?? "No description available for this event.",
-                    style: TextStyle(fontSize: 15.sp, color: Colors.grey[700], height: 1.6),
+                    style: TextStyle(fontSize: 15.sp, color: Colors.grey[700], height: 1.55),
+                    softWrap: true,
                   ),
 
                   SizedBox(height: 24.h),
@@ -587,7 +724,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   ),
                   SizedBox(height: 8.h),
                   Text(
-                    "Volunteers and participants (with contact numbers)",
+                    "Volunteers and participants (with contact numbers). Organizers: use the edit icon to set volunteer role or participant department/class.",
                     style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
                   ),
                   SizedBox(height: 12.h),
@@ -605,25 +742,53 @@ class _EventDetailViewState extends State<EventDetailView> {
                         style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700),
                       ),
                     )
-                  else ...[
-                    if (volunteerList.isNotEmpty) ...[
-                      Text("Volunteers", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFFFF5F15))),
-                      SizedBox(height: 8.h),
-                      ...volunteerList.map<Widget>((v) {
-                        if (v is! Map) return const SizedBox.shrink();
-                        return _TeamMemberTile(map: v, defaultRoleLabel: 'Volunteer');
-                      }),
-                      SizedBox(height: 16.h),
-                    ],
-                    if (participantList.isNotEmpty) ...[
-                      Text("Participants", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFF2E7D32))),
-                      SizedBox(height: 8.h),
-                      ...participantList.map<Widget>((p) {
-                        if (p is! Map) return const SizedBox.shrink();
-                        return _TeamMemberTile(map: p, defaultRoleLabel: 'Participant');
-                      }),
-                    ],
-                  ],
+                  else
+                    FutureBuilder<bool>(
+                      future: _isEventOrganizerOnly(),
+                      builder: (context, orgSnap) {
+                        final org = orgSnap.data == true && _isApprovedEvent();
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (volunteerList.isNotEmpty) ...[
+                              Text("Volunteers", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFFFF5F15))),
+                              SizedBox(height: 8.h),
+                              ...volunteerList.map<Widget>((v) {
+                                if (v is! Map) return const SizedBox.shrink();
+                                return _TeamMemberTile(
+                                  map: v,
+                                  defaultRoleLabel: 'Volunteer',
+                                  onEditMeta: org
+                                      ? () => _promptEditVolunteerRole(
+                                            context,
+                                            Map<String, dynamic>.from(v.map((k, val) => MapEntry(k.toString(), val))),
+                                          )
+                                      : null,
+                                );
+                              }),
+                              SizedBox(height: 16.h),
+                            ],
+                            if (participantList.isNotEmpty) ...[
+                              Text("Participants", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFF2E7D32))),
+                              SizedBox(height: 8.h),
+                              ...participantList.map<Widget>((p) {
+                                if (p is! Map) return const SizedBox.shrink();
+                                return _TeamMemberTile(
+                                  map: p,
+                                  defaultRoleLabel: 'Participant',
+                                  onEditMeta: org
+                                      ? () => _promptEditParticipantDepartment(
+                                            context,
+                                            Map<String, dynamic>.from(p.map((k, val) => MapEntry(k.toString(), val))),
+                                          )
+                                      : null,
+                                );
+                              }),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
 
                   SizedBox(height: 24.h),
 
@@ -636,10 +801,11 @@ class _EventDetailViewState extends State<EventDetailView> {
                           padding: EdgeInsets.only(bottom: 24.h),
                           child: _OrganizerAttendancePanel(
                             key: ValueKey(
-                              'att_${_event['id']}_${volunteerList.length}_${participantList.length}',
+                              'att_${_event['id']}_${volunteerList.length}_${participantList.length}_${_eventAttendanceLocked()}',
                             ),
                             event: Map<String, dynamic>.from(_event as Map),
                             onSaved: _loadFullEvent,
+                            attendanceLocked: _eventAttendanceLocked(),
                           ),
                         );
                       },
@@ -1096,7 +1262,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                         SizedBox(width: 12.w),
                         Expanded(
                           child: Text(
-                            "Volunteer and participant registration is only for events organised by your own group. You can still join this event as an attendee.",
+                            "Volunteer and participant registration is only for events organised by your own group. You can still join this event as a viewer.",
                             style: TextStyle(
                               color: Colors.orange[800],
                               fontSize: 12.sp,
@@ -1146,7 +1312,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                               Icon(attending ? Icons.check : Icons.check_circle, size: 18),
                               SizedBox(height: 4.h),
                               Text(
-                                attending ? "Joined" : (blockAttend ? "Attend" : "Join"),
+                                attending ? "Viewer" : (blockAttend ? "Attend" : "Join"),
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                               ),
                             ],
@@ -1245,6 +1411,78 @@ class _EventDetailViewState extends State<EventDetailView> {
     child: const Center(child: Icon(Icons.event, size: 80, color: Colors.white)),
   );
 
+  Widget _buildEngagementCountsStrip() {
+    if (_event is! Map) return const SizedBox.shrink();
+    final m = _event as Map;
+    int n(dynamic x) {
+      if (x == null) return 0;
+      if (x is int) return x;
+      return int.tryParse(x.toString()) ?? 0;
+    }
+
+    final viewers = n(m['viewer_count'] ?? m['attendee_count']);
+    final vol = n(m['volunteer_count']);
+    final part = n(m['participant_count']);
+
+    Widget chip(IconData ic, String label, int count) {
+      return Expanded(
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 4.w),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(ic, size: 20, color: const Color(0xFFFF5F15)),
+              SizedBox(height: 6.h),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(
+                    fontSize: 11.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                    height: 1.1,
+                  ),
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                '$count',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        chip(Icons.visibility_outlined, 'Viewers', viewers),
+        SizedBox(width: 8.w),
+        chip(Icons.volunteer_activism, 'Volunteers', vol),
+        SizedBox(width: 8.w),
+        chip(Icons.groups_outlined, 'Participants', part),
+      ],
+    );
+  }
+
   Widget _buildInfoTile(IconData icon, String title, String value) {
     return Container(
       padding: EdgeInsets.all(16.w),
@@ -1283,8 +1521,9 @@ class _EventDetailViewState extends State<EventDetailView> {
 class _TeamMemberTile extends StatelessWidget {
   final Map<dynamic, dynamic> map;
   final String defaultRoleLabel;
+  final VoidCallback? onEditMeta;
 
-  const _TeamMemberTile({required this.map, required this.defaultRoleLabel});
+  const _TeamMemberTile({required this.map, required this.defaultRoleLabel, this.onEditMeta});
 
   @override
   Widget build(BuildContext context) {
@@ -1306,6 +1545,13 @@ class _TeamMemberTile extends StatelessWidget {
           '$role${phone.isNotEmpty ? ' · $phone' : ''}',
           style: TextStyle(fontSize: 13.sp, color: Colors.grey[700]),
         ),
+        trailing: onEditMeta == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                tooltip: 'Edit',
+                onPressed: onEditMeta,
+              ),
       ),
     );
   }
@@ -1320,8 +1566,14 @@ bool _rowMarkedAttended(Map<dynamic, dynamic> m) {
 class _OrganizerAttendancePanel extends StatefulWidget {
   final Map<String, dynamic> event;
   final VoidCallback onSaved;
+  final bool attendanceLocked;
 
-  const _OrganizerAttendancePanel({super.key, required this.event, required this.onSaved});
+  const _OrganizerAttendancePanel({
+    super.key,
+    required this.event,
+    required this.onSaved,
+    this.attendanceLocked = false,
+  });
 
   @override
   State<_OrganizerAttendancePanel> createState() => _OrganizerAttendancePanelState();
@@ -1366,7 +1618,8 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.event['id'] != widget.event['id'] ||
         oldWidget.event['volunteer_list'] != widget.event['volunteer_list'] ||
-        oldWidget.event['participant_list'] != widget.event['participant_list']) {
+        oldWidget.event['participant_list'] != widget.event['participant_list'] ||
+        oldWidget.attendanceLocked != widget.attendanceLocked) {
       _loadAttendanceFromEvent();
       setState(() {});
     }
@@ -1377,6 +1630,12 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
   }
 
   Future<void> _submit() async {
+    if (widget.attendanceLocked) {
+      if (mounted) {
+        SweetAlertHelper.showInfo(context, 'Locked', 'Attendance cannot be changed after winners are recorded.');
+      }
+      return;
+    }
     final eid = int.tryParse(widget.event['id'].toString());
     final oid = int.tryParse(widget.event['organizer_id'].toString());
     if (eid == null || oid == null) return;
@@ -1471,6 +1730,30 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
             'Check who was present for volunteers and participants.',
             style: TextStyle(fontSize: 12.sp, color: Colors.teal.shade900),
           ),
+          if (widget.attendanceLocked) ...[
+            SizedBox(height: 12.h),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(12.w),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.amber.shade700),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Text(
+                      'Attendance is locked: winners have been recorded for this event.',
+                      style: TextStyle(fontSize: 12.sp, color: Colors.amber.shade900, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           SizedBox(height: 16.h),
           if (volRows.isEmpty && partRows.isEmpty)
             Text('No volunteers or participants yet.', style: TextStyle(color: Colors.grey[700]))
@@ -1480,6 +1763,19 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
               ...volRows.map((m) {
                 final uid = int.tryParse(m['user_id'].toString());
                 if (uid == null) return const SizedBox.shrink();
+                if (widget.attendanceLocked) {
+                  final present = _rowMarkedAttended(m);
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(
+                      present ? Icons.check_circle : Icons.remove_circle_outline,
+                      color: present ? Colors.teal.shade700 : Colors.grey,
+                      size: 22,
+                    ),
+                    title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
+                    subtitle: Text((m['role'] ?? 'Volunteer').toString(), style: TextStyle(fontSize: 12.sp)),
+                  );
+                }
                 return CheckboxListTile(
                   dense: true,
                   value: _vol[uid] ?? false,
@@ -1495,6 +1791,19 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
               ...partRows.map((m) {
                 final uid = int.tryParse(m['user_id'].toString());
                 if (uid == null) return const SizedBox.shrink();
+                if (widget.attendanceLocked) {
+                  final present = _rowMarkedAttended(m);
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(
+                      present ? Icons.check_circle : Icons.remove_circle_outline,
+                      color: present ? Colors.teal.shade700 : Colors.grey,
+                      size: 22,
+                    ),
+                    title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
+                    subtitle: Text((m['role'] ?? m['department_class'] ?? 'Participant').toString(), style: TextStyle(fontSize: 12.sp)),
+                  );
+                }
                 return CheckboxListTile(
                   dense: true,
                   value: _part[uid] ?? false,
@@ -1504,20 +1813,22 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
                 );
               }),
             ],
-            SizedBox(height: 12.h),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal.shade700,
-                  foregroundColor: Colors.white,
+            if (!widget.attendanceLocked) ...[
+              SizedBox(height: 12.h),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: _saving
+                      ? SizedBox(width: 22.w, height: 22.h, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Save attendance'),
                 ),
-                child: _saving
-                    ? SizedBox(width: 22.w, height: 22.h, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Save attendance'),
               ),
-            ),
+            ],
           ],
         ],
       ),

@@ -76,8 +76,8 @@ class ApiService {
         queryParameters: {"action": "send_login_otp"},
         data: {
           "by_mobile": 1,
-          "identifier": identifier,
-          "email_or_phone": emailOrPhone,
+          "identifier": identifier.trim(),
+          "email_or_phone": emailOrPhone.trim(),
           "is_student": isStudent ? 1 : 0,
         },
       );
@@ -105,8 +105,8 @@ class ApiService {
   }) async {
     try {
       final Map<String, dynamic> body = {
-        "identifier": identifier,
-        "email_or_phone": emailOrPhone,
+        "identifier": identifier.trim(),
+        "email_or_phone": byMobile ? emailOrPhone.trim() : emailOrPhone.trim().toLowerCase(),
         "password": password,
         "is_student": isStudent ? 1 : 0,
         "by_mobile": byMobile ? 1 : 0,
@@ -148,12 +148,12 @@ class ApiService {
   }) async {
     try {
       final Map<String, dynamic> data = {
-        "full_name": name,
-        "email": email,
-        "phone": phone,
+        "full_name": name.trim(),
+        "email": email.trim().toLowerCase(),
+        "phone": phone.trim(),
         "password": password,
-        "bio": bio,
-        "interests": interests,
+        "bio": bio.trim(),
+        "interests": interests.trim(),
         "is_student": isStudent ? 1 : 0,
       };
       if (departmentClass != null && departmentClass.trim().isNotEmpty) {
@@ -162,9 +162,9 @@ class ApiService {
       
       // Add role-specific field
       if (isStudent) {
-        data["roll_number"] = rollNumber;
+        data["roll_number"] = (rollNumber ?? '').trim();
       } else {
-        data["emp_number"] = empNumber;
+        data["emp_number"] = (empNumber ?? '').trim();
       }
       
       final response = await _dio.post("users.php", 
@@ -186,9 +186,10 @@ class ApiService {
 
   static Future<Response> forgotPassword(String email) async {
     try {
+      final normalized = email.trim().toLowerCase();
       return await _dio.post("forgot_password.php", 
         queryParameters: {"action": "check_email"},
-        data: {"email": email}
+        data: {"email": normalized}
       );
     } on DioException catch (e) {
       return e.response ?? Response(
@@ -201,9 +202,10 @@ class ApiService {
 
   static Future<Response> resetPassword(String email, String newPassword) async {
     try {
+      final normalized = email.trim().toLowerCase();
       return await _dio.post("forgot_password.php",
         queryParameters: {"action": "reset"},
-        data: {"email": email, "password": newPassword}
+        data: {"email": normalized, "password": newPassword}
       );
     } on DioException catch (e) {
       return e.response ?? Response(
@@ -211,6 +213,42 @@ class ApiService {
         statusCode: 0,
         data: {'status': 'error', 'message': 'Network error: ${e.message}'}
       );
+    }
+  }
+
+  /// POST `users.php?action=switch_role` — student ↔ faculty (password + new roll/emp).
+  static Future<Response> switchUserRole({
+    required String userId,
+    required String password,
+    required int newIsStudent,
+    String? rollNumber,
+    String? empNumber,
+  }) async {
+    try {
+      final uid = int.tryParse(userId) ?? userId;
+      final body = <String, dynamic>{
+        'user_id': uid,
+        'password': password,
+        'new_is_student': newIsStudent,
+      };
+      if (newIsStudent == 1) {
+        body['roll_number'] = (rollNumber ?? '').trim();
+      } else {
+        body['emp_number'] = (empNumber ?? '').trim();
+      }
+      return await _dio.post(
+        'users.php',
+        queryParameters: const {'action': 'switch_role'},
+        data: body,
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'users.php'),
+            statusCode: 0,
+            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+          );
     }
   }
 

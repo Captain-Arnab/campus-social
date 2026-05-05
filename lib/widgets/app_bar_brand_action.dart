@@ -9,7 +9,8 @@ class AppBarBrandLogoAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = 40.w;
+    /// Slightly larger so GNU / MiCampus marks read clearly in app bar actions.
+    final s = 52.w;
     final br = BorderRadius.circular(8);
     return Padding(
       padding: EdgeInsetsDirectional.only(start: 4.w, top: 10, bottom: 10),

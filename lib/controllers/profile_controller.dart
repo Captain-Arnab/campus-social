@@ -66,6 +66,52 @@ class ProfileController extends GetxController {
     }
   }
 
+  /// Switch student ↔ faculty (`users.php?action=switch_role`). Updates session role on success.
+  Future<bool> switchAccountType({
+    required String password,
+    required bool becomeStudent,
+    String? rollNumber,
+    String? empNumber,
+  }) async {
+    final userId = await PrefService.getUserId();
+    final token = await PrefService.getToken();
+    if (userId == null || token == null || token.isEmpty) {
+      SweetAlertHelper.showError(Get.context, "Error", "Please log in again.");
+      return false;
+    }
+    isLoading.value = true;
+    try {
+      final r = await ApiService.switchUserRole(
+        userId: userId,
+        password: password,
+        newIsStudent: becomeStudent ? 1 : 0,
+        rollNumber: rollNumber,
+        empNumber: empNumber,
+      );
+      final data = r.data;
+      if (data is Map && data['status'] == 'success') {
+        final name = userData.value.fullName ?? 'User';
+        await PrefService.saveUserSession(userId, name, token, isStudent: becomeStudent);
+        await loadProfile();
+        SweetAlertHelper.showSuccess(
+          Get.context,
+          "Success",
+          data['message']?.toString() ?? "Account type updated.",
+        );
+        return true;
+      }
+      final msg = data is Map ? (data['message']?.toString() ?? "Could not switch role") : "Could not switch role";
+      SweetAlertHelper.showError(Get.context, "Error", msg);
+      return false;
+    } catch (e) {
+      debugPrint("switchAccountType: $e");
+      SweetAlertHelper.showError(Get.context, "Error", "Connection failed.");
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   Future<bool> updateProfile(String name, String bio, String interests, File? image, {String? departmentClass}) async {
     isLoading.value = true;
     try {

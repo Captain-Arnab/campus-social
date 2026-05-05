@@ -8,6 +8,10 @@ class ModelUser {
   String? interests; // Added for Interests section
   String? departmentClass;
   bool? isAdmin; // Admin can grant edit permissions, upload certificates
+  /// From API `is_student` (1 = student).
+  bool? isStudent;
+  String? rollNumber;
+  String? empNumber;
 
   ModelUser({
     this.id,
@@ -19,6 +23,9 @@ class ModelUser {
     this.interests,
     this.departmentClass,
     this.isAdmin,
+    this.isStudent,
+    this.rollNumber,
+    this.empNumber,
   });
 
   // Maps the JSON keys from your PHP API to Dart properties
@@ -33,6 +40,10 @@ class ModelUser {
     interests = json['interests'];
     departmentClass = json['department_class']?.toString();
     isAdmin = json['is_admin'] == 1 || json['is_admin'] == true;
+    final isStudRaw = json['is_student'];
+    isStudent = isStudRaw == 1 || isStudRaw == true || isStudRaw == '1';
+    rollNumber = json['roll_number']?.toString();
+    empNumber = json['emp_number']?.toString();
   }
 
   // Converts the object back to JSON for API requests like updateProfile
@@ -47,6 +58,11 @@ class ModelUser {
     data['interests'] = interests;
     data['department_class'] = departmentClass;
     data['is_admin'] = isAdmin;
+    if (isStudent != null) {
+      data['is_student'] = isStudent! ? 1 : 0;
+    }
+    data['roll_number'] = rollNumber;
+    data['emp_number'] = empNumber;
     return data;
   }
 }
