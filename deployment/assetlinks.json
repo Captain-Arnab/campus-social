@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "co.micampus.app",
+      "sha256_cert_fingerprints": [
+        "REPLACE_WITH_RELEASE_KEYSTORE_SHA256_HEX_NO_COLONS",
+        "REPLACE_WITH_PLAY_APP_SIGNING_SHA256_IF_USING_PLAY"
+      ]
+    }
+  }
+]

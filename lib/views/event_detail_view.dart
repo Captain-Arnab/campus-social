@@ -397,26 +397,41 @@ class _EventDetailViewState extends State<EventDetailView> {
     return false;
   }
 
-  Future<void> _shareEvent(BuildContext context) async {
+  Future<void> _shareEvent(BuildContext shareButtonContext) async {
     if (_event is! Map) return;
     final m = Map<String, dynamic>.from((_event as Map).map((k, v) => MapEntry(k.toString(), v)));
+    final idRaw = m['id'];
+    final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
+    if (id == null || id <= 0) {
+      if (shareButtonContext.mounted) {
+        SweetAlertHelper.showError(shareButtonContext, 'Share', 'This event has no valid ID yet.');
+      }
+      return;
+    }
     var url = (m['share_url'] ?? '').toString().trim();
     var text = (m['share_text'] ?? '').toString().trim();
     final title = (m['title'] ?? 'Event').toString();
-    final id = m['id']?.toString() ?? '';
     if (url.isEmpty) {
       url = 'https://micampus.co.in/event?id=$id';
     }
     if (text.isEmpty) {
-      text = '$title — $url';
+      text = '$title\n$url';
+    }
+    final appDeep = 'micampus://event?id=$id';
+    if (!text.contains('micampus://')) {
+      text = '$text\n\nOpen in MiCampus app: $appDeep';
+    }
+    Rect? origin;
+    final box = shareButtonContext.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      origin = box.localToGlobal(Offset.zero) & box.size;
     }
     try {
-      await Share.share(text, subject: title);
+      await Share.share(text, subject: title, sharePositionOrigin: origin);
     } catch (e) {
       debugPrint('Share failed: $e');
-      if (context.mounted) {
-        SweetAlertHelper.showError(context, 'Share', 'Could not open the share sheet.');
-      }
+      if (!shareButtonContext.mounted) return;
+      SweetAlertHelper.showError(shareButtonContext, 'Share', 'Could not open the share sheet.');
     }
   }
 
@@ -584,16 +599,18 @@ class _EventDetailViewState extends State<EventDetailView> {
             ),
             actions: [
               AppBarBrandLogoAction(),
-              IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    shape: BoxShape.circle,
+              Builder(
+                builder: (btnContext) => IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.share, color: Colors.black87),
                   ),
-                  child: const Icon(Icons.share, color: Colors.black87),
+                  onPressed: () => _shareEvent(btnContext),
                 ),
-                onPressed: () => _shareEvent(context),
               ),
               Obx(() {
                 final eid = _event['id'].toString();

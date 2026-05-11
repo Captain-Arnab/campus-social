@@ -24,6 +24,13 @@ class EventController extends GetxController {
   var editingList = <dynamic>[].obs;
   CancelToken? _eventsCancelToken;
 
+  /// Explore search box: mirrors typed text (drives dropdown visibility).
+  final exploreSearchQuery = ''.obs;
+  /// Server-side matches from `events.php?type=live&search=...` (same rules as PHP).
+  final exploreSearchResults = <dynamic>[].obs;
+  var exploreSearchLoading = false.obs;
+  CancelToken? _exploreSearchCancelToken;
+
   @override
   void onInit() {
     super.onInit();
@@ -37,6 +44,63 @@ class EventController extends GetxController {
       fetchParticipatingEvents();
       fetchEditingEvents();
     });
+  }
+
+  @override
+  void onClose() {
+    _eventsCancelToken?.cancel();
+    _exploreSearchCancelToken?.cancel();
+    super.onClose();
+  }
+
+  /// Clears Explore search dropdown state (search field text is owned by the widget).
+  void clearExploreSearch() {
+    _exploreSearchCancelToken?.cancel();
+    exploreSearchQuery.value = '';
+    exploreSearchResults.clear();
+    exploreSearchLoading.value = false;
+  }
+
+  /// GET live events with `search` query param (backend: title, description, venue, category, rules, organizer).
+  Future<void> fetchExploreLiveSearch(String rawQuery) async {
+    final q = rawQuery.trim();
+    if (q.isEmpty) {
+      clearExploreSearch();
+      return;
+    }
+    _exploreSearchCancelToken?.cancel('New search');
+    _exploreSearchCancelToken = CancelToken();
+    exploreSearchLoading.value = true;
+    try {
+      final response = await ApiService.getEvents(
+        search: q,
+        cancelToken: _exploreSearchCancelToken,
+      );
+      final body = response.data;
+      if (body is! Map) {
+        exploreSearchResults.clear();
+        return;
+      }
+      if (body['status']?.toString() != 'success') {
+        exploreSearchResults.clear();
+        return;
+      }
+      final data = body['data'];
+      if (data is List) {
+        exploreSearchResults
+          ..clear()
+          ..addAll(List<dynamic>.from(data));
+      } else {
+        exploreSearchResults.clear();
+      }
+    } catch (e) {
+      if (e is! DioException || !CancelToken.isCancel(e)) {
+        debugPrint('✗ Explore search error: $e');
+      }
+      exploreSearchResults.clear();
+    } finally {
+      exploreSearchLoading.value = false;
+    }
   }
 
   /// Loads the full live events list (no server-side category or search). Home applies filters locally.

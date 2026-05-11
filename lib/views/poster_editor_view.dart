@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -12,8 +13,19 @@ import '../widgets/poster_themes.dart';
 class _PosterCopyLimits {
   static const int title = 48;
   static const int description = 140;
-  static const int englishSubtitle = 36;
-  static const int englishTitle = 40;
+  static const int graduationTitle = 20;
+  static const int graduationDescription = 85;
+  static const int graduationVenue = 50;
+  static const int techTitle = 25;
+  static const int techDescription = 62;
+  static const int englishSubtitle = 15;
+  static const int englishTitle = 14;
+  static const int musicTitle = 14;
+  static const int musicLocation = 25;
+  static const int musicDescription = 30;
+  static const int basketballTitle = 22;
+  static const int basketballStadium = 18;
+  static const int basketballAddress = 26;
   static const int trainerName = 40;
   static const int venue = 56;
   static const int stadium = 48;
@@ -23,12 +35,30 @@ class _PosterCopyLimits {
 
   static String get titleGuidance =>
       'Headlines use very large type. Aim for about 6–8 short words (max $title characters) so nothing is cut off.';
+  static String get graduationTitleGuidance =>
+      'Graduation headline: max $graduationTitle characters so it fits the layout.';
+  static String get graduationDescriptionGuidance =>
+      'Optional. Max $graduationDescription characters on the poster.';
+  static String get graduationVenueGuidance =>
+      'Max $graduationVenue characters for the venue line.';
+  static String get techTitleGuidance =>
+      'Innovation & Technology headline: max $techTitle characters.';
+  static String get techDescriptionGuidance =>
+      'Max $techDescription characters; extra text is clipped on the poster.';
+  static String get techTaglineGuidance =>
+      'Right-column tagline (max ${PosterController.kTechTaglineMaxLength} characters, same length as the default phrase).';
   static String get descriptionGuidance =>
       'Optional. About 2–3 short lines (max $description characters). Extra text may be clipped on the poster.';
   static String get subtitleGuidance =>
-      'Short phrase only (max $englishSubtitle characters), e.g. “Spoken English”.';
+      'Spoken English subtitle: max $englishSubtitle characters.';
   static String get englishTitleGuidance =>
-      'Short banner text (max $englishTitle characters), e.g. “ONLINE COURSE”.';
+      'Banner title: max $englishTitle characters (e.g. ONLINE COURSE).';
+  static String get musicTitleGuidance => 'Music poster headline: max $musicTitle characters.';
+  static String get musicLocationGuidance => 'Location line: max $musicLocation characters.';
+  static String get musicDescriptionGuidance => 'Info box text: max $musicDescription characters.';
+  static String get basketballTitleGuidance => 'Event title: max $basketballTitle characters.';
+  static String get basketballStadiumGuidance => 'Stadium name: max $basketballStadium characters.';
+  static String get basketballAddressGuidance => 'Address: max $basketballAddress characters.';
   static String get trainerGuidance => 'Max $trainerName characters so it fits next to the photo.';
   static String get venueGuidance => 'Max $venue characters; long venue names may wrap or clip.';
   static String get stadiumGuidance => 'Max $stadium characters.';
@@ -59,6 +89,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
   late TextEditingController locationController;
   late TextEditingController stadiumNameController;
   late TextEditingController addressController;
+  late TextEditingController techTaglineController;
 
   @override
   void initState() {
@@ -80,6 +111,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     locationController = TextEditingController(text: controller.location.value);
     stadiumNameController = TextEditingController(text: controller.stadiumName.value);
     addressController = TextEditingController(text: controller.address.value);
+    techTaglineController = TextEditingController(text: controller.techTagline.value);
+    _clampAllPosterInputsToLimits(syncToRx: true);
   }
 
   void _initializeThemeData() {
@@ -121,6 +154,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     locationController.dispose();
     stadiumNameController.dispose();
     addressController.dispose();
+    techTaglineController.dispose();
     super.dispose();
   }
 
@@ -129,6 +163,67 @@ class _PosterEditorViewState extends State<PosterEditorView> {
   bool get isEnglishTheme => widget.themeIndex == 2;
   bool get isMusicFestivalTheme => widget.themeIndex == 3;
   bool get isBasketballTheme => widget.themeIndex == 4;
+
+  TimeOfDay? _parseTimeForPoster(String raw) => controller.tryParsePosterTimeLabel(raw);
+
+  /// Hard-clamp all poster text fields to theme max lengths (inputFormatters + maxLength also block typing).
+  void _clampAllPosterInputsToLimits({required bool syncToRx}) {
+    void clip(TextEditingController c, int max) {
+      if (c.text.length > max) {
+        c.text = c.text.substring(0, max);
+        c.selection = TextSelection.collapsed(offset: c.text.length);
+      }
+    }
+
+    if (isGraduationTheme) {
+      clip(titleController, _PosterCopyLimits.graduationTitle);
+      clip(venueController, _PosterCopyLimits.graduationVenue);
+      clip(descriptionController, _PosterCopyLimits.graduationDescription);
+      if (syncToRx) {
+        controller.title.value = titleController.text;
+        controller.venue.value = venueController.text;
+        controller.description.value = descriptionController.text;
+      }
+    } else if (isTechTheme) {
+      clip(techTaglineController, PosterController.kTechTaglineMaxLength);
+      clip(titleController, _PosterCopyLimits.techTitle);
+      clip(descriptionController, _PosterCopyLimits.techDescription);
+      clip(venueController, _PosterCopyLimits.venue);
+      if (syncToRx) {
+        controller.techTagline.value = techTaglineController.text;
+        controller.title.value = titleController.text;
+        controller.description.value = descriptionController.text;
+        controller.venue.value = venueController.text;
+      }
+    } else if (isEnglishTheme) {
+      clip(subtitleController, _PosterCopyLimits.englishSubtitle);
+      clip(titleController, _PosterCopyLimits.englishTitle);
+      clip(phoneController, _PosterCopyLimits.phone);
+      if (syncToRx) {
+        controller.subtitle.value = subtitleController.text;
+        controller.titleEnglish.value = titleController.text;
+        controller.phoneNumber.value = phoneController.text;
+      }
+    } else if (isMusicFestivalTheme) {
+      clip(titleController, _PosterCopyLimits.musicTitle);
+      clip(locationController, _PosterCopyLimits.musicLocation);
+      clip(descriptionController, _PosterCopyLimits.musicDescription);
+      if (syncToRx) {
+        controller.title.value = titleController.text;
+        controller.location.value = locationController.text;
+        controller.description.value = descriptionController.text;
+      }
+    } else if (isBasketballTheme) {
+      clip(titleController, _PosterCopyLimits.basketballTitle);
+      clip(stadiumNameController, _PosterCopyLimits.basketballStadium);
+      clip(addressController, _PosterCopyLimits.basketballAddress);
+      if (syncToRx) {
+        controller.title.value = titleController.text;
+        controller.stadiumName.value = stadiumNameController.text;
+        controller.address.value = addressController.text;
+      }
+    }
+  }
 
   String _inferCategory() {
     switch (widget.themeIndex) {
@@ -178,22 +273,34 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                         final modeVal = controller.mode.value;
                         final qrCode = controller.qrCodeImage.value;
                         
+                        final schedHost = controller.posterHostDateTimeBlockUppercase();
+                        final schedEnglish = controller.posterFullWhenCaption(
+                          controller.startTime.value,
+                          controller.endTime.value,
+                        );
+                        final schedMusic = controller.posterFullWhenCaption(
+                          controller.startTimings.value,
+                          controller.endTimings.value,
+                        );
+                        final schedBasket = controller.posterFullWhenCaption(
+                          controller.basketballStartTime.value,
+                          controller.basketballEndTime.value,
+                        );
                         switch (widget.themeIndex) {
                           case 0: return PosterTheme.graduationTheme(
-                            title: controller.title.value, 
-                            date: controller.posterDateRangeLine(), 
-                            venue: controller.venue.value, 
-                            time: controller.timeStr.value,
+                            title: controller.title.value,
+                            scheduleCaption: schedHost,
+                            venue: controller.venue.value,
                             description: desc,
                             image: img,
                             logoImage: logo,
                             qrCodeImage: qrCode,
                           );
                           case 1: return PosterTheme.techTheme(
-                            title: controller.title.value, 
-                            date: controller.posterDateRangeLine(), 
+                            title: controller.title.value,
+                            scheduleCaption: schedHost,
+                            techTagline: controller.techTagline.value,
                             venue: controller.venue.value,
-                            time: controller.timeStr.value,
                             mode: modeVal,
                             trainerName: trainerNm,
                             description: desc,
@@ -204,9 +311,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                           case 2: return PosterTheme.englishTheme(
                             title: controller.titleEnglish.value,
                             subtitle: controller.subtitle.value,
-                            courseDateLine: controller.posterDateRangeLine(),
-                            startTime: controller.startTime.value,
-                            endTime: controller.endTime.value,
+                            scheduleCaption: schedEnglish,
                             coursePoints: controller.coursePoints.toList(),
                             phoneNumber: controller.phoneNumber.value,
                             image: img,
@@ -218,6 +323,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                             location: controller.location.value,
                             startTime: controller.startTimings.value,
                             endTime: controller.endTimings.value,
+                            scheduleDetail: controller.posterSpansMultipleCalendarDays ? schedMusic : '',
                             description: desc,
                             image: img,
                             logoImage: logo,
@@ -230,6 +336,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                             date: controller.posterDateRangeLine(),
                             startTime: controller.basketballStartTime.value,
                             endTime: controller.basketballEndTime.value,
+                            scheduleDetail: controller.posterSpansMultipleCalendarDays ? schedBasket : '',
                             image: img,
                             logoImage: logo,
                           );
@@ -259,15 +366,15 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                    // Basketball Theme Fields
                    if (isBasketballTheme) ...[
                      _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v,
-                         maxLength: _PosterCopyLimits.title, helperText: _PosterCopyLimits.titleGuidance),
+                         maxLength: _PosterCopyLimits.basketballTitle, helperText: _PosterCopyLimits.basketballTitleGuidance),
                      SizedBox(height: 10.h),
                      
                      _buildTextField("Stadium Name", Icons.stadium, stadiumNameController, (v) => controller.stadiumName.value = v,
-                         maxLength: _PosterCopyLimits.stadium, helperText: _PosterCopyLimits.stadiumGuidance),
+                         maxLength: _PosterCopyLimits.basketballStadium, helperText: _PosterCopyLimits.basketballStadiumGuidance),
                      SizedBox(height: 10.h),
                      
                      _buildTextField("Address", Icons.location_on, addressController, (v) => controller.address.value = v,
-                         maxLength: _PosterCopyLimits.address, helperText: _PosterCopyLimits.addressGuidance),
+                         maxLength: _PosterCopyLimits.basketballAddress, helperText: _PosterCopyLimits.basketballAddressGuidance),
                      SizedBox(height: 10.h),
                      
                      Row(
@@ -283,11 +390,17 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                    // Music Festival Theme Fields
                    if (isMusicFestivalTheme) ...[
                      _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v,
-                         maxLength: _PosterCopyLimits.title, helperText: _PosterCopyLimits.titleGuidance),
+                         maxLength: _PosterCopyLimits.musicTitle, helperText: _PosterCopyLimits.musicTitleGuidance),
                      SizedBox(height: 10.h),
                      
                      _buildTextField("Location", Icons.location_on, locationController, (v) => controller.location.value = v,
-                         maxLength: _PosterCopyLimits.location, helperText: _PosterCopyLimits.locationGuidance),
+                         maxLength: _PosterCopyLimits.musicLocation, helperText: _PosterCopyLimits.musicLocationGuidance),
+                     SizedBox(height: 10.h),
+
+                     _buildTextField("Description (Optional)", Icons.description, descriptionController, (v) => controller.description.value = v,
+                         maxLines: 3,
+                         maxLength: _PosterCopyLimits.musicDescription,
+                         helperText: _PosterCopyLimits.musicDescriptionGuidance),
                      SizedBox(height: 10.h),
                      
                      Row(
@@ -320,35 +433,102 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                      _buildCoursePointsSection(),
                      SizedBox(height: 10.h),
                    ],
-                   
-                   // Title Field (for non-English, non-Music Festival, and non-Basketball themes)
-                   if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme) ...[
+
+                   // Graduation — strict field limits + From/To times
+                   if (isGraduationTheme) ...[
                      _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v,
-                         maxLength: _PosterCopyLimits.title, helperText: _PosterCopyLimits.titleGuidance),
+                         maxLength: _PosterCopyLimits.graduationTitle, helperText: _PosterCopyLimits.graduationTitleGuidance),
+                     SizedBox(height: 10.h),
+                     _buildTextField("Venue", Icons.location_on, venueController, (v) => controller.venue.value = v,
+                         maxLength: _PosterCopyLimits.graduationVenue, helperText: _PosterCopyLimits.graduationVenueGuidance),
+                     SizedBox(height: 10.h),
+                     Row(
+                       children: [
+                         Expanded(
+                           child: _buildPickerButton(
+                             "From",
+                             Icons.schedule,
+                             controller.hostSlotStart,
+                             () => controller.pickHostSlotStart(context),
+                           ),
+                         ),
+                         SizedBox(width: 10.w),
+                         Expanded(
+                           child: _buildPickerButton(
+                             "To",
+                             Icons.schedule,
+                             controller.hostSlotEnd,
+                             () => controller.pickHostSlotEnd(context),
+                           ),
+                         ),
+                       ],
+                     ),
+                     SizedBox(height: 10.h),
+                     _buildTextField("Description (Optional)", Icons.description, descriptionController, (v) => controller.description.value = v,
+                         maxLines: 3,
+                         maxLength: _PosterCopyLimits.graduationDescription,
+                         helperText: _PosterCopyLimits.graduationDescriptionGuidance),
                      SizedBox(height: 10.h),
                    ],
-                   
-                   // Time (dates use shared From / To above)
-                   if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme) ...[
-                     _buildPickerButton("Time", Icons.schedule, controller.timeStr, () => controller.pickTime(context)),
-                     SizedBox(height: 10.h),
-                   ],
-                   
-                   // Mode Selector (Only for Tech Theme)
+
+                   // Innovation & Technology — tagline, title, From/To times, mode, description, optional venue, trainer
                    if (isTechTheme) ...[
+                     _buildTextField(
+                       "Poster subtitle (e.g. Let's talk about the future)",
+                       Icons.short_text_rounded,
+                       techTaglineController,
+                       (v) => controller.techTagline.value = v,
+                       maxLength: PosterController.kTechTaglineMaxLength,
+                       helperText: _PosterCopyLimits.techTaglineGuidance,
+                     ),
+                     SizedBox(height: 10.h),
+                     _buildTextField("Event Title", Icons.title, titleController, (v) => controller.title.value = v,
+                         maxLength: _PosterCopyLimits.techTitle, helperText: _PosterCopyLimits.techTitleGuidance),
+                     SizedBox(height: 10.h),
+                     Row(
+                       children: [
+                         Expanded(
+                           child: _buildPickerButton(
+                             "From",
+                             Icons.schedule,
+                             controller.hostSlotStart,
+                             () => controller.pickHostSlotStart(context),
+                           ),
+                         ),
+                         SizedBox(width: 10.w),
+                         Expanded(
+                           child: _buildPickerButton(
+                             "To",
+                             Icons.schedule,
+                             controller.hostSlotEnd,
+                             () => controller.pickHostSlotEnd(context),
+                           ),
+                         ),
+                       ],
+                     ),
+                     SizedBox(height: 10.h),
                      _buildModeSelector(),
                      SizedBox(height: 10.h),
-                   ],
-                   
-                   // Venue Field (Hidden for Tech Online mode, English theme, Music Festival theme, and Basketball theme)
-                   if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme && (!isTechTheme || controller.mode.value == "Offline")) ...[
-                     _buildTextField("Venue", Icons.location_on, venueController, (v) => controller.venue.value = v,
-                         maxLength: _PosterCopyLimits.venue, helperText: _PosterCopyLimits.venueGuidance),
+                     _buildTextField("Description (Optional)", Icons.description, descriptionController, (v) => controller.description.value = v,
+                         maxLines: 3,
+                         maxLength: _PosterCopyLimits.techDescription,
+                         helperText: _PosterCopyLimits.techDescriptionGuidance),
                      SizedBox(height: 10.h),
+                     Obx(() {
+                       if (controller.mode.value != "Offline") return const SizedBox.shrink();
+                       return Column(
+                         crossAxisAlignment: CrossAxisAlignment.stretch,
+                         children: [
+                           _buildTextField("Venue", Icons.location_on, venueController, (v) => controller.venue.value = v,
+                               maxLength: _PosterCopyLimits.venue, helperText: _PosterCopyLimits.venueGuidance),
+                           SizedBox(height: 10.h),
+                         ],
+                       );
+                     }),
                    ],
                    
-                   // Description Field (for non-English themes)
-                   if (!isEnglishTheme && !isBasketballTheme) ...[
+                   // Description Field (Music Festival only — grad/tech/English use their own blocks)
+                   if (isMusicFestivalTheme) ...[
                      _buildTextField("Description (Optional)", Icons.description, descriptionController, (v) => controller.description.value = v,
                          maxLines: 3,
                          maxLength: _PosterCopyLimits.description,
@@ -456,15 +636,22 @@ class _PosterEditorViewState extends State<PosterEditorView> {
         child: SafeArea(
           child: Row(
             children: [
-              _buildMiniButton(Icons.picture_as_pdf, "PDF", () => controller.downloadPdf(_boundaryKey)),
+              _buildMiniButton(Icons.picture_as_pdf, "PDF", () {
+                _clampAllPosterInputsToLimits(syncToRx: true);
+                controller.downloadPdf(_boundaryKey);
+              }),
               SizedBox(width: 10.w),
-              _buildMiniButton(Icons.image, "JPG", () => controller.downloadImage(_boundaryKey)),
+              _buildMiniButton(Icons.image, "JPG", () {
+                _clampAllPosterInputsToLimits(syncToRx: true);
+                controller.downloadImage(_boundaryKey);
+              }),
               SizedBox(width: 10.w),
               
               Expanded(
                 child: ElevatedButton(
                   onPressed: _isProcessing ? null : () async {
                     setState(() => _isProcessing = true);
+                    _clampAllPosterInputsToLimits(syncToRx: true);
                     File? posterFile = await controller.saveForEvent(_boundaryKey);
                     setState(() => _isProcessing = false);
 
@@ -474,14 +661,20 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                         setState(() => _isProcessing = false);
                         return;
                       }
-                      if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme &&
+                      final startTimeRaw = _posterSaveStartTimeRaw();
+                      final endTimeRaw = _posterSaveEndTimeRaw();
+                      if (isGraduationTheme || isTechTheme) {
+                        if (_parseTimeForPoster(startTimeRaw) == null || _parseTimeForPoster(endTimeRaw) == null) {
+                          SweetAlertHelper.showError(context, "Required", "Please set valid start and end times.");
+                          setState(() => _isProcessing = false);
+                          return;
+                        }
+                      } else if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme &&
                           controller.timeStr.value.toUpperCase() == 'TIME') {
                         SweetAlertHelper.showError(context, "Required", "Please set the event time.");
                         setState(() => _isProcessing = false);
                         return;
                       }
-                      final startTimeRaw = _posterSaveStartTimeRaw();
-                      final endTimeRaw = _posterSaveEndTimeRaw();
                       final startIso = controller.posterEventStartDateTimeIso(startTimeRaw);
                       final endIso = controller.posterEventEndDateTimeIso(endTimeRaw);
                       if (endIso != null && startIso != null) {
@@ -557,6 +750,36 @@ class _PosterEditorViewState extends State<PosterEditorView> {
   }
 
   Widget _buildPosterCopyGuidanceBanner() {
+    final String msg;
+    if (isGraduationTheme) {
+      msg =
+          'Graduation poster: title max ${_PosterCopyLimits.graduationTitle} characters, '
+          'description max ${_PosterCopyLimits.graduationDescription}, venue max ${_PosterCopyLimits.graduationVenue}. '
+          'Times show as From / To on the card, like dates.';
+    } else if (isTechTheme) {
+      msg =
+          'Innovation & Technology poster: title max ${_PosterCopyLimits.techTitle} characters, '
+          'description max ${_PosterCopyLimits.techDescription}, '
+          'subtitle max ${PosterController.kTechTaglineMaxLength} characters. '
+          'Times show as From / To on the card, like dates.';
+    } else if (isEnglishTheme) {
+      msg =
+          'Spoken English poster: subtitle max ${_PosterCopyLimits.englishSubtitle} characters, '
+          'title max ${_PosterCopyLimits.englishTitle} characters.';
+    } else if (isMusicFestivalTheme) {
+      msg =
+          'Music festival poster: title max ${_PosterCopyLimits.musicTitle} characters, '
+          'location max ${_PosterCopyLimits.musicLocation}, description max ${_PosterCopyLimits.musicDescription}.';
+    } else if (isBasketballTheme) {
+      msg =
+          'Basketball poster: title max ${_PosterCopyLimits.basketballTitle} characters, '
+          'stadium max ${_PosterCopyLimits.basketballStadium}, address max ${_PosterCopyLimits.basketballAddress}.';
+    } else {
+      msg =
+          'Posters use large text in fixed areas. Use the limits under each field — '
+          'about ${_PosterCopyLimits.title} characters for titles and ${_PosterCopyLimits.description} for descriptions — '
+          'so nothing runs past the design or overlaps other lines.';
+    }
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(12.w),
@@ -572,9 +795,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              'Posters use large text in fixed areas. Use the limits under each field — '
-              'about ${_PosterCopyLimits.title} characters for titles and ${_PosterCopyLimits.description} for descriptions — '
-              'so nothing runs past the design or overlaps other lines.',
+              msg,
               style: TextStyle(fontSize: 12.sp, color: Colors.orange.shade900, height: 1.35),
             ),
           ),
@@ -597,6 +818,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
       onChanged: onChanged,
       maxLines: maxLines,
       maxLength: maxLength,
+      maxLengthEnforcement: MaxLengthEnforcement.enforced,
+      inputFormatters: maxLength != null ? [LengthLimitingTextInputFormatter(maxLength)] : null,
       decoration: InputDecoration(
         labelText: label,
         helperText: helperText,
@@ -687,6 +910,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     if (isEnglishTheme) return controller.startTime.value;
     if (isMusicFestivalTheme) return controller.startTimings.value;
     if (isBasketballTheme) return controller.basketballStartTime.value;
+    if (isGraduationTheme || isTechTheme) return controller.hostSlotStart.value;
     return controller.timeStr.value;
   }
 
@@ -694,6 +918,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     if (isEnglishTheme) return controller.endTime.value;
     if (isMusicFestivalTheme) return controller.endTimings.value;
     if (isBasketballTheme) return controller.basketballEndTime.value;
+    if (isGraduationTheme || isTechTheme) return controller.hostSlotEnd.value;
     return controller.timeStr.value;
   }
 

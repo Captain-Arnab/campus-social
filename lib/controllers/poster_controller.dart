@@ -19,11 +19,18 @@ class PosterController extends GetxController {
   var venue = "Campus Venue, Main Hall".obs;
   var dateStr = "DATE".obs;
   var timeStr = "TIME".obs;
+  /// Start / end clock for graduation & tech posters (paired with poster start/end dates).
+  var hostSlotStart = "9:00 AM".obs;
+  var hostSlotEnd = "5:00 PM".obs;
   var description = "Join us for an amazing event!".obs;
   
   // Tech template specific fields
   var mode = "Online".obs; // Online or Offline
   var trainerName = "".obs;
+  /// Right-column tagline on Innovation & Technology poster (max length = [kDefaultTechTagline]).
+  static const String kDefaultTechTagline = "Let's talk about the future";
+  static int get kTechTaglineMaxLength => kDefaultTechTagline.length;
+  var techTagline = kDefaultTechTagline.obs;
 
   // English template specific fields
   var titleEnglish = "Online Course".obs;
@@ -43,7 +50,7 @@ class PosterController extends GetxController {
 
   // Basketball specific fields
   var stadiumName = "Brocelle Stadium".obs;
-  var address = "123 Anywhere St., Any City".obs;
+  var address = "123 Anywhere St, Any City".obs;
   var basketballStartTime = "2 PM".obs;
   var basketballEndTime = "5 PM".obs;
 
@@ -71,6 +78,8 @@ class PosterController extends GetxController {
     description.value = "Class of 2025";
     dateStr.value = "DATE";
     timeStr.value = "TIME";
+    hostSlotStart.value = "9:00 AM";
+    hostSlotEnd.value = "5:00 PM";
     venue.value = "Campus Venue, Main Hall";
     _initPosterDates();
   }
@@ -94,10 +103,13 @@ class PosterController extends GetxController {
   void initializeTechData() {
     title.value = "Innovation & Technology";
     description.value = "Guru Nanak University session of Innovation & Technology";
+    techTagline.value = kDefaultTechTagline;
     trainerName.value = "Ram Sett";
     mode.value = "Online";
     dateStr.value = "DATE";
     timeStr.value = "TIME";
+    hostSlotStart.value = "9:00 AM";
+    hostSlotEnd.value = "5:00 PM";
     venue.value = "Campus Venue, Main Hall";
     _initPosterDates();
   }
@@ -156,7 +168,8 @@ class PosterController extends GetxController {
   // --- INITIALIZE SAMPLE DATA FOR MUSIC FESTIVAL THEME ---
   void initializeMusicFestivalData() {
     title.value = "Music Festival";
-    description.value = "Join us for an amazing event!";
+    // Caps match poster editor (music description max 30 chars).
+    description.value = "Live music, food & friends!";
     location.value = "Handover and Tyke Stadium";
     startTimings.value = "10 AM";
     endTimings.value = "10 PM";
@@ -183,7 +196,8 @@ class PosterController extends GetxController {
   void initializeBasketballData() {
     title.value = "Basketball Tournament";
     stadiumName.value = "Brocelle Stadium";
-    address.value = "123 Anywhere St., Any City";
+    // Max 26 chars for address line on basketball poster.
+    address.value = "123 Anywhere St, Any City";
     dateStr.value = "DATE";
     basketballStartTime.value = "2 PM";
     basketballEndTime.value = "5 PM";
@@ -255,6 +269,97 @@ class PosterController extends GetxController {
     if (startDay == endDay) return from;
     return "$from — ${fmt.format(e)}";
   }
+
+  /// `start — end` clock labels for graduation / tech footers.
+  String posterHostTimeRangeLabel() {
+    final a = hostSlotStart.value.trim();
+    final b = hostSlotEnd.value.trim();
+    if (a.isEmpty && b.isEmpty) return "TIME";
+    if (b.isEmpty || a == b) return a.isEmpty ? b : a;
+    return "$a — $b";
+  }
+
+  /// Date line + explicit **From:** / **To:** times for graduation & tech posters (uppercase for card).
+  String posterHostDateTimeBlockUppercase() {
+    final dateLine = posterDateRangeLine();
+    final a = hostSlotStart.value.trim();
+    final b = hostSlotEnd.value.trim();
+    final fromT = a.isEmpty ? '—' : a;
+    final toT = b.isEmpty ? '—' : b;
+    return '${dateLine.toUpperCase()}\nFROM: ${fromT.toUpperCase()}\nTO: ${toT.toUpperCase()}';
+  }
+
+  /// One readable line: first day + start time through last day + end time when the run spans multiple days.
+  String posterFullWhenCaption(String startTimeLabel, String endTimeLabel) {
+    final s = posterStartDate.value;
+    if (s == null) return "Select start date";
+    final fmt = DateFormat('dd MMM yyyy');
+    final from = fmt.format(s);
+    final st = startTimeLabel.trim();
+    final et = endTimeLabel.trim();
+    final e = posterEndDate.value;
+    if (e == null) {
+      if (st.isEmpty && et.isEmpty) return from;
+      if (et.isEmpty || st == et) return "$from · $st";
+      return "$from · $st — $et";
+    }
+    final s0 = DateTime(s.year, s.month, s.day);
+    final e0 = DateTime(e.year, e.month, e.day);
+    if (e0.isBefore(s0)) {
+      if (st.isEmpty && et.isEmpty) return from;
+      if (et.isEmpty || st == et) return "$from · $st";
+      return "$from · $st — $et";
+    }
+    if (s0 == e0) {
+      if (st.isEmpty && et.isEmpty) return from;
+      if (et.isEmpty || st == et) return "$from · $st";
+      return "$from · $st — $et";
+    }
+    if (st.isEmpty && et.isEmpty) return "$from — ${fmt.format(e)}";
+    if (st.isEmpty) return "$from — ${fmt.format(e)} · $et";
+    if (et.isEmpty) return "$from · $st — ${fmt.format(e)}";
+    return "$from · $st — ${fmt.format(e)} · $et";
+  }
+
+  bool get posterSpansMultipleCalendarDays {
+    final s = posterStartDate.value;
+    final e = posterEndDate.value;
+    if (s == null || e == null) return false;
+    return DateTime(s.year, s.month, s.day) != DateTime(e.year, e.month, e.day);
+  }
+
+  Future<void> pickHostSlotStart(BuildContext context) async {
+    TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _parseLooseTime(hostSlotStart.value) ?? const TimeOfDay(hour: 9, minute: 0),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFFFF5F15))),
+        child: child!,
+      ),
+    );
+    if (picked != null && context.mounted) {
+      hostSlotStart.value = picked.format(context);
+      timeStr.value = posterHostTimeRangeLabel();
+    }
+  }
+
+  Future<void> pickHostSlotEnd(BuildContext context) async {
+    TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _parseLooseTime(hostSlotEnd.value) ?? const TimeOfDay(hour: 17, minute: 0),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFFFF5F15))),
+        child: child!,
+      ),
+    );
+    if (picked != null && context.mounted) {
+      hostSlotEnd.value = picked.format(context);
+      timeStr.value = posterHostTimeRangeLabel();
+    }
+  }
+
+  /// Used by poster editor validation (same rules as event ISO prefill).
+  TimeOfDay? tryParsePosterTimeLabel(String raw) => _parseLooseTime(raw);
 
   TimeOfDay? _parseLooseTime(String raw) {
     final cleaned = raw.trim().toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
@@ -418,9 +523,13 @@ class PosterController extends GetxController {
     if (picked != null) {
       String day = picked.day.toString();
       String suffix = "TH";
-      if (day.endsWith("1") && day != "11") suffix = "ST";
-      else if (day.endsWith("2") && day != "12") suffix = "ND";
-      else if (day.endsWith("3") && day != "13") suffix = "RD";
+      if (day.endsWith("1") && day != "11") {
+        suffix = "ST";
+      } else if (day.endsWith("2") && day != "12") {
+        suffix = "ND";
+      } else if (day.endsWith("3") && day != "13") {
+        suffix = "RD";
+      }
       dateStr.value = "$day$suffix ${DateFormat('MMM yyyy').format(picked).toUpperCase()}";
     }
   }
@@ -450,7 +559,9 @@ class PosterController extends GetxController {
         child: child!,
       ),
     );
-    if (picked != null) timeStr.value = picked.format(context);
+    if (picked != null && context.mounted) {
+      timeStr.value = picked.format(context);
+    }
   }
 
   // --- BASKETBALL START TIME PICKER ---
@@ -503,7 +614,9 @@ class PosterController extends GetxController {
         child: child!,
       ),
     );
-    if (picked != null) startTimings.value = picked.format(context);
+    if (picked != null && context.mounted) {
+      startTimings.value = picked.format(context);
+    }
   }
 
   // --- END TIME PICKER ---
@@ -518,7 +631,9 @@ class PosterController extends GetxController {
         child: child!,
       ),
     );
-    if (picked != null) endTimings.value = picked.format(context);
+    if (picked != null && context.mounted) {
+      endTimings.value = picked.format(context);
+    }
   }
 
   // --- SAVE FOR EVENT ---

@@ -8,6 +8,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'data/app_branding.dart';
 import 'views/app_home_gate.dart';
+import 'services/deep_link_service.dart';
 import 'services/notification_service.dart';
 
 /// Work that used to run in [main] before [runApp], which blocked the first
@@ -47,6 +48,7 @@ void main() async {
   // behavior as before, but the raster thread gets a chance to show UI first.
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(_startupDeferredServices());
+    unawaited(DeepLinkService.instance.init());
   });
 }
 

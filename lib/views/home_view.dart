@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:art_sweetalert_new/art_sweetalert_new.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/event_controller.dart';
+import '../services/deep_link_service.dart';
 import '../controllers/inbox_notification_controller.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/certificate_helper.dart';
@@ -87,6 +88,9 @@ class _HomeViewState extends State<HomeView> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialBottomTabIndex.clamp(0, 2);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DeepLinkService.instance.tryNavigateToPendingEvent();
+    });
   }
 
   @override
@@ -343,7 +347,7 @@ class _ExploreTabState extends State<_ExploreTab> {
   List<MapEntry<dynamic, List<dynamic>>> _winnersSwiperData = [];
   bool _winnersLoading = false;
   List<Map<String, dynamic>> _adPosts = [];
-  Timer? _searchDebounce;
+  Timer? _exploreSearchDebounce;
 
   Future<void> _refreshData() async {
     await Future.wait([
@@ -426,7 +430,7 @@ class _ExploreTabState extends State<_ExploreTab> {
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
+    _exploreSearchDebounce?.cancel();
     searchCtrl.dispose();
     super.dispose();
   }
@@ -473,6 +477,7 @@ class _ExploreTabState extends State<_ExploreTab> {
     return ed.isAfter(today);
   }
 
+  /// Today or later (used when the search box is non-empty so same-day events are not excluded).
   bool _categoryMatch(dynamic e, String selected) {
     if (selected == "All") return true;
     final c = (e is Map ? e['category'] : null)?.toString() ?? '';
@@ -562,17 +567,6 @@ class _ExploreTabState extends State<_ExploreTab> {
     }
   }
 
-  bool _searchMatchExplore(dynamic e, String q) {
-    final t = q.trim();
-    if (t.isEmpty) return true;
-    if (e is! Map) return false;
-    final low = t.toLowerCase();
-    final title = (e['title'] ?? '').toString().toLowerCase();
-    final venue = (e['venue'] ?? '').toString().toLowerCase();
-    final org = (e['organizer_name'] ?? '').toString().toLowerCase();
-    return title.contains(low) || venue.contains(low) || org.contains(low);
-  }
-
   Widget _exploreCategoryChips({
     required String selected,
     required ValueChanged<String> onSelect,
@@ -619,10 +613,126 @@ class _ExploreTabState extends State<_ExploreTab> {
   }
 
   void _onSearchChanged(String val) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+    controller.exploreSearchQuery.value = val;
+    if (val.trim().isEmpty) {
+      _exploreSearchDebounce?.cancel();
+      controller.clearExploreSearch();
+      return;
+    }
+    _exploreSearchDebounce?.cancel();
+    _exploreSearchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
-      setState(() {});
+      controller.fetchExploreLiveSearch(val);
+    });
+  }
+
+  Map<String, dynamic> _eventMapForDetail(dynamic e) {
+    if (e is Map<String, dynamic>) return e;
+    if (e is Map) {
+      return Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v)));
+    }
+    return <String, dynamic>{};
+  }
+
+  String _exploreSearchResultSubtitle(dynamic e) {
+    if (e is! Map) return '';
+    final c = (e['category'] ?? '').toString();
+    final v = (e['venue'] ?? '').toString();
+    final d = (e['event_date'] ?? '').toString();
+    final org = (e['organizer_name'] ?? '').toString();
+    final parts = <String>[];
+    if (c.isNotEmpty) parts.add(c);
+    if (d.isNotEmpty) {
+      final parsed = DateTime.tryParse(d.replaceAll(' ', 'T'));
+      parts.add(parsed != null ? DateFormat.yMMMd().format(parsed) : d);
+    }
+    if (v.isNotEmpty) parts.add(v);
+    if (org.isNotEmpty) parts.add(org);
+    return parts.join(' · ');
+  }
+
+  Widget _buildExploreSearchResultsPanel() {
+    return Obx(() {
+      final q = controller.exploreSearchQuery.value.trim();
+      if (q.isEmpty) return const SizedBox.shrink();
+
+      final loading = controller.exploreSearchLoading.value;
+      final items = controller.exploreSearchResults;
+
+      return Padding(
+        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 4.h),
+        child: Material(
+          elevation: 14,
+          shadowColor: Colors.black26,
+          borderRadius: BorderRadius.circular(14),
+          color: Colors.white,
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: 280.h),
+            child: loading && items.isEmpty
+                ? Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24.h),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(color: Color(0xFFFF5F15), strokeWidth: 2.5),
+                      ),
+                    ),
+                  )
+                : items.isEmpty
+                    ? Padding(
+                        padding: EdgeInsets.all(16.w),
+                        child: Text(
+                          'No events match your search. Try different words.',
+                          style: TextStyle(fontSize: 14.sp, color: Colors.grey[700], height: 1.35),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.symmetric(vertical: 6.h),
+                        physics: const ClampingScrollPhysics(),
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[200]),
+                        itemBuilder: (context, i) {
+                          final e = items[i];
+                          final title = (e is Map ? e['title'] : null)?.toString() ?? 'Event';
+                          final subtitle = _exploreSearchResultSubtitle(e);
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 2.h),
+                            leading: CircleAvatar(
+                              backgroundColor: const Color(0xFFFF5F15).withOpacity(0.15),
+                              radius: 20,
+                              child: const Icon(Icons.event_rounded, color: Color(0xFFFF5F15), size: 22),
+                            ),
+                            title: Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp, color: Colors.black87),
+                            ),
+                            subtitle: subtitle.isEmpty
+                                ? null
+                                : Text(
+                                    subtitle,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 12.sp, color: Colors.grey[600], height: 1.25),
+                                  ),
+                            onTap: () {
+                              FocusScope.of(context).unfocus();
+                              final map = _eventMapForDetail(e);
+                              searchCtrl.clear();
+                              controller.clearExploreSearch();
+                              Get.to(() => EventDetailView(event: map), transition: Transition.rightToLeft);
+                            },
+                          );
+                        },
+                      ),
+          ),
+        ),
+      );
     });
   }
 
@@ -652,14 +762,12 @@ class _ExploreTabState extends State<_ExploreTab> {
       child: Obx(() {
         final catalog = List<dynamic>.from(controller.liveEventCatalog);
         final loading = controller.isLoading.value;
-        final searchQ = searchCtrl.text;
         final liveTodayFiltered =
             catalog.where(_isLiveTodayEvent).where((e) => _categoryMatch(e, liveTodayCategory)).toList();
         final upcomingFiltered = catalog
             .where(_isUpcomingFutureDay)
             .where((e) => _categoryMatch(e, browseCategory))
             .where(_browseRangeMatch)
-            .where((e) => _searchMatchExplore(e, searchQ))
             .toList();
         return SafeArea(
           child: CustomScrollView(
@@ -786,9 +894,23 @@ class _ExploreTabState extends State<_ExploreTab> {
                       controller: searchCtrl,
                       style: const TextStyle(color: Colors.black87),
                       decoration: InputDecoration(
-                        hintText: "Search upcoming events (not featured)",
+                        hintText: "Search by name, venue, category, organizer…",
                         hintStyle: TextStyle(color: Colors.grey[600]),
                         prefixIcon: Icon(Icons.search_rounded, color: Colors.grey[600]),
+                        suffixIcon: Obx(() {
+                          if (controller.exploreSearchQuery.value.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return IconButton(
+                            tooltip: 'Clear',
+                            icon: Icon(Icons.close_rounded, color: Colors.grey[700], size: 22),
+                            onPressed: () {
+                              searchCtrl.clear();
+                              _exploreSearchDebounce?.cancel();
+                              controller.clearExploreSearch();
+                            },
+                          );
+                        }),
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
@@ -803,6 +925,11 @@ class _ExploreTabState extends State<_ExploreTab> {
                 ],
               ),
             ),
+          ),
+
+          // Server-backed search results (events.php ?search=) — above reminders
+          SliverToBoxAdapter(
+            child: _buildExploreSearchResultsPanel(),
           ),
 
           // Upcoming reminders (notification dates)
@@ -1098,7 +1225,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20.w),
                         child: Text(
-                          "Category, date range, and search apply to the upcoming list below.",
+                          "The search box finds events on the server. Category and date filters apply to the upcoming list below.",
                           style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
                         ),
                       ),

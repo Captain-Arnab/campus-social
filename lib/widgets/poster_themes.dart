@@ -1,6 +1,5 @@
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'dart:io';
 
@@ -40,10 +39,10 @@ class PosterTheme {
   // 1. GRADUATION PARTY - UNCHANGED
   // ==========================================================
 static Widget graduationTheme({
-  required String title, 
-  required String date, 
-  required String venue, 
-  required String time,
+  required String title,
+  /// Dates + start/end times (e.g. first day + start through last day + end).
+  required String scheduleCaption,
+  required String venue,
   String description = "",
   File? image,
   File? logoImage,
@@ -143,16 +142,16 @@ static Widget graduationTheme({
               right: 30.w,
               child: Container(
                 padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 0.w),
-                child: Text(
+                child: boundedText(
                   description,
-                  style: TextStyle(
-                    fontSize: 25.sp, 
-                    color: gradBlue, 
-                    fontFamily: 'Robotoslab', 
+                  TextStyle(
+                    fontSize: 16.sp,
+                    color: gradBlue,
+                    fontFamily: 'Robotoslab',
                     fontWeight: FontWeight.w700,
+                    height: 1.25,
                   ),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 4,
                 ),
               ),
             ),
@@ -203,11 +202,7 @@ static Widget graduationTheme({
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Date (from — optional to)
-                          _infoRowMultilineDate(Icons.calendar_today, date.toUpperCase()),
-                          SizedBox(height: 10.h),
-                          // Time
-                          _infoRow(Icons.access_time, time),
+                          _infoRowMultilineDate(Icons.event, scheduleCaption.toUpperCase(), maxLines: 5),
                           SizedBox(height: 10.h),
                           // Venue
                           Row(
@@ -317,31 +312,8 @@ static Widget graduationTheme({
   );
 }
 
-  // Helper method for info rows
-  static Widget _infoRow(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, color: gradBlue, size: 16.sp),
-        SizedBox(width: 6.w),
-        Flexible(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: gradBlue,
-              fontFamily: 'Montserrat',
-              fontWeight: FontWeight.w600,
-              fontSize: 11.sp,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-
   /// Date range on graduation poster (may span two lines).
-  static Widget _infoRowMultilineDate(IconData icon, String text) {
+  static Widget _infoRowMultilineDate(IconData icon, String text, {int maxLines = 4}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -360,7 +332,7 @@ static Widget graduationTheme({
               fontSize: 10.sp,
               height: 1.25,
             ),
-            maxLines: 2,
+            maxLines: maxLines,
             softWrap: true,
             overflow: TextOverflow.ellipsis,
           ),
@@ -373,10 +345,10 @@ static Widget graduationTheme({
   // 2. TECH & INNOVATION - REDESIGNED TO MATCH REFERENCE
   // ==========================================================
   static Widget techTheme({
-    required String title, 
-    required String date, 
+    required String title,
+    required String scheduleCaption,
+    required String techTagline,
     required String venue,
-    required String time,
     String mode = "Online", // New: Online/Offline
     String trainerName = "", // New: Trainer name
     String description = "",
@@ -469,53 +441,41 @@ static Widget graduationTheme({
               ),
             ),
 
-            // SUBTITLE (Right Side - Cyan/Teal)
+            // Editable tagline (replaces fixed "Let's talk about" / "The future" copy)
             Positioned(
               top: 100.h,
+              left: 115.w,
               right: 25.w,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 2.h),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 60.w,
-                      height: 2.h,
-                      color: Colors.cyanAccent,
-                    ),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      child: boundedText(
-                        "LET'S TALK ABOUT",
-                        TextStyle(
-                          fontSize: 10.sp,
-                          fontFamily: 'Aerial',
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 1.2,
-                        ),
-                        maxLines: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 60.w,
+                        height: 2.h,
+                        color: Colors.cyanAccent,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Positioned(
-              top: 112.h,
-              right: 25.w,
-              left: 120.w,
-              child: boundedText(
-                "THE FUTURE",
-                TextStyle(
-                  fontSize: 10.sp,
-                  fontFamily: 'Aerial',
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white70,
-                  letterSpacing: 1.5,
-                ),
-                maxLines: 1,
-                textAlign: TextAlign.right,
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: boundedText(
+                          techTagline.trim().toUpperCase(),
+                          TextStyle(
+                            fontSize: 10.sp,
+                            fontFamily: 'Aerial',
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 1.1,
+                            height: 1.15,
+                          ),
+                          maxLines: 4,
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
 
@@ -548,35 +508,19 @@ static Widget graduationTheme({
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Date & Time (width bounded so long ranges stay on-card)
-                  Text(
-                    date.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 16.sp,
+                  boundedText(
+                    scheduleCaption.toUpperCase(),
+                    TextStyle(
+                      fontSize: 14.sp,
                       fontFamily: 'RobotoSlab',
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
                       letterSpacing: 0.2,
                       height: 1.15,
                     ),
-                    textAlign: TextAlign.right,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  // SizedBox(height: 4.h),
-                  boundedText(
-                    "LIVE $time",
-                    TextStyle(
-                      fontSize: 16.sp,
-                      fontFamily: 'RobotoSlab',
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                    maxLines: 2,
+                    maxLines: 5,
                     textAlign: TextAlign.right,
                   ),
-                  // SizedBox(height: 8.h),
-                  // Mode
                   boundedText(
                     "MODE: ${mode.toUpperCase()}",
                     TextStyle(
@@ -593,10 +537,12 @@ static Widget graduationTheme({
             ),
 
             // TRAINER SECTION (Bottom Left) - Only if trainer name provided
+            // Must bound width: Row + Expanded requires finite maxWidth (Positioned with only `left` is unbounded).
             if (trainerName.isNotEmpty)
               Positioned(
                 bottom: 25.h,
                 left: 25.w,
+                right: 120.w,
                 child: Row(
                   children: [
                     // Trainer Image
@@ -735,9 +681,7 @@ static Widget graduationTheme({
 static Widget englishTheme({
   String title = "ONLINE COURSE",
   String subtitle = "Spoken English",
-  required String courseDateLine,
-  required String startTime,
-  required String endTime,
+  required String scheduleCaption,
   List<String> coursePoints = const [],
   String phoneNumber = "800 829 5550 / 51",
   File? image,
@@ -874,39 +818,20 @@ static Widget englishTheme({
             ),
           ),
 
-          // Schedule (course dates + daily time; width capped so text does not run under the image)
+          // Schedule (dates + times; width capped so text does not run under the image)
           Positioned(
             top: 132.h,
             left: 20.w,
             right: 92.w,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  courseDateLine,
-                  style: TextStyle(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w900,
-                    color: engBlue,
-                    height: 1.2,
-                  ),
-                  maxLines: 2,
-                  softWrap: true,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                SizedBox(height: 2.h),
-                Text(
-                  "$startTime - $endTime",
-                  style: TextStyle(
-                    fontSize: 17.sp,
-                    fontWeight: FontWeight.w900,
-                    color: engBlue,
-                    height: 1.15,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+            child: boundedText(
+              scheduleCaption,
+              TextStyle(
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w900,
+                color: engBlue,
+                height: 1.2,
+              ),
+              maxLines: 4,
             ),
           ),
 
@@ -1065,6 +990,8 @@ static Widget englishTheme({
     required String location,
     required String startTime,
     required String endTime,
+    /// Extra when line when the event spans multiple calendar days (dates + times).
+    String scheduleDetail = "",
     String description = "",
     File? image,
     File? logoImage,
@@ -1181,7 +1108,7 @@ static Widget englishTheme({
                         child: Text(
                           title.split(' ').first.toUpperCase(),
                           style: GoogleFonts.leagueSpartan(
-                            fontSize: 60.sp,
+                            fontSize: 59.sp,
                             fontWeight: FontWeight.w900,
                             color: Colors.white,
                             letterSpacing: 0.05,
@@ -1201,7 +1128,7 @@ static Widget englishTheme({
                         child: boundedText(
                           title.split(' ').skip(1).join(' ').toUpperCase(),
                           GoogleFonts.leagueSpartan(
-                            fontSize: 42.sp,
+                            fontSize: 41.sp,
                             fontWeight: FontWeight.w700,
                             color: Colors.white.withOpacity(0.9),
                             letterSpacing: 1.5,
@@ -1285,7 +1212,20 @@ static Widget englishTheme({
                       softWrap: true,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    // SizedBox(height: 8.h),
+                    if (scheduleDetail.trim().isNotEmpty) ...[
+                      SizedBox(height: 4.h),
+                      boundedText(
+                        scheduleDetail,
+                        GoogleFonts.nunito(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF0D2847),
+                          letterSpacing: 0.3,
+                          height: 1.2,
+                        ),
+                        maxLines: 3,
+                      ),
+                    ],
                     boundedText(
                       "LOCATION : $location",
                       GoogleFonts.nunito(
@@ -1302,52 +1242,82 @@ static Widget englishTheme({
               ),
             ),
 
-            // Timings and Contact Section
+            // Timings, contact, QR — bounded row (replaces broken 60.w clip)
             Positioned(
-              bottom: 35.h,
-              left: 20.w,
-              child: SizedBox(
-                width: 60.w, //  bounded width
-                height: 120.h,      //  bounded height
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-
-                    // 🕒 TIMINGS (Bottom Left)
-                    Positioned(
-                      left: 0,
-                      bottom: 0,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "TIMINGS:",
-                            style: GoogleFonts.nunito(
-                              fontSize: 11.sp,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white,
-                              letterSpacing: 0.1,
-                            ),
+              bottom: 28.h,
+              left: 16.w,
+              right: 16.w,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          "TIMINGS:",
+                          style: GoogleFonts.nunito(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.white,
+                            letterSpacing: 0.1,
                           ),
-                          Text(
-                            "$startTime TO $endTime",
-                            style: GoogleFonts.nunito(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              letterSpacing: -0.5,
-                            ),
+                        ),
+                        Text(
+                          "$startTime — $endTime",
+                          style: GoogleFonts.nunito(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: -0.2,
                           ),
-                        ],
-                      ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-
-                    // 📞 CONTACT (Bottom Right – Text)
-                    Positioned(
-                      left: 185.w,
-                      bottom: qrCodeImage != null ? 10.h : 0,
+                  ),
+                  if (qrCodeImage != null) ...[
+                    SizedBox(width: 8.w),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          "SCAN TO",
+                          style: GoogleFonts.nunito(
+                            fontSize: 10.sp,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Text(
+                          "REGISTER",
+                          style: GoogleFonts.nunito(
+                            fontSize: 10.sp,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        SizedBox(
+                          width: 40.w,
+                          height: 40.w,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4.r),
+                            child: Image.file(qrCodeImage, fit: BoxFit.contain),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else
+                    Expanded(
+                      flex: 2,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             "CONTACT:",
@@ -1366,55 +1336,14 @@ static Widget englishTheme({
                               color: Colors.white,
                               letterSpacing: 0.1,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
                           ),
                         ],
                       ),
                     ),
-
-                    // 📱 SCAN TO REGISTER (Bottom Right – QR)
-                    if (qrCodeImage != null)
-                      Positioned(
-                        left: 210.w,
-                        bottom: -19.h,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  "SCAN TO",
-                                  style: GoogleFonts.nunito(
-                                    fontSize: 10.sp,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                Text(
-                                  "REGISTER",
-                                  style: GoogleFonts.nunito(
-                                    fontSize: 10.sp,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(width: 6.w),
-                            Container(
-                              width: 35.w,
-                              height: 35.w,
-                              padding: EdgeInsets.all(2.r),
-                              child: Image.file(
-                                qrCodeImage,
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
+                ],
               ),
             ),
           ],
@@ -1432,6 +1361,7 @@ static Widget englishTheme({
     required String date,
     required String startTime,
     required String endTime,
+    String scheduleDetail = "",
     File? image, // Basketball court action image
     File? logoImage,
   }) {
@@ -1644,6 +1574,20 @@ static Widget englishTheme({
                   softWrap: true,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (scheduleDetail.trim().isNotEmpty) ...[
+                  SizedBox(height: 4.h),
+                  Text(
+                    scheduleDetail,
+                    style: GoogleFonts.roboto(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      height: 1.15,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
                 Text(
                   "MORE INFORMATION:",
                   style: GoogleFonts.roboto(
@@ -1665,12 +1609,12 @@ static Widget englishTheme({
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 boundedText(
-                  "$startTime - $endTime",
+                  "$startTime — $endTime",
                   GoogleFonts.roboto(
-                    fontSize: 20.sp,
+                    fontSize: 17.sp,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
-                    letterSpacing: -1.5,
+                    letterSpacing: -1.0,
                   ),
                   maxLines: 2,
                   textAlign: TextAlign.right,
