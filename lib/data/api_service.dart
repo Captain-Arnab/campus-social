@@ -650,6 +650,24 @@ class ApiService {
     }
   }
 
+  /// Switch active volunteer ↔ participant for one approved event.
+  static Future<Response> switchEventStaffRole(Map<String, dynamic> data) async {
+    try {
+      return await _dio.post(
+        'event_staff_switch.php',
+        data: data,
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      if (e.response != null) return e.response!;
+      return Response(
+        requestOptions: RequestOptions(path: 'event_staff_switch.php'),
+        statusCode: 0,
+        data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+      );
+    }
+  }
+
   static Future<Response> joinParticipant(Map<String, dynamic> data) async {
     try {
       final response = await _dio.post("participant.php", data: data, options: await _getAuthOptions());

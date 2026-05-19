@@ -8,8 +8,16 @@ class VolunteerDialog extends StatefulWidget {
   final dynamic event;
   /// From profile; used with event organiser type for participation rules.
   final bool? userIsStudent;
+  final bool switchFromParticipant;
+  final VoidCallback? onSwitchSuccess;
 
-  const VolunteerDialog({super.key, required this.event, this.userIsStudent});
+  const VolunteerDialog({
+    super.key,
+    required this.event,
+    this.userIsStudent,
+    this.switchFromParticipant = false,
+    this.onSwitchSuccess,
+  });
 
   @override
   State<VolunteerDialog> createState() => _VolunteerDialogState();
@@ -51,7 +59,7 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "Volunteer Signup",
+                        widget.switchFromParticipant ? "Switch to volunteer" : "Volunteer Signup",
                         style: TextStyle(
                           fontSize: 24.sp,
                           fontWeight: FontWeight.bold,
@@ -60,7 +68,9 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                       ),
                       SizedBox(height: 4.h),
                       Text(
-                        "Help make this event amazing!",
+                        widget.switchFromParticipant
+                            ? "Choose your volunteer role for this event"
+                            : "Help make this event amazing!",
                         style: TextStyle(
                           fontSize: 13.sp,
                           color: Colors.grey[600],
@@ -247,7 +257,7 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                                 ),
                               )
                             : Text(
-                                "Submit",
+                                widget.switchFromParticipant ? "Switch role" : "Submit",
                                 style: TextStyle(
                                   fontSize: 16.sp,
                                   fontWeight: FontWeight.bold,
@@ -281,6 +291,22 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
 
     if (role.isEmpty) {
       SweetAlertHelper.showError(context, "Required", "Please specify your role");
+      return;
+    }
+
+    if (widget.switchFromParticipant) {
+      controller
+          .switchStaffRole(
+            eventId: widget.event['id'].toString(),
+            toRole: 'volunteer',
+            volunteerRole: role,
+          )
+          .then((ok) {
+        if (ok) {
+          Get.back();
+          widget.onSwitchSuccess?.call();
+        }
+      });
       return;
     }
 

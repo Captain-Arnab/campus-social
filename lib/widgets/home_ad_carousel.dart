@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:any_link_preview/any_link_preview.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -36,15 +38,50 @@ class HomeAdCarousel extends StatefulWidget {
 class _HomeAdCarouselState extends State<HomeAdCarousel> {
   late final PageController _pageController;
   int _index = 0;
+  Timer? _autoScrollTimer;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 0.92);
+    _startAutoScroll();
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeAdCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.posts.length != widget.posts.length) {
+      _restartAutoScroll();
+    }
+  }
+
+  void _startAutoScroll() {
+    _autoScrollTimer?.cancel();
+    if (widget.posts.length <= 1) return;
+    _autoScrollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _advanceSlide());
+  }
+
+  void _restartAutoScroll() {
+    _autoScrollTimer?.cancel();
+    if (!mounted) return;
+    if (widget.posts.length <= 1) return;
+    _startAutoScroll();
+  }
+
+  Future<void> _advanceSlide() async {
+    if (!mounted || widget.posts.length <= 1) return;
+    if (!_pageController.hasClients) return;
+    final next = (_index + 1) % widget.posts.length;
+    await _pageController.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
   void dispose() {
+    _autoScrollTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -60,7 +97,10 @@ class _HomeAdCarouselState extends State<HomeAdCarousel> {
           child: PageView.builder(
             controller: _pageController,
             itemCount: widget.posts.length,
-            onPageChanged: (i) => setState(() => _index = i),
+            onPageChanged: (i) {
+              setState(() => _index = i);
+              _restartAutoScroll();
+            },
             padEnds: true,
             itemBuilder: (context, i) {
               final m = widget.posts[i];

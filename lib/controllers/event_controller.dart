@@ -937,4 +937,71 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       isLoading.value = false;
     }
   }
+
+  /// Switch between volunteer and participant for an approved event (API `event_staff_switch.php`).
+  Future<bool> switchStaffRole({
+    required String eventId,
+    required String toRole,
+    String? volunteerRole,
+    String? departmentClass,
+  }) async {
+    isLoading.value = true;
+    try {
+      final userId = await PrefService.getUserId();
+      if (userId == null) {
+        SweetAlertHelper.showError(Get.context, 'Error', 'User not found. Please login again.');
+        return false;
+      }
+      final body = <String, dynamic>{
+        'event_id': int.tryParse(eventId) ?? eventId,
+        'user_id': int.tryParse(userId) ?? userId,
+        'to_role': toRole,
+      };
+      if (toRole == 'volunteer' && volunteerRole != null && volunteerRole.trim().isNotEmpty) {
+        body['role'] = volunteerRole.trim();
+      }
+      if (toRole == 'participant' && departmentClass != null && departmentClass.trim().isNotEmpty) {
+        body['department_class'] = departmentClass.trim();
+      }
+      final response = await ApiService.switchEventStaffRole(body);
+      if (response.statusCode != null && response.statusCode! >= 400) {
+        SweetAlertHelper.showError(
+          Get.context,
+          'Server Error',
+          'Server returned error ${response.statusCode}. Please try again.',
+        );
+        return false;
+      }
+      final data = response.data;
+      if (data is! Map) {
+        SweetAlertHelper.showError(Get.context, 'Error', 'Invalid response from server.');
+        return false;
+      }
+      if (data['status'] == 'success') {
+        await fetchVolunteeringEvents();
+        await fetchParticipatingEvents();
+        if (Get.isRegistered<ProfileController>()) {
+          await Get.find<ProfileController>().loadProfile();
+        }
+        SweetAlertHelper.showSuccess(
+          Get.context,
+          'Success',
+          data['message']?.toString() ?? 'Role updated.',
+        );
+        return true;
+      }
+      SweetAlertHelper.showError(
+        Get.context,
+        'Error',
+        data['message']?.toString() ?? 'Could not switch role.',
+      );
+      return false;
+    } catch (e) {
+      debugPrint('switchStaffRole: $e');
+      SweetAlertHelper.showError(Get.context, 'Error', 'Role switch failed.');
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
 }

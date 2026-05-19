@@ -527,7 +527,7 @@ class _EventDetailViewState extends State<EventDetailView> {
     }
   }
 
-  void _showParticipateDialog(BuildContext context, {required bool userIsStudent}) {
+  void _showParticipateDialog(BuildContext context, {required bool userIsStudent, bool switchFromVolunteer = false}) {
     if (!_isApprovedEvent()) {
       final st = _eventStatus();
       final label = st.isEmpty ? "pending" : st;
@@ -541,6 +541,24 @@ class _EventDetailViewState extends State<EventDetailView> {
       organizerId: _event['organizer_id']?.toString(),
       eventSnapshot: _event,
       userIsStudent: userIsStudent,
+      switchFromVolunteer: switchFromVolunteer,
+      onSwitchSuccess: () => _loadFullEvent(),
+    );
+  }
+
+  void _showSwitchToVolunteerDialog(BuildContext context, {required bool userIsStudent}) {
+    if (!_isApprovedEvent()) {
+      SweetAlertHelper.showWarning(context, 'Not Available', 'Role switch is only allowed for approved events.');
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => VolunteerDialog(
+        event: _event,
+        userIsStudent: userIsStudent,
+        switchFromParticipant: true,
+        onSwitchSuccess: () => _loadFullEvent(),
+      ),
     );
   }
 
@@ -1349,28 +1367,46 @@ class _EventDetailViewState extends State<EventDetailView> {
                               (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
+                          final canSwitchToParticipant = volunteering && !participating && _isApprovedEvent();
                           return OutlinedButton(
-                            onPressed: (!_isApprovedEvent() || volunteering || attending || participating)
-                                ? null
-                                : () => showDialog(
-                                      context: context,
-                                      builder: (context) => VolunteerDialog(
-                                        event: _event,
-                                        userIsStudent: isStudent,
-                                      ),
-                                    ),
+                            onPressed: canSwitchToParticipant
+                                ? () => _showParticipateDialog(context, userIsStudent: isStudent, switchFromVolunteer: true)
+                                : (!_isApprovedEvent() || volunteering || attending || participating)
+                                    ? null
+                                    : () => showDialog(
+                                          context: context,
+                                          builder: (context) => VolunteerDialog(
+                                            event: _event,
+                                            userIsStudent: isStudent,
+                                          ),
+                                        ),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: volunteering ? Colors.grey[600] : const Color(0xFFFF5F15),
-                              side: BorderSide(color: volunteering ? Colors.grey[400]! : const Color(0xFFFF5F15), width: 2),
+                              foregroundColor: canSwitchToParticipant
+                                  ? const Color(0xFF4CAF50)
+                                  : (volunteering ? Colors.grey[600] : const Color(0xFFFF5F15)),
+                              side: BorderSide(
+                                color: canSwitchToParticipant
+                                    ? const Color(0xFF4CAF50)
+                                    : (volunteering ? Colors.grey[400]! : const Color(0xFFFF5F15)),
+                                width: 2,
+                              ),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               padding: EdgeInsets.symmetric(vertical: 12.h),
                             ),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.volunteer_activism, size: 18),
+                                Icon(
+                                  canSwitchToParticipant ? Icons.swap_horiz : Icons.volunteer_activism,
+                                  size: 18,
+                                ),
                                 SizedBox(height: 4.h),
-                                Text(volunteering ? "Volunteered" : "Volunteer", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                                Text(
+                                  canSwitchToParticipant
+                                      ? "→ Participant"
+                                      : (volunteering ? "Volunteered" : "Volunteer"),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                ),
                               ],
                             ),
                           );
@@ -1387,22 +1423,40 @@ class _EventDetailViewState extends State<EventDetailView> {
                               (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
+                          final canSwitchToVolunteer = participating && !volunteering && _isApprovedEvent();
                           return OutlinedButton(
-                            onPressed: (!_isApprovedEvent() || participating || attending || volunteering)
-                                ? null
-                                : () => _showParticipateDialog(context, userIsStudent: isStudent),
+                            onPressed: canSwitchToVolunteer
+                                ? () => _showSwitchToVolunteerDialog(context, userIsStudent: isStudent)
+                                : (!_isApprovedEvent() || participating || attending || volunteering)
+                                    ? null
+                                    : () => _showParticipateDialog(context, userIsStudent: isStudent),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: participating ? Colors.grey[600] : const Color(0xFF4CAF50),
-                              side: BorderSide(color: participating ? Colors.grey[400]! : const Color(0xFF4CAF50), width: 2),
+                              foregroundColor: canSwitchToVolunteer
+                                  ? const Color(0xFFFF5F15)
+                                  : (participating ? Colors.grey[600] : const Color(0xFF4CAF50)),
+                              side: BorderSide(
+                                color: canSwitchToVolunteer
+                                    ? const Color(0xFFFF5F15)
+                                    : (participating ? Colors.grey[400]! : const Color(0xFF4CAF50)),
+                                width: 2,
+                              ),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               padding: EdgeInsets.symmetric(vertical: 12.h),
                             ),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.groups, size: 18),
+                                Icon(
+                                  canSwitchToVolunteer ? Icons.swap_horiz : Icons.groups,
+                                  size: 18,
+                                ),
                                 SizedBox(height: 4.h),
-                                Text(participating ? "Participating" : "Participate", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                                Text(
+                                  canSwitchToVolunteer
+                                      ? "→ Volunteer"
+                                      : (participating ? "Participating" : "Participate"),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                ),
                               ],
                             ),
                           );

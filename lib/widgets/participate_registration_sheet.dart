@@ -13,6 +13,8 @@ Future<void> showParticipateRegistrationSheet(
   String? organizerId,
   dynamic eventSnapshot,
   bool? userIsStudent,
+  bool switchFromVolunteer = false,
+  VoidCallback? onSwitchSuccess,
 }) async {
   await showModalBottomSheet<void>(
     context: context,
@@ -27,6 +29,8 @@ Future<void> showParticipateRegistrationSheet(
         organizerId: organizerId,
         eventSnapshot: eventSnapshot,
         userIsStudent: userIsStudent,
+        switchFromVolunteer: switchFromVolunteer,
+        onSwitchSuccess: onSwitchSuccess,
       );
     },
   );
@@ -39,6 +43,8 @@ class _ParticipateRegistrationContent extends StatefulWidget {
   final String? organizerId;
   final dynamic eventSnapshot;
   final bool? userIsStudent;
+  final bool switchFromVolunteer;
+  final VoidCallback? onSwitchSuccess;
 
   const _ParticipateRegistrationContent({
     required this.sheetContext,
@@ -47,6 +53,8 @@ class _ParticipateRegistrationContent extends StatefulWidget {
     this.organizerId,
     this.eventSnapshot,
     this.userIsStudent,
+    this.switchFromVolunteer = false,
+    this.onSwitchSuccess,
   });
 
   @override
@@ -91,7 +99,7 @@ class _ParticipateRegistrationContentState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Register as participant',
+            widget.switchFromVolunteer ? 'Switch to participant' : 'Register as participant',
             style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
           ),
           SizedBox(height: 8.h),
@@ -140,15 +148,27 @@ class _ParticipateRegistrationContentState
                       return;
                     }
                     Navigator.pop(context);
-                    eventController.participate(
-                      widget.eventId,
-                      d,
-                      organizerId: widget.organizerId,
-                      eventSnapshot: widget.eventSnapshot,
-                      userIsStudent: widget.userIsStudent,
-                    );
+                    if (widget.switchFromVolunteer) {
+                      eventController
+                          .switchStaffRole(
+                            eventId: widget.eventId,
+                            toRole: 'participant',
+                            departmentClass: d,
+                          )
+                          .then((ok) {
+                        if (ok) widget.onSwitchSuccess?.call();
+                      });
+                    } else {
+                      eventController.participate(
+                        widget.eventId,
+                        d,
+                        organizerId: widget.organizerId,
+                        eventSnapshot: widget.eventSnapshot,
+                        userIsStudent: widget.userIsStudent,
+                      );
+                    }
                   },
-                  child: const Text('Confirm'),
+                  child: Text(widget.switchFromVolunteer ? 'Switch role' : 'Confirm'),
                 ),
               ),
             ],

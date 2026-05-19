@@ -1711,31 +1711,51 @@ class _AllEventCard extends StatelessWidget {
                                                 (userId != null && EventParticipationRules.userInVolunteerList(event, userId));
                                             final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                                                 (userId != null && EventParticipationRules.userInParticipantList(event, userId));
+                                            final canSwitchToParticipant =
+                                                volunteering && !participating && isApproved;
                                             return ElevatedButton(
-                                              onPressed: (volunteering || attending || participating || !isApproved)
-                                                  ? null
-                                                  : () {
-                                                      showDialog(
-                                                        context: context,
-                                                        builder: (context) => VolunteerDialog(
-                                                          event: event,
-                                                          userIsStudent: userIsStudent,
-                                                        ),
+                                              onPressed: canSwitchToParticipant
+                                                  ? () {
+                                                      showParticipateRegistrationSheet(
+                                                        context,
+                                                        eventId: eid,
+                                                        eventTitle: (event['title'] ?? 'Event').toString(),
+                                                        organizerId: event['organizer_id']?.toString(),
+                                                        eventSnapshot: event,
+                                                        userIsStudent: userIsStudent,
+                                                        switchFromVolunteer: true,
                                                       );
-                                                    },
+                                                    }
+                                                  : (volunteering || attending || participating || !isApproved)
+                                                      ? null
+                                                      : () {
+                                                          showDialog(
+                                                            context: context,
+                                                            builder: (context) => VolunteerDialog(
+                                                              event: event,
+                                                              userIsStudent: userIsStudent,
+                                                            ),
+                                                          );
+                                                        },
                                               style: ElevatedButton.styleFrom(
-                                                backgroundColor: volunteering ? Colors.grey[300] : const Color(0xFFFF5F15),
-                                                foregroundColor: volunteering ? Colors.grey[600] : Colors.white,
+                                                backgroundColor: canSwitchToParticipant
+                                                    ? const Color(0xFF4CAF50)
+                                                    : (volunteering ? Colors.grey[300] : const Color(0xFFFF5F15)),
+                                                foregroundColor: canSwitchToParticipant
+                                                    ? Colors.white
+                                                    : (volunteering ? Colors.grey[600] : Colors.white),
                                                 disabledBackgroundColor: Colors.grey[300],
                                                 disabledForegroundColor: Colors.grey[600],
                                                 shape: RoundedRectangleBorder(
                                                   borderRadius: BorderRadius.circular(10),
                                                 ),
                                                 padding: EdgeInsets.symmetric(vertical: 8.h),
-                                                elevation: volunteering ? 0 : 2,
+                                                elevation: (volunteering && !canSwitchToParticipant) ? 0 : 2,
                                               ),
                                               child: Text(
-                                                volunteering ? "Volunteered" : "Volunteer",
+                                                canSwitchToParticipant
+                                                    ? "→ Participant"
+                                                    : (volunteering ? "Volunteered" : "Volunteer"),
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 11,
@@ -1752,32 +1772,51 @@ class _AllEventCard extends StatelessWidget {
                                                 (userId != null && EventParticipationRules.userInVolunteerList(event, userId));
                                             final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                                                 (userId != null && EventParticipationRules.userInParticipantList(event, userId));
+                                            final canSwitchToVolunteer =
+                                                participating && !volunteering && isApproved;
                                             return ElevatedButton(
-                                              onPressed: (participating || attending || volunteering || !isApproved)
-                                                  ? null
-                                                  : () {
-                                                      showParticipateRegistrationSheet(
-                                                        context,
-                                                        eventId: eid,
-                                                        eventTitle: (event['title'] ?? 'Event').toString(),
-                                                        organizerId: event['organizer_id']?.toString(),
-                                                        eventSnapshot: event,
-                                                        userIsStudent: userIsStudent,
+                                              onPressed: canSwitchToVolunteer
+                                                  ? () {
+                                                      showDialog(
+                                                        context: context,
+                                                        builder: (context) => VolunteerDialog(
+                                                          event: event,
+                                                          userIsStudent: userIsStudent,
+                                                          switchFromParticipant: true,
+                                                        ),
                                                       );
-                                                    },
+                                                    }
+                                                  : (participating || attending || volunteering || !isApproved)
+                                                      ? null
+                                                      : () {
+                                                          showParticipateRegistrationSheet(
+                                                            context,
+                                                            eventId: eid,
+                                                            eventTitle: (event['title'] ?? 'Event').toString(),
+                                                            organizerId: event['organizer_id']?.toString(),
+                                                            eventSnapshot: event,
+                                                            userIsStudent: userIsStudent,
+                                                          );
+                                                        },
                                               style: ElevatedButton.styleFrom(
-                                                backgroundColor: participating ? Colors.grey[300] : const Color(0xFF4CAF50),
-                                                foregroundColor: participating ? Colors.grey[600] : Colors.white,
+                                                backgroundColor: canSwitchToVolunteer
+                                                    ? const Color(0xFFFF5F15)
+                                                    : (participating ? Colors.grey[300] : const Color(0xFF4CAF50)),
+                                                foregroundColor: canSwitchToVolunteer
+                                                    ? Colors.white
+                                                    : (participating ? Colors.grey[600] : Colors.white),
                                                 disabledBackgroundColor: Colors.grey[300],
                                                 disabledForegroundColor: Colors.grey[600],
                                                 shape: RoundedRectangleBorder(
                                                   borderRadius: BorderRadius.circular(10),
                                                 ),
                                                 padding: EdgeInsets.symmetric(vertical: 8.h),
-                                                elevation: participating ? 0 : 2,
+                                                elevation: (participating && !canSwitchToVolunteer) ? 0 : 2,
                                               ),
                                               child: Text(
-                                                participating ? "Participating" : "Participate",
+                                                canSwitchToVolunteer
+                                                    ? "→ Volunteer"
+                                                    : (participating ? "Participating" : "Participate"),
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 11,

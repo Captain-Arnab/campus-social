@@ -5,7 +5,6 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import '../controllers/profile_controller.dart';
-import '../data/pref_service.dart';
 import '../utils/sweetalert_helper.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 
@@ -261,14 +260,10 @@ class _EditProfileViewState extends State<EditProfileView> {
                             isSt ? "You are registered as a student (login uses roll number)." : "You are registered as faculty (login uses employee ID).",
                             style: TextStyle(fontSize: 12.sp, color: Colors.orange.shade900),
                           ),
-                          SizedBox(height: 12.h),
-                          OutlinedButton.icon(
-                            onPressed: controller.isLoading.value ? null : () => _openSwitchRoleDialog(),
-                            icon: Icon(Icons.swap_horiz, size: 20.sp, color: const Color(0xFFFF5F15)),
-                            label: Text(isSt ? "Switch to faculty" : "Switch to student", style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.w600)),
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(color: Colors.orange.shade700),
-                            ),
+                          SizedBox(height: 8.h),
+                          Text(
+                            "Account type cannot be changed in the app. Contact support if you need help.",
+                            style: TextStyle(fontSize: 11.sp, color: Colors.orange.shade800),
                           ),
                         ],
                       ),
@@ -639,76 +634,6 @@ class _EditProfileViewState extends State<EditProfileView> {
         ),
       ),
     );
-  }
-
-  Future<void> _openSwitchRoleDialog() async {
-    final isSt = controller.userData.value.isStudent ?? await PrefService.getIsStudent();
-    final becomeStudent = !isSt;
-    final passCtrl = TextEditingController();
-    final idCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Text(becomeStudent ? "Switch to student" : "Switch to faculty"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                becomeStudent
-                    ? "Enter your password and the roll number you will use to log in."
-                    : "Enter your password and your employee ID for login.",
-                style: TextStyle(fontSize: 13.sp, color: Colors.grey[700]),
-              ),
-              SizedBox(height: 16.h),
-              TextField(
-                controller: passCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: "Current password",
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 12.h),
-              TextField(
-                controller: idCtrl,
-                decoration: InputDecoration(
-                  labelText: becomeStudent ? "Roll number" : "Employee ID",
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF5F15)),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Confirm"),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    final password = passCtrl.text;
-    final idVal = idCtrl.text.trim();
-    if (password.isEmpty || idVal.isEmpty) {
-      SweetAlertHelper.showError(context, "Required", "Password and ${becomeStudent ? "roll number" : "employee ID"} are required.");
-      return;
-    }
-    await controller.switchAccountType(
-      password: password,
-      becomeStudent: becomeStudent,
-      rollNumber: becomeStudent ? idVal : null,
-      empNumber: becomeStudent ? null : idVal,
-    );
-    if (mounted) {
-      nameCtrl.text = controller.userData.value.fullName ?? nameCtrl.text;
-      deptClassCtrl.text = controller.userData.value.departmentClass ?? deptClassCtrl.text;
-    }
   }
 
   Future<void> _pickImage() async {
