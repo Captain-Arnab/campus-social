@@ -176,6 +176,58 @@ Future<void> _openMicampusWebsite(BuildContext context) async {
   }
 }
 
+/// Full-width website CTA in the Explore header (opens [Constant.websiteUrl]).
+class _ExploreWebsiteLink extends StatelessWidget {
+  const _ExploreWebsiteLink();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openMicampusWebsite(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 14.w),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.public_rounded, color: Colors.white, size: 18.sp),
+              SizedBox(width: 8.w),
+              Flexible(
+                child: Text(
+                  'Visit micampus.co.in',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              SizedBox(width: 6.w),
+              Icon(
+                Icons.open_in_new_rounded,
+                color: Colors.white.withValues(alpha: 0.92),
+                size: 16.sp,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Explore header marks on the gradient — no filled plate behind the artwork.
 class _ExploreHeaderMark extends StatelessWidget {
   final Widget child;
@@ -904,37 +956,9 @@ class _ExploreTabState extends State<_ExploreTab> {
                       ),
                     ],
                   ),
-                  SizedBox(height: 8.h),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => _openMicampusWebsite(context),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4.h, horizontal: 2.w),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.language, color: Colors.white, size: 18.sp),
-                            SizedBox(width: 6.w),
-                            Text(
-                              'micampus.co.in',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13.sp,
-                                fontWeight: FontWeight.w600,
-                                decoration: TextDecoration.underline,
-                                decorationColor: Colors.white.withValues(alpha: 0.85),
-                              ),
-                            ),
-                            SizedBox(width: 4.w),
-                            Icon(Icons.open_in_new, color: Colors.white.withValues(alpha: 0.9), size: 14.sp),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 6.h),
+                  SizedBox(height: 10.h),
+                  const _ExploreWebsiteLink(),
+                  SizedBox(height: 10.h),
                   Material(
                     elevation: 8,
                     shadowColor: Colors.black26,
