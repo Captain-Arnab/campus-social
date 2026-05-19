@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 class Constant {
+  /// Public marketing / help site (opens in browser from the app).
+  static const String websiteUrl = 'https://micampus.co.in/';
+
   // --- API Configuration ---
   static const String baseUrl = "https://micampus.co.in/admin/api/";
 

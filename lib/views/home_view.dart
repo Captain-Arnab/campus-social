@@ -5,7 +5,9 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:art_sweetalert_new/art_sweetalert_new.dart';
+import '../base/constant.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/event_controller.dart';
 import '../services/deep_link_service.dart';
@@ -153,6 +155,24 @@ class _HomeViewState extends State<HomeView> {
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
+  }
+}
+
+Future<void> _openMicampusWebsite(BuildContext context) async {
+  final uri = Uri.parse(Constant.websiteUrl);
+  try {
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open micampus.co.in')),
+      );
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open micampus.co.in')),
+      );
+    }
   }
 }
 
@@ -884,7 +904,37 @@ class _ExploreTabState extends State<_ExploreTab> {
                       ),
                     ],
                   ),
-                  SizedBox(height: 5.h),
+                  SizedBox(height: 8.h),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _openMicampusWebsite(context),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 4.h, horizontal: 2.w),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.language, color: Colors.white, size: 18.sp),
+                            SizedBox(width: 6.w),
+                            Text(
+                              'micampus.co.in',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.sp,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.underline,
+                                decorationColor: Colors.white.withValues(alpha: 0.85),
+                              ),
+                            ),
+                            SizedBox(width: 4.w),
+                            Icon(Icons.open_in_new, color: Colors.white.withValues(alpha: 0.9), size: 14.sp),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 6.h),
                   Material(
                     elevation: 8,
                     shadowColor: Colors.black26,
