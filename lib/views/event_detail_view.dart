@@ -19,7 +19,6 @@ import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
-import '../widgets/app_bar_brand_action.dart';
 import '../utils/event_participation_rules.dart';
 
 List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
@@ -616,7 +615,9 @@ class _EventDetailViewState extends State<EventDetailView> {
               onPressed: () => Get.back(),
             ),
             actions: [
-              AppBarBrandLogoAction(),
+              // Brand logos intentionally omitted here: on this screen the app bar
+              // sits over the event poster, and the GNU/MiCampus marks overlapped the
+              // artwork and reduced its visual quality. Keep only functional controls.
               Builder(
                 builder: (btnContext) => IconButton(
                   icon: Container(
@@ -689,9 +690,9 @@ class _EventDetailViewState extends State<EventDetailView> {
                   
                   Text(
                     _event['title'] ?? "Untitled Event",
+                    // Show the full event name on the detail page (no truncation).
                     style: TextStyle(fontSize: 28.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
                   ),
                   
                   SizedBox(height: 24.h),
@@ -759,7 +760,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   ),
                   SizedBox(height: 8.h),
                   Text(
-                    "Volunteers and participants (with contact numbers). Organizers: use the edit icon to set volunteer role or participant department/class.",
+                    "Volunteers and participants. Contact numbers are private and visible only to the organizer, who can use the edit icon to set volunteer role or participant department/class.",
                     style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
                   ),
                   SizedBox(height: 12.h),
@@ -793,6 +794,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                                 return _TeamMemberTile(
                                   map: v,
                                   defaultRoleLabel: 'Volunteer',
+                                  showContact: org,
                                   onEditMeta: org
                                       ? () => _promptEditVolunteerRole(
                                             context,
@@ -811,6 +813,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                                 return _TeamMemberTile(
                                   map: p,
                                   defaultRoleLabel: 'Participant',
+                                  showContact: org,
                                   onEditMeta: org
                                       ? () => _promptEditParticipantDepartment(
                                             context,
@@ -1362,16 +1365,17 @@ class _EventDetailViewState extends State<EventDetailView> {
                       Expanded(
                         child: Obx(() {
                           final eid = _event['id'].toString();
-                          final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
                           final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                           final canSwitchToParticipant = volunteering && !participating && _isApprovedEvent();
                           return OutlinedButton(
+                            // Attendees may switch straight to volunteer (backend
+                            // removes the attendee row), so don't disable on `attending`.
                             onPressed: canSwitchToParticipant
                                 ? () => _showParticipateDialog(context, userIsStudent: isStudent, switchFromVolunteer: true)
-                                : (!_isApprovedEvent() || volunteering || attending || participating)
+                                : (!_isApprovedEvent() || volunteering || participating)
                                     ? null
                                     : () => showDialog(
                                           context: context,
@@ -1418,16 +1422,17 @@ class _EventDetailViewState extends State<EventDetailView> {
                       Expanded(
                         child: Obx(() {
                           final eid = _event['id'].toString();
-                          final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
                           final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                           final canSwitchToVolunteer = participating && !volunteering && _isApprovedEvent();
                           return OutlinedButton(
+                            // Attendees may switch straight to participant (backend
+                            // removes the attendee row), so don't disable on `attending`.
                             onPressed: canSwitchToVolunteer
                                 ? () => _showSwitchToVolunteerDialog(context, userIsStudent: isStudent)
-                                : (!_isApprovedEvent() || participating || attending || volunteering)
+                                : (!_isApprovedEvent() || participating || volunteering)
                                     ? null
                                     : () => _showParticipateDialog(context, userIsStudent: isStudent),
                             style: OutlinedButton.styleFrom(
@@ -1593,14 +1598,21 @@ class _TeamMemberTile extends StatelessWidget {
   final Map<dynamic, dynamic> map;
   final String defaultRoleLabel;
   final VoidCallback? onEditMeta;
+  /// Contact numbers are private and shown only to the event organiser.
+  final bool showContact;
 
-  const _TeamMemberTile({required this.map, required this.defaultRoleLabel, this.onEditMeta});
+  const _TeamMemberTile({
+    required this.map,
+    required this.defaultRoleLabel,
+    this.onEditMeta,
+    this.showContact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final name = (map['full_name'] ?? map['student_name'] ?? '—').toString();
     final role = (map['role'] ?? defaultRoleLabel).toString();
-    final phone = (map['phone'] ?? map['contact_number'] ?? '').toString();
+    final phone = showContact ? (map['phone'] ?? map['contact_number'] ?? '').toString() : '';
     return Padding(
       padding: EdgeInsets.only(bottom: 8.h),
       child: ListTile(

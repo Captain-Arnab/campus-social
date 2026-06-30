@@ -121,14 +121,17 @@ class ProfileController extends GetxController {
         return false;
       }
       
-      // Update details
+      // Update details. The backend (users.php → update_details) saves only the
+      // fields actually sent, so include full_name too — otherwise name edits were
+      // silently dropped (issue: profile not saving).
       final Map<String, dynamic> body = {
         "user_id": userId,
+        "full_name": name.trim(),
         "interests": interests,
         "bio": bio,
       };
       if (departmentClass != null) {
-        body["department_class"] = departmentClass;
+        body["department_class"] = departmentClass.trim();
       }
       await ApiService.updateProfile(body);
       

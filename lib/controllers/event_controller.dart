@@ -265,7 +265,6 @@ class EventController extends GetxController {
     return row['id']?.toString() == eventId.toString();
   }
 
-  bool _inAttendingList(String eventId) => attendingList.any((e) => _eventRowMatchesId(eventId, e));
   bool _inVolunteeringList(String eventId) => volunteeringList.any((e) => _eventRowMatchesId(eventId, e));
   bool _inParticipatingList(String eventId) => participatingList.any((e) => _eventRowMatchesId(eventId, e));
 
@@ -336,20 +335,16 @@ class EventController extends GetxController {
         }
         return true;
       case 'volunteer':
-        if (_inAttendingList(id)) {
-          _warnSingleRoleConflict('registered as an attendee');
-          return false;
-        }
+        // An attendee may upgrade directly to volunteer; the backend clears the
+        // attendee row on success, so don't block it here.
         if (_inParticipatingList(id) || EventParticipationRules.userInParticipantList(eventSnapshot, userId)) {
           _warnSingleRoleConflict('registered as a participant');
           return false;
         }
         return true;
       case 'participant':
-        if (_inAttendingList(id)) {
-          _warnSingleRoleConflict('registered as an attendee');
-          return false;
-        }
+        // An attendee may upgrade directly to participant; the backend clears the
+        // attendee row on success, so don't block it here.
         if (_inVolunteeringList(id) || EventParticipationRules.userInVolunteerList(eventSnapshot, userId)) {
           _warnSingleRoleConflict('registered as a volunteer');
           return false;
@@ -416,6 +411,9 @@ class EventController extends GetxController {
       
       if (status == 'success') {
         fetchParticipatingEvents();
+        // Attendee → participant clears the attendee row on the backend; refresh so
+        // the local attending state (and the "Viewer" button) updates immediately.
+        fetchAttendingEvents();
         if (Get.isRegistered<ProfileController>()) {
           Get.find<ProfileController>().loadProfile();
         }
@@ -926,6 +924,9 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       if (status == 'success') {
         Get.back();
         fetchVolunteeringEvents();
+        // Attendee → volunteer clears the attendee row on the backend; refresh so
+        // the local attending state (and the "Viewer" button) updates immediately.
+        fetchAttendingEvents();
         SweetAlertHelper.showSuccess(Get.context, "Success", "Successfully registered as volunteer!");
       } else {
         SweetAlertHelper.showError(Get.context, "Error", message);

@@ -14,14 +14,16 @@ import '../data/pref_service.dart';
 import 'sweetalert_helper.dart';
 
 /// Resolves the best public URL for a certificate row from [certificates.php].
-/// Uses [certificate_url] / [url] / [file_path]; relative paths are passed through
-/// [Constant.certificateFileUrl] (same as bare filenames).
+/// Prefers the backend [download_url] streaming endpoint (sends Content-Length +
+/// attachment headers, so the client knows when the transfer is done and the
+/// Download button can stop spinning). Falls back to [certificate_url] / [url] /
+/// [file_path]; relative paths are passed through [Constant.certificateFileUrl].
 String certificateUrlFromRecord(dynamic item) {
   if (item is! Map) return '';
   for (final key in [
+    'download_url',
     'certificate_url',
     'url',
-    'download_url',
     'file_path',
     'certificate_path',
     'certificate_file',
