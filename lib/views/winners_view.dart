@@ -20,9 +20,11 @@ class _WinnersViewState extends State<WinnersView> {
   String? _error;
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() { _loading = true; _error = null; _winnersByEvent.clear(); });
     try {
       final response = await ApiService.getPastEvents();
+      if (!mounted) return;
       final data = response.data;
       if (data is! Map || data['status'] != 'success') {
         setState(() { _loading = false; _pastEvents = []; _error = 'Failed to load events.'; });
@@ -34,19 +36,21 @@ class _WinnersViewState extends State<WinnersView> {
 
       // Fetch winners from event_winners.php for each event
       for (final e in events) {
+        if (!mounted) return;
         final idRaw = e is Map ? e['id'] : null;
         final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
         if (id == null) continue;
         final winRes = await ApiService.getWinnersByEventId(id);
+        if (!mounted) return;
         if (winRes.data is Map && winRes.data['status'] == 'success') {
           final wList = winRes.data['data'];
-          if (wList is List && wList.isNotEmpty && mounted) {
+          if (wList is List && wList.isNotEmpty) {
             setState(() => _winnersByEvent[id] = wList);
           }
         }
       }
     } catch (e) {
-      setState(() { _error = 'Network error.'; });
+      if (mounted) setState(() { _error = 'Network error.'; });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
