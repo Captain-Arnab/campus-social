@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/pref_service.dart';
-import 'splash_view.dart';
-import 'login_view.dart';
-import 'home_view.dart';
+import '../widgets/app_loading_screen.dart';
+import 'bootstrap_views.dart';
 
 /// Chooses first screen: onboarding once, then login or home based on session.
 class AppHomeGate extends StatefulWidget {
@@ -27,11 +26,11 @@ class _AppHomeGateState extends State<AppHomeGate> {
     if (!mounted) return;
     setState(() {
       if (!onboardingDone) {
-        _child = const OnboardingView();
+        _child = const OnboardingBootstrapView();
       } else if (loggedIn) {
-        _child = const HomeView();
+        _child = const HomeBootstrapView();
       } else {
-        _child = const LoginView();
+        _child = const LoginBootstrapView();
       }
     });
   }
@@ -40,9 +39,7 @@ class _AppHomeGateState extends State<AppHomeGate> {
   Widget build(BuildContext context) {
     final c = _child;
     if (c == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
-      );
+      return const AppLoadingScreen(message: 'Starting MiCampus...');
     }
     return c;
   }

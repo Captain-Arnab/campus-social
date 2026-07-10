@@ -7,7 +7,9 @@ import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
 import '../utils/sweetalert_helper.dart';
 import 'template_gallery_view.dart';
-import 'home_view.dart';
+import '../data/app_bootstrap.dart';
+import '../utils/app_navigation.dart';
+import 'bootstrap_views.dart';
 import '../widgets/app_calendar_theme.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../base/constant.dart';
@@ -271,11 +273,19 @@ class CreateEventViewState extends State<CreateEventView> {
         context,
         "Success",
         successBody,
-        onConfirm: () {
+        onConfirm: () async {
           if (isEdit) {
-            Get.offAll(() => const HomeView(initialBottomTabIndex: 1, initialMyEventsTabIndex: 1));
+            await AppNavigation.offAll(
+              () => const HomeBootstrapView(initialBottomTabIndex: 1, initialMyEventsTabIndex: 1),
+              prepare: AppBootstrap.prepareHome,
+              loadingMessage: 'Loading MiCampus...',
+            );
           } else {
-            Get.offAll(() => const HomeView());
+            await AppNavigation.offAll(
+              () => const HomeBootstrapView(),
+              prepare: AppBootstrap.prepareHome,
+              loadingMessage: 'Loading MiCampus...',
+            );
           }
         },
       );

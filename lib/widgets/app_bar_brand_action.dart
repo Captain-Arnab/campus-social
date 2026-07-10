@@ -9,36 +9,10 @@ class AppBarBrandLogoAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    /// Slightly larger so GNU / MiCampus marks read clearly in app bar actions.
-    final s = 52.w;
-    final br = BorderRadius.circular(8);
     return Padding(
       padding: EdgeInsetsDirectional.only(start: 4.w, top: 10, bottom: 10),
       child: Center(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: br,
-              child: SizedBox(
-                width: s,
-                height: s,
-                child: AppBranding.defaultLogoBox(
-                  width: s,
-                  height: s,
-                  fit: BoxFit.contain,
-                  borderRadius: br,
-                ),
-              ),
-            ),
-            AppBranding.adminLogoChipSlot(
-              width: s,
-              height: s,
-              leadingGap: 10.w,
-              borderRadius: br,
-            ),
-          ],
-        ),
+        child: AppBranding.compactDualLogos(size: 52, gap: 10),
       ),
     );
   }

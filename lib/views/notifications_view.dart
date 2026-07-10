@@ -6,6 +6,7 @@ import '../controllers/inbox_notification_controller.dart';
 import '../modal/model_inbox_notification.dart';
 import 'event_detail_view.dart';
 import '../data/api_service.dart';
+import '../widgets/app_loading_screen.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 
 class NotificationsView extends StatelessWidget {
@@ -54,9 +55,7 @@ class NotificationsView extends StatelessWidget {
       ),
       body: Obx(() {
         if (controller.isLoading.value && controller.notifications.isEmpty) {
-          return const Center(
-            child: CircularProgressIndicator(color: Color(0xFFFF5F15)),
-          );
+          return const AppLoadingScreen(message: 'Loading notifications...');
         }
 
         if (controller.notifications.isEmpty) {

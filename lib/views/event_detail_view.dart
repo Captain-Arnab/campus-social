@@ -17,6 +17,7 @@ import 'volunteer_dialog.dart';
 import 'edit_event_view.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../widgets/app_loading_screen.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../utils/event_participation_rules.dart';
@@ -566,17 +567,15 @@ class _EventDetailViewState extends State<EventDetailView> {
     final EventController controller = Get.find<EventController>();
     if (_loadingFull) {
       return Scaffold(
-        backgroundColor: Colors.white,
         appBar: AppBar(
           backgroundColor: const Color(0xFFFF5F15),
           foregroundColor: Colors.white,
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Get.back()),
-          title: AppBarTitleWithBrandLogo(
-            onPrimaryBackground: true,
-            title: const Text('Loading…', style: TextStyle(fontWeight: FontWeight.w600)),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Get.back(),
           ),
         ),
-        body: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
+        body: const AppLoadingScreen(message: 'Loading event...'),
       );
     }
     final List banners = _event['banners'] ?? [];

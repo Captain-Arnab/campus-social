@@ -3,7 +3,11 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../data/api_service.dart';
 import 'event_detail_view.dart';
+import '../data/app_bootstrap.dart';
+import '../utils/app_navigation.dart';
+import '../widgets/app_loading_screen.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
+import 'bootstrap_views.dart';
 
 /// Full-screen list of winners by event (past events). Scroll to see who won which event.
 class WinnersView extends StatefulWidget {
@@ -21,38 +25,66 @@ class _WinnersViewState extends State<WinnersView> {
 
   Future<void> _load() async {
     if (!mounted) return;
-    setState(() { _loading = true; _error = null; _winnersByEvent.clear(); });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _winnersByEvent.clear();
+    });
     try {
       final response = await ApiService.getPastEvents();
       if (!mounted) return;
       final data = response.data;
       if (data is! Map || data['status'] != 'success') {
-        setState(() { _loading = false; _pastEvents = []; _error = 'Failed to load events.'; });
+        setState(() {
+          _loading = false;
+          _pastEvents = [];
+          _error = 'Failed to load events.';
+        });
         return;
       }
       final list = data['data'];
-      final events = list is List ? list : [];
-      setState(() { _pastEvents = events; });
+      final events = list is List ? list : <dynamic>[];
 
-      // Fetch winners from event_winners.php for each event
+      final pending = <Future<MapEntry<int, List<dynamic>>?>>[];
       for (final e in events) {
-        if (!mounted) return;
         final idRaw = e is Map ? e['id'] : null;
         final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
         if (id == null) continue;
-        final winRes = await ApiService.getWinnersByEventId(id);
-        if (!mounted) return;
-        if (winRes.data is Map && winRes.data['status'] == 'success') {
-          final wList = winRes.data['data'];
-          if (wList is List && wList.isNotEmpty) {
-            setState(() => _winnersByEvent[id] = wList);
-          }
-        }
+        pending.add(() async {
+          try {
+            final winRes = await ApiService.getWinnersByEventId(id);
+            if (winRes.data is Map && winRes.data['status'] == 'success') {
+              final wList = winRes.data['data'];
+              if (wList is List && wList.isNotEmpty) {
+                return MapEntry<int, List<dynamic>>(id, List<dynamic>.from(wList));
+              }
+            }
+          } catch (_) {}
+          return null;
+        }());
       }
+
+      final resolved = await Future.wait(pending);
+      final winners = <int, List<dynamic>>{};
+      for (final entry in resolved) {
+        if (entry != null) winners[entry.key] = entry.value;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _pastEvents = events;
+        _winnersByEvent
+          ..clear()
+          ..addAll(winners);
+        _loading = false;
+      });
     } catch (e) {
-      if (mounted) setState(() { _error = 'Network error.'; });
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _error = 'Network error.';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -77,7 +109,7 @@ class _WinnersViewState extends State<WinnersView> {
         actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15)))
+          ? const AppLoadingScreen(message: 'Loading winners...')
           : _error != null
               ? Center(
                   child: Column(
@@ -117,7 +149,11 @@ class _WinnersViewState extends State<WinnersView> {
                             elevation: 2,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             child: InkWell(
-                              onTap: () => Get.to(() => EventDetailView(event: e), transition: Transition.rightToLeft),
+                              onTap: () => AppNavigation.to(
+                                () => EventDetailView(event: e),
+                                prepare: (ctx) => AppBootstrap.prepareEventDetail(ctx, e),
+                                loadingMessage: 'Loading event...',
+                              ),
                               borderRadius: BorderRadius.circular(16),
                               child: Padding(
                                 padding: EdgeInsets.all(16.w),

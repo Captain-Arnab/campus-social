@@ -18,6 +18,11 @@ import 'services/notification_service.dart';
 /// None of that must complete before the first pixel is drawn.
 Future<void> _startupDeferredServices() async {
   try {
+    await GoogleFonts.pendingFonts([GoogleFonts.plusJakartaSans()]);
+  } catch (e, st) {
+    debugPrint('Deferred startup (GoogleFonts): $e\n$st');
+  }
+  try {
     await NotificationService.init();
   } catch (e, st) {
     debugPrint('Deferred startup (NotificationService): $e\n$st');

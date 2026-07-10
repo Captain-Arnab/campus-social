@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
 import '../data/app_branding.dart';
 import '../utils/sweetalert_helper.dart';
-import 'login_view.dart';
+import '../data/app_bootstrap.dart';
+import '../utils/app_navigation.dart';
+import 'bootstrap_views.dart';
 // import 'otp_verification_view.dart'; // OTP disabled temporarily
 
 class SignupView extends StatefulWidget {
@@ -44,6 +48,7 @@ class _SignupViewState extends State<SignupView> {
   List<String> _filteredInterests = [];
   bool _showSuggestions = false;
   final FocusNode _interestFocusNode = FocusNode();
+  Timer? _interestFilterDebounce;
 
   @override
   void initState() {
@@ -51,17 +56,21 @@ class _SignupViewState extends State<SignupView> {
     _filteredInterests = List.from(_interestOptions);
     
     interestSearchCtrl.addListener(() {
-      setState(() {
-        final query = interestSearchCtrl.text.toLowerCase();
-        if (query.isEmpty) {
-          _filteredInterests = List.from(_interestOptions);
-          _showSuggestions = false;
-        } else {
-          _filteredInterests = _interestOptions
-              .where((interest) => interest.toLowerCase().contains(query))
-              .toList();
-          _showSuggestions = true;
-        }
+      _interestFilterDebounce?.cancel();
+      _interestFilterDebounce = Timer(const Duration(milliseconds: 180), () {
+        if (!mounted) return;
+        setState(() {
+          final query = interestSearchCtrl.text.toLowerCase();
+          if (query.isEmpty) {
+            _filteredInterests = List.from(_interestOptions);
+            _showSuggestions = false;
+          } else {
+            _filteredInterests = _interestOptions
+                .where((interest) => interest.toLowerCase().contains(query))
+                .toList();
+            _showSuggestions = _interestFocusNode.hasFocus;
+          }
+        });
       });
     });
     
@@ -390,13 +399,7 @@ class _SignupViewState extends State<SignupView> {
               children: [
                 SizedBox(height: 20.h),
                 // Logo
-                Center(
-                  child: AppBranding.dualAuthCircleMarks(
-                    diameter: 118.w,
-                    insetPadding: 6.w,
-                    innerLogoSize: 100.w,
-                  ),
-                ),
+                Center(child: AppBranding.authScreenMarks()),
                 SizedBox(height: 20.h),
                 Text(
                   "Create Account",
@@ -967,7 +970,11 @@ class _SignupViewState extends State<SignupView> {
                       // Login Link
                       Center(
                         child: GestureDetector(
-                          onTap: () => Get.off(() => const LoginView()),
+                          onTap: () => AppNavigation.off(
+                            () => const LoginBootstrapView(),
+                            prepare: AppBootstrap.prepareLogin,
+                            loadingMessage: 'Preparing login...',
+                          ),
                           child: RichText(
                             text: TextSpan(
                               text: "Already have an account? ",
@@ -1050,6 +1057,7 @@ class _SignupViewState extends State<SignupView> {
 
   @override
   void dispose() {
+    _interestFilterDebounce?.cancel();
     nameCtrl.dispose();
     emailCtrl.dispose();
     phoneCtrl.dispose();

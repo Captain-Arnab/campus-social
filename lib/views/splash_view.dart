@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../data/app_branding.dart';
+import '../data/app_bootstrap.dart';
 import '../data/pref_service.dart';
-import 'login_view.dart';
-import 'home_view.dart';
+import '../utils/app_navigation.dart';
+import 'bootstrap_views.dart';
 
 class OnboardingView extends StatefulWidget {
   const OnboardingView({super.key});
@@ -49,10 +50,11 @@ class _OnboardingViewState extends State<OnboardingView> {
     await PrefService.setOnboardingCompleted();
     bool isLoggedIn = await PrefService.isLoggedIn();
     if (mounted) {
-      Get.off(
-        () => isLoggedIn ? const HomeView() : const LoginView(),
+      await AppNavigation.off(
+        () => isLoggedIn ? const HomeBootstrapView() : const LoginBootstrapView(),
+        prepare: isLoggedIn ? AppBootstrap.prepareHome : AppBootstrap.prepareLogin,
+        loadingMessage: isLoggedIn ? 'Loading MiCampus...' : 'Preparing login...',
         transition: Transition.fadeIn,
-        duration: const Duration(milliseconds: 500),
       );
     }
   }

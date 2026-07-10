@@ -106,7 +106,7 @@ class _HomeAdCarouselState extends State<HomeAdCarousel> {
               final m = widget.posts[i];
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                child: _AdSlideCard(data: m),
+                child: _AdSlideCard(data: m, isActive: i == _index),
               );
             },
           ),
@@ -135,8 +135,9 @@ class _HomeAdCarouselState extends State<HomeAdCarousel> {
 
 class _AdSlideCard extends StatelessWidget {
   final Map<String, dynamic> data;
+  final bool isActive;
 
-  const _AdSlideCard({required this.data});
+  const _AdSlideCard({required this.data, required this.isActive});
 
   String _str(String k) => (data[k] ?? '').toString().trim();
 
@@ -149,7 +150,9 @@ class _AdSlideCard extends StatelessWidget {
     final link = linkUrl.isNotEmpty ? linkUrl : mediaUrl;
 
     Widget inner;
-    if (mediaType == 'link' || (mediaType.isEmpty && linkUrl.isNotEmpty && mediaUrl.isEmpty)) {
+    if (!isActive) {
+      inner = _AdPlaceholder(title: title, mediaType: mediaType, mediaUrl: mediaUrl);
+    } else if (mediaType == 'link' || (mediaType.isEmpty && linkUrl.isNotEmpty && mediaUrl.isEmpty)) {
       inner = _LinkAdBody(url: link, title: title);
     } else if (mediaType == 'image' || (mediaUrl.isNotEmpty && _looksImage(mediaUrl))) {
       inner = _ImageAdBody(url: Constant.uploadPublicUrl(mediaUrl));
@@ -265,11 +268,76 @@ class _ImageAdBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cacheW = (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round().clamp(280, 900);
     return Image.network(
       url,
       fit: BoxFit.cover,
       width: double.infinity,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.medium,
+      cacheWidth: cacheW,
       errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 40)),
+    );
+  }
+}
+
+class _AdPlaceholder extends StatelessWidget {
+  final String title;
+  final String mediaType;
+  final String mediaUrl;
+
+  const _AdPlaceholder({
+    required this.title,
+    required this.mediaType,
+    required this.mediaUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isImage = mediaType == 'image' ||
+        mediaUrl.toLowerCase().endsWith('.png') ||
+        mediaUrl.toLowerCase().endsWith('.jpg') ||
+        mediaUrl.toLowerCase().endsWith('.jpeg') ||
+        mediaUrl.toLowerCase().endsWith('.webp');
+    if (isImage && mediaUrl.isNotEmpty) {
+      final cacheW = (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round().clamp(280, 900);
+      return Image.network(
+        Constant.uploadPublicUrl(mediaUrl),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.low,
+        cacheWidth: cacheW,
+        errorBuilder: (_, __, ___) => _placeholderBody(),
+      );
+    }
+    return _placeholderBody();
+  }
+
+  Widget _placeholderBody() {
+    return ColoredBox(
+      color: Colors.grey.shade100,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.campaign_outlined, size: 36, color: Colors.grey.shade500),
+              if (title.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -23,7 +23,10 @@ import 'edit_profile_view.dart';
 import 'volunteer_dialog.dart';
 import '../data/api_service.dart';
 import '../data/app_branding.dart';
+import '../data/app_bootstrap.dart';
 import '../data/pref_service.dart';
+import '../utils/app_navigation.dart';
+import '../widgets/app_loading_screen.dart';
 import '../widgets/home_ad_carousel.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../widgets/app_calendar_theme.dart';
@@ -35,6 +38,46 @@ int _eventPosterCacheWidth(BuildContext context, double widthFraction) {
   final logicalW = MediaQuery.sizeOf(context).width * widthFraction;
   final px = (logicalW * MediaQuery.devicePixelRatioOf(context)).round();
   return px.clamp(280, 1400);
+}
+
+void _openEventDetail(dynamic event) {
+  AppNavigation.to(
+    () => EventDetailView(event: event),
+    prepare: (ctx) => AppBootstrap.prepareEventDetail(ctx, event),
+    loadingMessage: 'Loading event...',
+  );
+}
+
+void _openWinners() {
+  AppNavigation.to(
+    () => const WinnersView(),
+    prepare: AppBootstrap.prepareWinners,
+    loadingMessage: 'Loading winners...',
+  );
+}
+
+void _openNotifications() {
+  AppNavigation.to(
+    () => const NotificationsView(),
+    prepare: AppBootstrap.prepareNotifications,
+    loadingMessage: 'Loading notifications...',
+  );
+}
+
+void _openCreateEvent() {
+  AppNavigation.to(
+    () => const CreateEventView(),
+    prepare: AppBootstrap.prepareCreateEvent,
+    loadingMessage: 'Loading...',
+  );
+}
+
+void _openEditProfile() {
+  AppNavigation.to(
+    () => const EditProfileView(),
+    prepare: AppBootstrap.prepareEditProfile,
+    loadingMessage: 'Loading profile...',
+  );
 }
 
 /// Readable date/venue on cards when poster or API uses placeholder text.
@@ -80,6 +123,7 @@ class HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<HomeView> {
   late int _currentIndex;
+  late final List<Widget> _tabs;
   
   final AuthController authController = Get.put(AuthController());
   final EventController eventController = Get.put(EventController());
@@ -90,6 +134,11 @@ class _HomeViewState extends State<HomeView> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialBottomTabIndex.clamp(0, 2);
+    _tabs = [
+      const _ExploreTab(),
+      _MyEventsTab(initialIndex: widget.initialMyEventsTabIndex),
+      const _ProfileTab(),
+    ];
     WidgetsBinding.instance.addPostFrameCallback((_) {
       DeepLinkService.instance.tryNavigateToPendingEvent();
     });
@@ -97,15 +146,13 @@ class _HomeViewState extends State<HomeView> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> screens = [
-      const _ExploreTab(),
-      _MyEventsTab(initialIndex: widget.initialMyEventsTabIndex),
-      const _ProfileTab(),
-    ];
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
-      body: screens[_currentIndex],
+      body: IndexedStack(
+        index: _currentIndex,
+        sizing: StackFit.expand,
+        children: _tabs,
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -136,10 +183,7 @@ class _HomeViewState extends State<HomeView> {
               width: 56,
               child: FloatingActionButton(
                 tooltip: "Host Event",
-                onPressed: () => Get.to(
-                  () => const CreateEventView(),
-                  transition: Transition.rightToLeft,
-                ),
+                onPressed: _openCreateEvent,
                 backgroundColor: const Color(0xFFFF5F15),
                 elevation: 10,
                 shape: RoundedRectangleBorder(
@@ -229,22 +273,6 @@ class _ExploreWebsiteLink extends StatelessWidget {
 }
 
 /// Explore header marks on the gradient — no filled plate behind the artwork.
-class _ExploreHeaderMark extends StatelessWidget {
-  final Widget child;
-  const _ExploreHeaderMark({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: SizedBox(
-        width: 72.w,
-        height: 60.h,
-        child: Center(child: child),
-      ),
-    );
-  }
-}
 
 // --- Cracker burst painter: sparks bursting from a rounded rect border ---
 class _CrackerBurstPainter extends CustomPainter {
@@ -351,7 +379,7 @@ class _CelebratingWinnersButtonState extends State<_CelebratingWinnersButton>
               color: Colors.white.withOpacity(0.3),
               borderRadius: BorderRadius.circular(borderRadius),
               child: InkWell(
-                onTap: () => Get.to(() => const WinnersView(), transition: Transition.rightToLeft),
+                onTap: _openWinners,
                 borderRadius: BorderRadius.circular(borderRadius),
                 child: Container(
                   padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
@@ -405,7 +433,7 @@ class _ExploreTab extends StatefulWidget {
   State<_ExploreTab> createState() => _ExploreTabState();
 }
 
-class _ExploreTabState extends State<_ExploreTab> {
+class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientMixin {
   final EventController controller = Get.find<EventController>();
   final TextEditingController searchCtrl = TextEditingController();
   /// Category filter for "Live today" only (featured carousel ignores this).
@@ -420,6 +448,10 @@ class _ExploreTabState extends State<_ExploreTab> {
   bool _winnersLoading = false;
   List<Map<String, dynamic>> _adPosts = [];
   Timer? _exploreSearchDebounce;
+  bool _screenReady = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   Future<void> _refreshData() async {
     await Future.wait([
@@ -494,10 +526,19 @@ class _ExploreTabState extends State<_ExploreTab> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _prepareExploreScreen();
+  }
+
+  Future<void> _prepareExploreScreen() async {
+    try {
+      await Future.wait([
+        if (controller.liveEventCatalog.isEmpty) controller.fetchLiveEventCatalog(),
+        _loadAdPosts(),
+      ]);
       _loadWinnersSwiper();
-      _loadAdPosts();
-    });
+    } finally {
+      if (mounted) setState(() => _screenReady = true);
+    }
   }
 
   @override
@@ -797,7 +838,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                               final map = _eventMapForDetail(e);
                               searchCtrl.clear();
                               controller.clearExploreSearch();
-                              Get.to(() => EventDetailView(event: map), transition: Transition.rightToLeft);
+                              _openEventDetail(map);
                             },
                           );
                         },
@@ -828,6 +869,10 @@ class _ExploreTabState extends State<_ExploreTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+    if (!_screenReady) {
+      return const AppLoadingScreen(message: 'Loading campus events...');
+    }
     return RefreshIndicator(
       onRefresh: _refreshData,
       color: const Color(0xFFFF5F15),
@@ -873,41 +918,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerLeft,
-                            child: ValueListenableBuilder<String?>(
-                              valueListenable: AppBranding.logoUrlNotifier,
-                              builder: (context, adminUrl, _) {
-                                return Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _ExploreHeaderMark(
-                                      child: AppBranding.defaultLogoBox(
-                                        width: 100.w,
-                                        height: 80.h,
-                                        fit: BoxFit.contain,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    if (adminUrl != null && adminUrl.isNotEmpty)
-                                      Padding(
-                                        padding: EdgeInsets.only(left: 14.w),
-                                        child: _ExploreHeaderMark(
-                                          child: SizedBox(
-                                            width: 68.w,
-                                            height: 56.h,
-                                            child: Image.network(
-                                              adminUrl,
-                                              fit: BoxFit.cover,
-                                              alignment: Alignment.center,
-                                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                );
-                              },
-                            ),
+                            child: AppBranding.exploreHeaderLogos(),
                           ),
                         ),
                       ),
@@ -924,7 +935,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                                 IconButton(
                                   icon: const Icon(Icons.notifications_outlined, color: Colors.white),
                                   iconSize: 32,
-                                  onPressed: () => Get.to(() => const NotificationsView(), transition: Transition.rightToLeft),
+                                  onPressed: _openNotifications,
                                 ),
                                 if (unread > 0)
                                   Positioned(
@@ -1089,7 +1100,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                         style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
                       ),
                       TextButton(
-                        onPressed: () => Get.to(() => const WinnersView(), transition: Transition.rightToLeft),
+                        onPressed: _openWinners,
                         child: Text("See all", style: TextStyle(color: const Color(0xFFFF5F15), fontWeight: FontWeight.w600, fontSize: 14.sp)),
                       ),
                     ],
@@ -1105,7 +1116,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20.w),
                     child: GestureDetector(
-                      onTap: () => Get.to(() => const WinnersView(), transition: Transition.rightToLeft),
+                      onTap: _openWinners,
                       child: Container(
                         width: double.infinity,
                         padding: EdgeInsets.symmetric(vertical: 20.h, horizontal: 20.w),
@@ -1159,7 +1170,7 @@ class _ExploreTabState extends State<_ExploreTab> {
                         final title = (event is Map ? event['title'] : null)?.toString() ?? 'Event';
                         final date = (event is Map ? event['event_date'] : null)?.toString() ?? '';
                         return GestureDetector(
-                          onTap: () => Get.to(() => EventDetailView(event: event), transition: Transition.rightToLeft),
+                          onTap: () => _openEventDetail(event),
                           child: Container(
                             width: 260.w,
                             margin: EdgeInsets.only(right: 12.w),
@@ -1483,7 +1494,7 @@ class _AllEventCard extends StatelessWidget {
         : "";
 
     return GestureDetector(
-      onTap: () => Get.to(() => EventDetailView(event: event), transition: Transition.rightToLeft),
+      onTap: () => _openEventDetail(event),
       child: Container(
         width: 280.w,
         decoration: BoxDecoration(
@@ -1950,7 +1961,7 @@ class _FeaturedEventCard extends StatelessWidget {
         : "";
 
     return GestureDetector(
-      onTap: () => Get.to(() => EventDetailView(event: event), transition: Transition.rightToLeft),
+      onTap: () => _openEventDetail(event),
       child: Container(
         margin: EdgeInsets.symmetric(horizontal: 5.w),
         decoration: BoxDecoration(
@@ -2317,6 +2328,7 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
   final PageController _pageController = PageController();
   int _currentPage = 0;
   bool _hasInitialized = false;
+  bool _listLoading = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -2329,24 +2341,29 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
 
   Future<void> _fetchData() async {
     if (!mounted) return;
+    setState(() => _listLoading = true);
     
     final EventController controller = Get.find<EventController>();
-    switch(widget.type) {
-      case 'attending':
-        await controller.fetchAttendingEvents();
-        break;
-      case 'hosted':
-        await controller.fetchHostedEvents();
-        break;
-      case 'editing':
-        await controller.fetchEditingEvents();
-        break;
-      case 'volunteering':
-        await controller.fetchVolunteeringEvents();
-        break;
-      case 'participating':
-        await controller.fetchParticipatingEvents();
-        break;
+    try {
+      switch(widget.type) {
+        case 'attending':
+          await controller.fetchAttendingEvents();
+          break;
+        case 'hosted':
+          await controller.fetchHostedEvents();
+          break;
+        case 'editing':
+          await controller.fetchEditingEvents();
+          break;
+        case 'volunteering':
+          await controller.fetchVolunteeringEvents();
+          break;
+        case 'participating':
+          await controller.fetchParticipatingEvents();
+          break;
+      }
+    } finally {
+      if (mounted) setState(() => _listLoading = false);
     }
   }
 
@@ -2396,7 +2413,7 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
           break;
       }
       
-      if (controller.isLoading.value) {
+      if (_listLoading && eventsList.isEmpty) {
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -2696,7 +2713,7 @@ class _ProfileTab extends StatelessWidget {
       backgroundColor: const Color(0xFFF8F9FD),
       body: Obx(() {
         if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15)));
+          return const AppLoadingScreen(message: 'Loading profile...');
         }
         
         final user = controller.userData.value;
@@ -2715,14 +2732,8 @@ class _ProfileTab extends StatelessWidget {
 
               leadingWidth: 196,
               leading: Padding(
-                padding: const EdgeInsets.all(8),
-                child: AppBranding.logoBox(
-                  width: 64,
-                  height: 64,
-                  fit: BoxFit.contain,
-                  borderRadius: BorderRadius.circular(12),
-                  interLogoGap: 14,
-                ),
+                padding: EdgeInsets.all(8.w),
+                child: AppBranding.compactDualLogos(size: 56, gap: 10),
               ),
 
               flexibleSpace: FlexibleSpaceBar(
@@ -2740,10 +2751,7 @@ class _ProfileTab extends StatelessWidget {
               actions: [
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 22),
-                  onPressed: () => Get.to(
-                    () => const EditProfileView(),
-                    transition: Transition.rightToLeft,
-                  ),
+                  onPressed: _openEditProfile,
                 ),
                 IconButton(
                   icon: const Icon(Icons.logout_outlined, color: Colors.white, size: 22),
@@ -3147,7 +3155,7 @@ class _EventCard extends StatelessWidget {
         : "";
 
     return GestureDetector(
-      onTap: () => Get.to(() => EventDetailView(event: event), transition: Transition.rightToLeft),
+      onTap: () => _openEventDetail(event),
       child: Container(
         margin: EdgeInsets.zero,
         height: 350.h,
@@ -3375,7 +3383,7 @@ class _HostedEventTile extends StatelessWidget {
     final canEditDelete = status == 'pending';
 
     return InkWell(
-      onTap: () => Get.to(() => EventDetailView(event: event), transition: Transition.rightToLeft),
+      onTap: () => _openEventDetail(event),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: EdgeInsets.all(14.w),
@@ -3466,9 +3474,10 @@ class _HostedEventTile extends StatelessWidget {
               PopupMenuButton<String>(
                 onSelected: (value) async {
                   if (value == 'edit') {
-                    Get.to(
+                    AppNavigation.to(
                       () => CreateEventView(existingEvent: event),
-                      transition: Transition.rightToLeft,
+                      prepare: AppBootstrap.prepareCreateEvent,
+                      loadingMessage: 'Loading...',
                     );
                   } else if (value == 'delete') {
                     ArtSweetAlert.show(
@@ -3632,7 +3641,7 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
                   onTap: () {
                     final id = eventId;
                     if (id != null && id > 0) {
-                      Get.to(() => EventDetailView(event: {'id': id}), transition: Transition.rightToLeft);
+                      _openEventDetail({'id': id});
                     }
                   },
                   borderRadius: BorderRadius.circular(12),

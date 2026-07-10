@@ -6,6 +6,8 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
 import '../data/app_branding.dart';
+import '../data/app_bootstrap.dart';
+import '../utils/app_navigation.dart';
 import '../utils/sweetalert_helper.dart';
 import 'signup_view.dart';
 // import 'forgot_password_view.dart'; // Email-based flow (disabled - SMS-only auth)
@@ -27,8 +29,6 @@ class _LoginViewState extends State<LoginView> {
   bool _obscurePassword = true;
   bool _isStudent = true; // Default to student
   bool _loginByMobile = false; // Toggle between email/mobile
-  int _otpResendSeconds = 0;
-  Timer? _otpResendTimer;
 
   @override
   Widget build(BuildContext context) {
@@ -49,12 +49,8 @@ class _LoginViewState extends State<LoginView> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Default MiCampus mark + optional admin logo from API
-                  AppBranding.dualAuthCircleMarks(
-                    diameter: 140.w,
-                    insetPadding: 6.w,
-                    innerLogoSize: 120.w,
-                  ),
-                  SizedBox(height: 24.h),
+                  AppBranding.authScreenMarks(),
+                  SizedBox(height: 20.h),
                   
                   Text(
                     "MiCampus",
@@ -196,7 +192,6 @@ class _LoginViewState extends State<LoginView> {
                               _loginByMobile = selection.first;
                               emailPhoneCtrl.clear();
                               otpCtrl.clear();
-                              _cancelOtpResendTimer();
                             });
                           },
                           style: ButtonStyle(
@@ -252,36 +247,10 @@ class _LoginViewState extends State<LoginView> {
                             style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
                           ),
                           SizedBox(height: 12.h),
-                          Obx(() => OutlinedButton.icon(
-                                onPressed: (_otpResendSeconds > 0 || controller.isSendingLoginOtp.value)
-                                    ? null
-                                    : () => _onSendLoginOtp(),
-                                icon: controller.isSendingLoginOtp.value
-                                    ? SizedBox(
-                                        width: 18.w,
-                                        height: 18.w,
-                                        child: const CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Color(0xFFFF5F15),
-                                        ),
-                                      )
-                                    : const Icon(Icons.sms_outlined, color: Color(0xFFFF5F15)),
-                                label: Text(
-                                  _otpResendSeconds > 0
-                                      ? "Resend OTP in ${_otpResendSeconds}s"
-                                      : "Send OTP via SMS",
-                                  style: TextStyle(
-                                    fontSize: 14.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFFFF5F15),
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  padding: EdgeInsets.symmetric(vertical: 14.h),
-                                  side: const BorderSide(color: Color(0xFFFF5F15)),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                              )),
+                          _LoginOtpResendButton(
+                            controller: controller,
+                            onSend: _onSendLoginOtp,
+                          ),
                           SizedBox(height: 12.h),
                           TextField(
                             controller: otpCtrl,
@@ -395,7 +364,11 @@ class _LoginViewState extends State<LoginView> {
                           children: [
                             Text("Don't have an account? ", style: TextStyle(color: Colors.grey[600])),
                             GestureDetector(
-                              onTap: () => Get.to(() => const SignupView()),
+                              onTap: () => AppNavigation.to(
+                                () => const SignupView(),
+                                prepare: AppBootstrap.prepareLogin,
+                                loadingMessage: 'Loading...',
+                              ),
                               child: const Text(
                                 "Sign Up",
                                 style: TextStyle(
@@ -474,13 +447,44 @@ class _LoginViewState extends State<LoginView> {
     return true;
   }
 
-  Future<void> _onSendLoginOtp() async {
-    if (!_validateSendOtp()) return;
-    final ok = await controller.sendLoginOtp(
+  Future<bool> _onSendLoginOtp() async {
+    if (!_validateSendOtp()) return false;
+    return controller.sendLoginOtp(
       identifierCtrl.text.trim(),
       emailPhoneCtrl.text.trim(),
       _isStudent,
     );
+  }
+
+  @override
+  void dispose() {
+    identifierCtrl.dispose();
+    emailPhoneCtrl.dispose();
+    otpCtrl.dispose();
+    passCtrl.dispose();
+    super.dispose();
+  }
+}
+
+class _LoginOtpResendButton extends StatefulWidget {
+  final AuthController controller;
+  final Future<bool> Function() onSend;
+
+  const _LoginOtpResendButton({
+    required this.controller,
+    required this.onSend,
+  });
+
+  @override
+  State<_LoginOtpResendButton> createState() => _LoginOtpResendButtonState();
+}
+
+class _LoginOtpResendButtonState extends State<_LoginOtpResendButton> {
+  int _otpResendSeconds = 0;
+  Timer? _otpResendTimer;
+
+  Future<void> _handleSend() async {
+    final ok = await widget.onSend();
     if (!mounted || !ok) return;
     _startOtpResendCooldown();
   }
@@ -504,19 +508,43 @@ class _LoginViewState extends State<LoginView> {
     });
   }
 
-  void _cancelOtpResendTimer() {
+  @override
+  void dispose() {
     _otpResendTimer?.cancel();
-    _otpResendTimer = null;
-    _otpResendSeconds = 0;
+    super.dispose();
   }
 
   @override
-  void dispose() {
-    _cancelOtpResendTimer();
-    identifierCtrl.dispose();
-    emailPhoneCtrl.dispose();
-    otpCtrl.dispose();
-    passCtrl.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    return Obx(() => OutlinedButton.icon(
+          onPressed: (_otpResendSeconds > 0 || widget.controller.isSendingLoginOtp.value)
+              ? null
+              : _handleSend,
+          icon: widget.controller.isSendingLoginOtp.value
+              ? SizedBox(
+                  width: 18.w,
+                  height: 18.w,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFFFF5F15),
+                  ),
+                )
+              : const Icon(Icons.sms_outlined, color: Color(0xFFFF5F15)),
+          label: Text(
+            _otpResendSeconds > 0
+                ? "Resend OTP in ${_otpResendSeconds}s"
+                : "Send OTP via SMS",
+            style: TextStyle(
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFFFF5F15),
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            padding: EdgeInsets.symmetric(vertical: 14.h),
+            side: const BorderSide(color: Color(0xFFFF5F15)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ));
   }
 }

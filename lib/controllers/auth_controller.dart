@@ -4,8 +4,9 @@ import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../services/notification_service.dart';
 import '../utils/sweetalert_helper.dart';
-import '../views/home_view.dart';
-import '../views/login_view.dart';
+import '../utils/app_navigation.dart';
+import '../data/app_bootstrap.dart';
+import '../views/bootstrap_views.dart';
 import '../data/otp_service.dart';
 
 class AuthController extends GetxController {
@@ -114,7 +115,11 @@ class AuthController extends GetxController {
       
       if (data['status'] == 'success') {
         SweetAlertHelper.showSuccess(Get.context, "Success", "Account created! Please login.");
-        Get.off(() => const LoginView());
+        await AppNavigation.off(
+          () => const LoginBootstrapView(),
+          prepare: AppBootstrap.prepareLogin,
+          loadingMessage: 'Preparing login...',
+        );
       } else {
         String errorMsg = data['message']?.toString() ?? "Registration failed";
         SweetAlertHelper.showError(Get.context, "Registration Failed", errorMsg);
@@ -166,7 +171,11 @@ class AuthController extends GetxController {
         await PrefService.saveUserSession(userId, name, token, isStudent: isStudent);
         await NotificationService.ensureTokenRegistered();
 
-        Get.offAll(() => const HomeView());
+        await AppNavigation.offAll(
+          () => const HomeBootstrapView(),
+          prepare: AppBootstrap.prepareHome,
+          loadingMessage: 'Loading MiCampus...',
+        );
         SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
       } else {
         String errorMsg = data['message']?.toString() ?? "Unknown error";
@@ -217,6 +226,10 @@ class AuthController extends GetxController {
   Future<void> logout() async {
     await NotificationService.onLogout();
     await PrefService.clearSession();
-    Get.offAll(() => const LoginView());
+    await AppNavigation.offAll(
+      () => const LoginBootstrapView(),
+      prepare: AppBootstrap.prepareLogin,
+      loadingMessage: 'Preparing login...',
+    );
   }
 }

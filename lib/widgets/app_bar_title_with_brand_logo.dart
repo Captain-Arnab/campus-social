@@ -27,30 +27,11 @@ class AppBarTitleWithBrandLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = logoUnit.w;
     final br = BorderRadius.circular(8);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        ClipRRect(
-          borderRadius: br,
-          child: SizedBox(
-            width: s,
-            height: s,
-            child: AppBranding.defaultLogoBox(
-              width: s,
-              height: s,
-              fit: BoxFit.contain,
-              borderRadius: br,
-            ),
-          ),
-        ),
-        AppBranding.adminLogoChipSlot(
-          width: s,
-          height: s,
-          leadingGap: 12.w,
-          borderRadius: br,
-        ),
+        AppBranding.compactDualLogos(size: logoUnit, gap: 12, borderRadius: br),
         SizedBox(width: 12.w),
         Expanded(
           child: DefaultTextStyle.merge(

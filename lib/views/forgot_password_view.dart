@@ -37,12 +37,8 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  AppBranding.dualAuthCircleMarks(
-                    diameter: 140.w,
-                    insetPadding: 6.w,
-                    innerLogoSize: 120.w,
-                  ),
-                  SizedBox(height: 24.h),
+                  AppBranding.authScreenMarks(),
+                  SizedBox(height: 20.h),
                   
                   Text(
                     "Forgot Password?",
