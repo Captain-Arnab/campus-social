@@ -15,13 +15,16 @@ pluginManagement {
         gradlePluginPortal()
     }
     plugins {
-        id("com.google.gms.google-services") version "4.4.2"
+        // Keep in sync with root build.gradle.kts google-services version.
+        id("com.google.gms.google-services") version "4.4.4"
     }
 }
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.9.1" apply false
+    // API 36 requires AGP 8.9.1+; 8.12.x explicitly supports max API 36.
+    // Avoid AGP 8.13+ for now — some Flutter plugins still trip on stricter AAR metadata checks.
+    id("com.android.application") version "8.12.1" apply false
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
 }
 
