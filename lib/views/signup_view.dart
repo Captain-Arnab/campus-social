@@ -970,7 +970,7 @@ class _SignupViewState extends State<SignupView> {
                       // Login Link
                       Center(
                         child: GestureDetector(
-                          onTap: () => AppNavigation.off(
+                          onTap: () => AppNavigation.offAll(
                             () => const LoginBootstrapView(),
                             prepare: AppBootstrap.prepareLogin,
                             loadingMessage: 'Preparing login...',

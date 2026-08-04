@@ -1,7 +1,7 @@
 name: MiCampus
 description: A new Flutter project for Campus Events.
 publish_to: 'none'
-version: 1.0.0+5
+version: 1.0.1+6
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -60,22 +60,12 @@ flutter_launcher_icons:
 flutter:
   uses-material-design: true
   
-  # Assets
+  # Assets (directory entries only — listing files already under a dir
+  # causes PathExistsException on Windows when Flutter copies them twice)
   assets:
     - assets/images/
-    - assets/images/logo.jpeg
-    - assets/images/background1.png
-    - assets/images/paint.png
-    - assets/images/music_strokes.png
-    - assets/images/basketball.png
-    - assets/images/graduation_poster.jpeg
-    - assets/images/music_poster.jpeg
-    - assets/images/sports_poster.jpeg
-    - assets/images/tech_poster.jpeg
-    - assets/images/online_course_poster.jpeg
-    - assets/images/guru_nanak_logo.png
-    - assets/images/basketball/basketball.png
-    - assets/images/innovation/robot.png
-    - assets/images/music/music.png
-    - assets/images/graduation/element2.png
-    - assets/images/online_course/element.png
+    - assets/images/basketball/
+    - assets/images/innovation/
+    - assets/images/music/
+    - assets/images/graduation/
+    - assets/images/online_course/

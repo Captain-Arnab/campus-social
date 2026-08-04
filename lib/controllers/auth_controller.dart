@@ -1,19 +1,40 @@
-import 'package:get/get.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
 import '../data/api_service.dart';
+import '../data/app_bootstrap.dart';
+import '../data/otp_service.dart';
 import '../data/pref_service.dart';
 import '../services/notification_service.dart';
-import '../utils/sweetalert_helper.dart';
 import '../utils/app_navigation.dart';
-import '../data/app_bootstrap.dart';
+import '../utils/sweetalert_helper.dart';
 import '../views/bootstrap_views.dart';
-import '../data/otp_service.dart';
 
 class AuthController extends GetxController {
   var isLoading = false.obs;
   var isSendingLoginOtp = false.obs;
   var sentOtp = ''.obs;
   var otpSentTime = DateTime.now().obs;
+
+  /// FCM registration must never block auth navigation.
+  void _registerFcmInBackground({required String reason}) {
+    unawaited(() async {
+      try {
+        debugPrint('[Auth] FCM ensureTokenRegistered start ($reason)');
+        await NotificationService.ensureTokenRegistered().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            debugPrint('[Auth] FCM ensureTokenRegistered timed out ($reason)');
+          },
+        );
+        debugPrint('[Auth] FCM ensureTokenRegistered done ($reason)');
+      } catch (e, st) {
+        debugPrint('[Auth] FCM ensureTokenRegistered error ($reason): $e\n$st');
+      }
+    }());
+  }
 
   Future<bool> sendRegistrationOtp(String emailOrPhone, bool isMobile) async {
     // OTP disabled (SMS + Email) temporarily.
@@ -47,8 +68,8 @@ class AuthController extends GetxController {
       final err = data['message']?.toString() ?? "Could not send OTP";
       SweetAlertHelper.showError(Get.context, "OTP", err);
       return false;
-    } catch (e) {
-      debugPrint("sendLoginOtp error: $e");
+    } catch (e, st) {
+      debugPrint("sendLoginOtp error: $e\n$st");
       SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
       return false;
     } finally {
@@ -74,6 +95,7 @@ class AuthController extends GetxController {
       return false;
     }
   }
+
   // Updated Register with all fields
   Future<void> register(
     String name,
@@ -89,6 +111,7 @@ class AuthController extends GetxController {
   }) async {
     isLoading.value = true;
     try {
+      debugPrint('[Auth] register start');
       final response = await ApiService.register(
         name,
         email,
@@ -114,18 +137,34 @@ class AuthController extends GetxController {
       }
       
       if (data['status'] == 'success') {
-        SweetAlertHelper.showSuccess(Get.context, "Success", "Account created! Please login.");
-        await AppNavigation.off(
-          () => const LoginBootstrapView(),
-          prepare: AppBootstrap.prepareLogin,
-          loadingMessage: 'Preparing login...',
+        // Clear loading before any dialogs/navigation so the shared AuthController
+        // is not left with isLoading=true under a stacked login route.
+        isLoading.value = false;
+        debugPrint('[Auth] register success — waiting for alert confirm before login');
+        // Navigate only after the alert is dismissed, and clear the full stack
+        // (Get.off left the previous Login under LoginBootstrap).
+        SweetAlertHelper.showSuccess(
+          Get.context,
+          "Success",
+          "Account created! Please login.",
+          onConfirm: () {
+            unawaited(
+              AppNavigation.offAll(
+                () => const LoginBootstrapView(),
+                prepare: AppBootstrap.prepareLogin,
+                loadingMessage: 'Preparing login...',
+              ).catchError((Object e, StackTrace st) {
+                debugPrint('[Auth] post-register navigation error: $e\n$st');
+              }),
+            );
+          },
         );
       } else {
         String errorMsg = data['message']?.toString() ?? "Registration failed";
         SweetAlertHelper.showError(Get.context, "Registration Failed", errorMsg);
       }
-    } catch (e) {
-      debugPrint("Registration error: $e");
+    } catch (e, st) {
+      debugPrint("Registration error: $e\n$st");
       SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
     } finally {
       isLoading.value = false;
@@ -143,6 +182,10 @@ class AuthController extends GetxController {
   }) async {
     isLoading.value = true;
     try {
+      debugPrint(
+        '[Auth] login start byMobile=$byMobile isStudent=$isStudent '
+        'hasOtp=${otp != null && otp.isNotEmpty}',
+      );
       final response = await ApiService.loginWithIdentifier(
         identifier,
         emailOrPhone,
@@ -153,6 +196,7 @@ class AuthController extends GetxController {
       );
       
       final data = response.data;
+      debugPrint('[Auth] login response statusCode=${response.statusCode} data=$data');
       if (data == null) {
         SweetAlertHelper.showError(Get.context, "Error", "No response from server");
         return;
@@ -169,8 +213,17 @@ class AuthController extends GetxController {
         String token = data['token']?.toString() ?? "";
 
         await PrefService.saveUserSession(userId, name, token, isStudent: isStudent);
-        await NotificationService.ensureTokenRegistered();
+        debugPrint('[Auth] session saved userId=$userId tokenLen=${token.length}');
 
+        // Clear spinner before FCM / home prep — those must not block UI forever.
+        isLoading.value = false;
+
+        // FCM getToken()/topics can hang indefinitely on first cold path;
+        // never await on the login critical path (force-close "fixes" it because
+        // the token is then cached / init finished).
+        _registerFcmInBackground(reason: 'post-login');
+
+        debugPrint('[Auth] navigating to home');
         await AppNavigation.offAll(
           () => const HomeBootstrapView(),
           prepare: AppBootstrap.prepareHome,
@@ -181,8 +234,8 @@ class AuthController extends GetxController {
         String errorMsg = data['message']?.toString() ?? "Unknown error";
         SweetAlertHelper.showError(Get.context, "Login Failed", errorMsg);
       }
-    } catch (e) {
-      debugPrint("Login error: $e");
+    } catch (e, st) {
+      debugPrint("Login error: $e\n$st");
       SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
     } finally {
       isLoading.value = false;
@@ -214,8 +267,8 @@ class AuthController extends GetxController {
         String errorMsg = data['message']?.toString() ?? "Failed to process request";
         SweetAlertHelper.showError(Get.context, "Error", errorMsg);
       }
-    } catch (e) {
-      debugPrint("Forgot password error: $e");
+    } catch (e, st) {
+      debugPrint("Forgot password error: $e\n$st");
       SweetAlertHelper.showError(Get.context, "Error", "Failed to process request: ${e.toString()}");
     } finally {
       isLoading.value = false;
@@ -224,7 +277,16 @@ class AuthController extends GetxController {
 
   // Logout
   Future<void> logout() async {
-    await NotificationService.onLogout();
+    try {
+      await NotificationService.onLogout().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          debugPrint('[Auth] NotificationService.onLogout timed out');
+        },
+      );
+    } catch (e, st) {
+      debugPrint('[Auth] logout FCM cleanup error: $e\n$st');
+    }
     await PrefService.clearSession();
     await AppNavigation.offAll(
       () => const LoginBootstrapView(),

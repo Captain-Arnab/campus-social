@@ -21,8 +21,14 @@ class _AppHomeGateState extends State<AppHomeGate> {
   }
 
   Future<void> _resolve() async {
-    final onboardingDone = await PrefService.isOnboardingCompleted();
-    final loggedIn = await PrefService.isLoggedIn();
+    // SharedPreferences.getInstance is cached after first call, but the two
+    // bool reads used to run sequentially — keep them concurrent.
+    final results = await Future.wait<bool>([
+      PrefService.isOnboardingCompleted(),
+      PrefService.isLoggedIn(),
+    ]);
+    final onboardingDone = results[0];
+    final loggedIn = results[1];
     if (!mounted) return;
     setState(() {
       if (!onboardingDone) {

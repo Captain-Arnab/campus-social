@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -6,66 +8,61 @@ import '../controllers/inbox_notification_controller.dart';
 import '../controllers/profile_controller.dart';
 import 'app_branding.dart';
 
-/// Preloads branding, assets, and first-screen API data before showing UI.
+/// Lightweight screen prep. Network / FCM / heavy assets must not block first paint.
 class AppBootstrap {
   AppBootstrap._();
 
+  /// Branding HTTP is optional chrome — never gate navigation on it.
   static Future<void> refreshBranding(BuildContext context) async {
-    await Future.wait([
-      AppBranding.refresh(),
-      precacheImage(const AssetImage('assets/images/logo.jpeg'), context),
-    ]);
-  }
-
-  static Future<void> _precacheOptionalAsset(BuildContext context, String path) async {
+    unawaited(AppBranding.refresh());
+    // Local asset only; skip if context is already gone.
+    if (!context.mounted) return;
     try {
-      await precacheImage(AssetImage(path), context);
+      await precacheImage(
+        const AssetImage('assets/images/logo.jpeg'),
+        context,
+      ).timeout(const Duration(milliseconds: 400));
     } catch (_) {}
   }
 
   static Future<void> prepareOnboarding(BuildContext context) async {
-    await Future.wait([
-      refreshBranding(context),
-      _precacheOptionalAsset(context, 'assets/images/intro1.png'),
-      _precacheOptionalAsset(context, 'assets/images/intro2.png'),
-      _precacheOptionalAsset(context, 'assets/images/intro3.png'),
-    ]);
+    // Intro PNGs load via Image.asset when each page builds — do not precache all.
+    unawaited(AppBranding.refresh());
   }
 
   static Future<void> prepareLogin(BuildContext context) async {
     await refreshBranding(context);
   }
 
+  /// Register controllers so [onInit] starts fetches in the background.
+  /// Do NOT await events / profile / inbox / branding HTTP here — that was the
+  /// multi-second "Loading MiCampus..." splash after cold start.
   static Future<void> prepareHome(BuildContext context) async {
-    final eventController = Get.isRegistered<EventController>()
-        ? Get.find<EventController>()
-        : Get.put(EventController());
+    if (!Get.isRegistered<EventController>()) {
+      Get.put(EventController());
+    }
     if (!Get.isRegistered<ProfileController>()) {
       Get.put(ProfileController());
     }
     if (!Get.isRegistered<InboxNotificationController>()) {
       Get.put(InboxNotificationController(), permanent: true);
     }
-
-    await Future.wait([
-      refreshBranding(context),
-      if (eventController.liveEventCatalog.isEmpty) eventController.fetchLiveEventCatalog(),
-    ]);
+    unawaited(AppBranding.refresh());
   }
 
   static Future<void> prepareWinners(BuildContext context) async {
-    await refreshBranding(context);
+    unawaited(AppBranding.refresh());
   }
 
   static Future<void> prepareNotifications(BuildContext context) async {
-    await refreshBranding(context);
+    unawaited(AppBranding.refresh());
     if (Get.isRegistered<InboxNotificationController>()) {
       await Get.find<InboxNotificationController>().fetchNotifications();
     }
   }
 
   static Future<void> prepareEventDetail(BuildContext context, dynamic event) async {
-    await refreshBranding(context);
+    unawaited(AppBranding.refresh());
     final idRaw = event is Map ? event['id'] : null;
     final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
     if (id == null || id <= 0) return;
@@ -74,11 +71,11 @@ class AppBootstrap {
   }
 
   static Future<void> prepareCreateEvent(BuildContext context) async {
-    await refreshBranding(context);
+    unawaited(AppBranding.refresh());
   }
 
   static Future<void> prepareEditProfile(BuildContext context) async {
-    await refreshBranding(context);
+    unawaited(AppBranding.refresh());
     if (Get.isRegistered<ProfileController>()) {
       await Get.find<ProfileController>().loadProfile();
     }

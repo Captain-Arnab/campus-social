@@ -103,7 +103,7 @@ class NotificationService {
     // async but were previously awaited here, so [init] did not return until
     // all finished — extending the critical path on the UI isolate and
     // contributing to jank when [main] awaited [init] before [runApp].
-    // Login still calls [ensureTokenRegistered] and awaits it when needed.
+    // Login fires [ensureTokenRegistered] in the background (never blocks UI).
     unawaited(ensureTokenRegistered());
   }
 
@@ -225,7 +225,14 @@ class NotificationService {
   static Future<String?> getToken() async {
     if (_cachedToken != null) return _cachedToken;
     try {
-      final token = await _messaging.getToken();
+      // Emulator / first-run can hang here with no Dio-style timeout.
+      final token = await _messaging.getToken().timeout(
+        const Duration(seconds: 12),
+        onTimeout: () {
+          debugPrint('[FCM] getToken timed out after 12s');
+          return null;
+        },
+      );
       if (token == null) {
         debugPrint('[FCM] getToken returned null — check notification permission');
         return null;
@@ -241,8 +248,8 @@ class NotificationService {
       }
       _cachedToken = token;
       return _cachedToken;
-    } catch (e) {
-      debugPrint('[FCM] getToken error: $e');
+    } catch (e, st) {
+      debugPrint('[FCM] getToken error: $e\n$st');
       return null;
     }
   }
@@ -279,33 +286,60 @@ class NotificationService {
 
   /// Call on every app launch and after login to ensure the backend always
   /// has the latest FCM token for this device. Safe to call multiple times.
+  /// Callers on the auth critical path must not await this without a timeout.
   static Future<void> ensureTokenRegistered() async {
     try {
+      debugPrint('[FCM] ensureTokenRegistered start (initialized=$_initialized)');
       final token = await getToken();
-      if (token == null) return;
-      final deviceId = await _getDeviceId();
+      if (token == null) {
+        debugPrint('[FCM] ensureTokenRegistered skipped — no token');
+        return;
+      }
+      final deviceId = await _getDeviceId().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          debugPrint('[FCM] _getDeviceId timed out');
+          return null;
+        },
+      );
       await registerTokenWithBackend(token, deviceId: deviceId);
       await _subscribeTopics();
-    } catch (e) {
-      debugPrint('[FCM] ensureTokenRegistered error: $e');
+      debugPrint('[FCM] ensureTokenRegistered complete');
+    } catch (e, st) {
+      debugPrint('[FCM] ensureTokenRegistered error: $e\n$st');
     }
   }
 
   // ── Topic subscriptions ───────────────────────────────────────────────────
   static Future<void> _subscribeTopics() async {
     try {
-      await _messaging.subscribeToTopic('all_users');
+      await _messaging.subscribeToTopic('all_users').timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => debugPrint('[FCM] subscribe all_users timed out'),
+      );
       final isStudent = await PrefService.getIsStudent();
       if (isStudent) {
-        await _messaging.subscribeToTopic('students');
-        await _messaging.unsubscribeFromTopic('faculty');
+        await _messaging.subscribeToTopic('students').timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => debugPrint('[FCM] subscribe students timed out'),
+        );
+        await _messaging.unsubscribeFromTopic('faculty').timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => debugPrint('[FCM] unsubscribe faculty timed out'),
+        );
       } else {
-        await _messaging.subscribeToTopic('faculty');
-        await _messaging.unsubscribeFromTopic('students');
+        await _messaging.subscribeToTopic('faculty').timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => debugPrint('[FCM] subscribe faculty timed out'),
+        );
+        await _messaging.unsubscribeFromTopic('students').timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => debugPrint('[FCM] unsubscribe students timed out'),
+        );
       }
       debugPrint('[FCM] Topics subscribed');
-    } catch (e) {
-      debugPrint('[FCM] Topic subscribe error: $e');
+    } catch (e, st) {
+      debugPrint('[FCM] Topic subscribe error: $e\n$st');
     }
   }
 

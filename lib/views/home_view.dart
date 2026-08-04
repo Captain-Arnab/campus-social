@@ -448,7 +448,6 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
   bool _winnersLoading = false;
   List<Map<String, dynamic>> _adPosts = [];
   Timer? _exploreSearchDebounce;
-  bool _screenReady = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -526,19 +525,13 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
   @override
   void initState() {
     super.initState();
-    _prepareExploreScreen();
-  }
-
-  Future<void> _prepareExploreScreen() async {
-    try {
-      await Future.wait([
-        if (controller.liveEventCatalog.isEmpty) controller.fetchLiveEventCatalog(),
-        _loadAdPosts(),
-      ]);
-      _loadWinnersSwiper();
-    } finally {
-      if (mounted) setState(() => _screenReady = true);
+    // Paint Explore shell immediately. Catalog already loads from
+    // EventController.onInit; ads/winners are secondary chrome.
+    if (controller.liveEventCatalog.isEmpty && !controller.isLoading.value) {
+      unawaited(controller.fetchLiveEventCatalog());
     }
+    unawaited(_loadAdPosts());
+    unawaited(_loadWinnersSwiper());
   }
 
   @override
@@ -870,9 +863,6 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (!_screenReady) {
-      return const AppLoadingScreen(message: 'Loading campus events...');
-    }
     return RefreshIndicator(
       onRefresh: _refreshData,
       color: const Color(0xFFFF5F15),

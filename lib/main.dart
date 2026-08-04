@@ -11,46 +11,45 @@ import 'views/app_home_gate.dart';
 import 'services/deep_link_service.dart';
 import 'services/notification_service.dart';
 
-/// Work that used to run in [main] before [runApp], which blocked the first
-/// frame and triggered "Skipped N frames" (Choreographer): FCM permission,
-/// notification channels, [getInitialMessage], token fetch, [DeviceInfo],
-/// HTTP token registration, topic subscribe, plus [AppBranding.refresh] HTTP.
-/// None of that must complete before the first pixel is drawn.
+/// Non-critical work after the first frame. Previously ran sequentially
+/// (fonts → FCM → branding), adding seconds even though nothing here
+/// blocks navigation to home/login.
 Future<void> _startupDeferredServices() async {
-  try {
-    await GoogleFonts.pendingFonts([GoogleFonts.plusJakartaSans()]);
-  } catch (e, st) {
-    debugPrint('Deferred startup (GoogleFonts): $e\n$st');
-  }
-  try {
-    await NotificationService.init();
-  } catch (e, st) {
-    debugPrint('Deferred startup (NotificationService): $e\n$st');
-  }
-  try {
-    await AppBranding.refresh();
-  } catch (e, st) {
-    debugPrint('Deferred startup (AppBranding): $e\n$st');
-  }
+  await Future.wait<void>([
+    () async {
+      try {
+        await GoogleFonts.pendingFonts([GoogleFonts.plusJakartaSans()]);
+      } catch (e, st) {
+        debugPrint('Deferred startup (GoogleFonts): $e\n$st');
+      }
+    }(),
+    () async {
+      try {
+        await NotificationService.init();
+      } catch (e, st) {
+        debugPrint('Deferred startup (NotificationService): $e\n$st');
+      }
+    }(),
+    () async {
+      try {
+        await AppBranding.refresh();
+      } catch (e, st) {
+        debugPrint('Deferred startup (AppBranding): $e\n$st');
+      }
+    }(),
+  ]);
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Firebase must be initialized on the root isolate before the background
-  // handler is registered or any plugin touches Firebase. This uses native
-  // channels and cannot be moved to [compute]; it is typically shorter than
-  // the FCM + HTTP chain we defer below.
+  // Required before [runApp] for the background handler registration.
+  // Keep this as the only awaited native work on the critical path.
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  // Paint the first frame immediately. Awaiting NotificationService + branding
-  // here kept the UI thread busy through permission, platform channels, and
-  // network I/O, causing frame drops before MaterialApp existed.
   runApp(const MyApp());
 
-  // Run non-critical startup after the first frame is submitted — same
-  // behavior as before, but the raster thread gets a chance to show UI first.
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(_startupDeferredServices());
     unawaited(DeepLinkService.instance.init());
@@ -62,7 +61,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ScreenUtil for responsive design
     return ScreenUtilInit(
       designSize: const Size(360, 690),
       minTextAdapt: true,

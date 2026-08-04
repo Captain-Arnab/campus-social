@@ -7,14 +7,23 @@ import '../widgets/app_loading_screen.dart';
 class AppNavigation {
   AppNavigation._();
 
+  static const Duration _prepareTimeout = Duration(seconds: 30);
+
   static Future<void> _withLoader(
     BuildContext? ctx,
     String loadingMessage,
     Future<void> Function(BuildContext context) prepare,
   ) async {
-    final context = ctx ?? Get.context;
+    final context = ctx ?? Get.overlayContext ?? Get.context;
     if (context == null) {
-      await prepare(Get.context!);
+      debugPrint('[Nav] _withLoader: no context — running prepare without dialog');
+      final fallback = Get.context;
+      if (fallback == null) return;
+      try {
+        await prepare(fallback).timeout(_prepareTimeout);
+      } catch (e, st) {
+        debugPrint('[Nav] prepare (no dialog) failed: $e\n$st');
+      }
       return;
     }
     showDialog<void>(
@@ -27,10 +36,22 @@ class AppNavigation {
       ),
     );
     try {
-      await prepare(context);
+      debugPrint('[Nav] prepare start: $loadingMessage');
+      await prepare(context).timeout(
+        _prepareTimeout,
+        onTimeout: () {
+          debugPrint('[Nav] prepare timed out after ${_prepareTimeout.inSeconds}s: $loadingMessage');
+        },
+      );
+      debugPrint('[Nav] prepare done: $loadingMessage');
+    } catch (e, st) {
+      debugPrint('[Nav] prepare error: $e\n$st');
     } finally {
       if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
+        final nav = Navigator.of(context, rootNavigator: true);
+        if (nav.canPop()) {
+          nav.pop();
+        }
       }
     }
   }
