@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -42,6 +43,7 @@ Future<void> _startupDeferredServices() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   // Required before [runApp] for the background handler registration.
   // Keep this as the only awaited native work on the critical path.
@@ -86,6 +88,11 @@ class MyApp extends StatelessWidget {
               elevation: 0,
               scrolledUnderElevation: 0,
               centerTitle: true,
+              systemOverlayStyle: SystemUiOverlayStyle(
+                statusBarIconBrightness: Brightness.dark,
+                systemNavigationBarIconBrightness: Brightness.dark,
+                systemNavigationBarContrastEnforced: false,
+              ),
             ),
             cardTheme: CardThemeData(
               elevation: 0,

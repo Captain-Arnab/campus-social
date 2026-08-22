@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../base/constant.dart';
+import 'app_network_image.dart';
 
 String? _youtubeVideoId(String raw) {
   final u = Uri.tryParse(raw.trim());
@@ -269,14 +270,13 @@ class _ImageAdBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cacheW = (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round().clamp(280, 900);
-    return Image.network(
-      url,
+    return AppNetworkImage(
+      url: url,
       fit: BoxFit.cover,
       width: double.infinity,
-      gaplessPlayback: true,
       filterQuality: FilterQuality.medium,
       cacheWidth: cacheW,
-      errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 40)),
+      errorWidget: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 40)),
     );
   }
 }
@@ -301,14 +301,13 @@ class _AdPlaceholder extends StatelessWidget {
         mediaUrl.toLowerCase().endsWith('.webp');
     if (isImage && mediaUrl.isNotEmpty) {
       final cacheW = (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round().clamp(280, 900);
-      return Image.network(
-        Constant.uploadPublicUrl(mediaUrl),
+      return AppNetworkImage(
+        url: Constant.uploadPublicUrl(mediaUrl),
         fit: BoxFit.cover,
         width: double.infinity,
-        gaplessPlayback: true,
         filterQuality: FilterQuality.low,
         cacheWidth: cacheW,
-        errorBuilder: (_, __, ___) => _placeholderBody(),
+        errorWidget: (_, __, ___) => _placeholderBody(),
       );
     }
     return _placeholderBody();

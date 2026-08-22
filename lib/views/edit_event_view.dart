@@ -9,6 +9,7 @@ import '../utils/sweetalert_helper.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import 'template_gallery_view.dart';
 import '../widgets/app_calendar_theme.dart';
+import '../widgets/app_network_image.dart';
 
 /// Full edit form for an approved event (organizer or editor). Same fields as create: banner, title, category, date, venue, description.
 class EditEventView extends StatefulWidget {
@@ -290,12 +291,12 @@ class _EditEventViewState extends State<EditEventView> {
                     child: selectedImage != null
                         ? Image.file(selectedImage!, fit: BoxFit.contain, width: double.infinity, height: double.infinity)
                         : (_existingBannerName != null && !_removeExistingBanner)
-                            ? Image.network(
-                                "https://micampus.co.in/admin/uploads/events/$_existingBannerName",
+                            ? AppNetworkImage(
+                                url: "https://micampus.co.in/admin/uploads/events/$_existingBannerName",
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,
-                                errorBuilder: (_, __, ___) => _buildEmptyBanner(),
+                                errorWidget: (_, __, ___) => _buildEmptyBanner(),
                               )
                             : _buildEmptyBanner(),
                   ),

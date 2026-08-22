@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/sweetalert_helper.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
+import '../widgets/app_network_image.dart';
 
 class EditProfileView extends StatefulWidget {
   const EditProfileView({super.key});
@@ -161,7 +162,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                                 ? FileImage(selectedImage!)
                                 : (controller.userData.value.image != null && 
                                    controller.userData.value.image!.isNotEmpty
-                                    ? NetworkImage("https://micampus.co.in/admin/uploads/profiles/${controller.userData.value.image}")
+                                    ? appNetworkImageProvider("https://micampus.co.in/admin/uploads/profiles/${controller.userData.value.image}")
                                     : null) as ImageProvider?,
                             child: selectedImage == null &&
                                     (controller.userData.value.image == null || 

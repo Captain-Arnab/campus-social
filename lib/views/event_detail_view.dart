@@ -13,6 +13,7 @@ import '../base/constant.dart';
 import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/sweetalert_helper.dart';
+import '../widgets/app_network_image.dart';
 import 'volunteer_dialog.dart';
 import 'edit_event_view.dart';
 import '../data/api_service.dart';
@@ -656,10 +657,10 @@ class _EventDetailViewState extends State<EventDetailView> {
                 ? PageView.builder(
                     itemCount: banners.length,
                     itemBuilder: (context, index) {
-                      return Image.network(
-                        "https://micampus.co.in/admin/uploads/events/${banners[index]}",
+                      return AppNetworkImage(
+                        url: "https://micampus.co.in/admin/uploads/events/${banners[index]}",
                         fit: BoxFit.cover,
-                        errorBuilder: (c, e, s) => _buildPlaceholder(),
+                        errorWidget: (_, __, ___) => _buildPlaceholder(),
                       );
                     },
                   )
@@ -1141,7 +1142,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                           radius: 25.w,
                           backgroundColor: const Color(0xFFFF5F15),
                           backgroundImage: organizerAvatar != 'default_avatar.png'
-                            ? NetworkImage("https://micampus.co.in/admin/uploads/profiles/$organizerAvatar")
+                            ? appNetworkImageProvider("https://micampus.co.in/admin/uploads/profiles/$organizerAvatar")
                             : null,
                           child: organizerAvatar == 'default_avatar.png'
                             ? const Icon(Icons.person, color: Colors.white)

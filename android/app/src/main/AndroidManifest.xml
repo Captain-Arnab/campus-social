@@ -6,7 +6,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
 
-    <!-- Merged from plugins but not used (images only via gallery / photo picker). -->
+    <!-- Strip broad media permissions merged from plugins (e.g. open_filex). Gallery
+         picking uses the system Photo Picker via image_picker; no READ_MEDIA_* needed. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
     <application

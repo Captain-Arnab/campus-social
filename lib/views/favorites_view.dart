@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/event_controller.dart';
+import '../widgets/app_network_image.dart';
 import 'event_detail_view.dart';
 
 String _eventDateRange(dynamic event) {
@@ -144,12 +145,12 @@ class _FavoriteEventCard extends StatelessWidget {
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                   child: imageUrl.isNotEmpty
-                      ? Image.network(
-                          imageUrl,
+                      ? AppNetworkImage(
+                          url: imageUrl,
                           height: 180.h,
                           width: double.infinity,
                           fit: BoxFit.cover,
-                          errorBuilder: (c, e, s) => _buildPlaceholder(),
+                          errorWidget: (_, __, ___) => _buildPlaceholder(),
                         )
                       : _buildPlaceholder(),
                 ),

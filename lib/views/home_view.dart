@@ -28,6 +28,7 @@ import '../data/pref_service.dart';
 import '../utils/app_navigation.dart';
 import '../widgets/app_loading_screen.dart';
 import '../widgets/home_ad_carousel.dart';
+import '../widgets/app_network_image.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../widgets/app_calendar_theme.dart';
 import '../widgets/participate_registration_sheet.dart';
@@ -153,7 +154,9 @@ class _HomeViewState extends State<HomeView> {
         sizing: StackFit.expand,
         children: _tabs,
       ),
-      bottomNavigationBar: Container(
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, -3))
@@ -176,6 +179,7 @@ class _HomeViewState extends State<HomeView> {
             BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: "Profile"),
           ],
         ),
+      ),
       ),
       floatingActionButton: _currentIndex == 0
           ? SizedBox(
@@ -1504,13 +1508,12 @@ class _AllEventCard extends StatelessWidget {
             children: [
               // Background Image (Poster)
               imageUrl.isNotEmpty
-                ? Image.network(
-                    imageUrl,
+                ? AppNetworkImage(
+                    url: imageUrl,
                     fit: BoxFit.cover,
-                    gaplessPlayback: true,
                     filterQuality: FilterQuality.medium,
                     cacheWidth: _eventPosterCacheWidth(context, 0.82),
-                    errorBuilder: (c, e, s) => _buildPlaceholder(),
+                    errorWidget: (_, __, ___) => _buildPlaceholder(),
                   )
                 : _buildPlaceholder(),
 
@@ -1970,13 +1973,12 @@ class _FeaturedEventCard extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               imageUrl.isNotEmpty
-                ? Image.network(
-                    imageUrl,
+                ? AppNetworkImage(
+                    url: imageUrl,
                     fit: BoxFit.cover,
-                    gaplessPlayback: true,
                     filterQuality: FilterQuality.medium,
                     cacheWidth: _eventPosterCacheWidth(context, 0.92),
-                    errorBuilder: (c, e, s) => _buildPlaceholder(),
+                    errorWidget: (_, __, ___) => _buildPlaceholder(),
                   )
                 : _buildPlaceholder(),
 
@@ -2819,7 +2821,7 @@ class _ProfileTab extends StatelessWidget {
                               radius: 50.w,
                               backgroundColor: Colors.grey[100],
                               backgroundImage: user.image != null && user.image!.isNotEmpty 
-                                ? NetworkImage("https://micampus.co.in/admin/uploads/profiles/${user.image}") 
+                                ? appNetworkImageProvider("https://micampus.co.in/admin/uploads/profiles/${user.image}") 
                                 : null,
                               child: user.image == null || user.image!.isEmpty 
                                 ? Icon(Icons.person, size: 50.w, color: const Color(0xFFFF5F15)) 
@@ -3165,13 +3167,12 @@ class _EventCard extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               imageUrl.isNotEmpty
-                ? Image.network(
-                    imageUrl,
+                ? AppNetworkImage(
+                    url: imageUrl,
                     fit: BoxFit.cover,
-                    gaplessPlayback: true,
                     filterQuality: FilterQuality.medium,
                     cacheWidth: _eventPosterCacheWidth(context, 0.96),
-                    errorBuilder: (c, e, s) => _buildPlaceholder(),
+                    errorWidget: (_, __, ___) => _buildPlaceholder(),
                   )
                 : _buildPlaceholder(),
 

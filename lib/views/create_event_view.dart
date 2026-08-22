@@ -11,6 +11,7 @@ import '../data/app_bootstrap.dart';
 import '../utils/app_navigation.dart';
 import 'bootstrap_views.dart';
 import '../widgets/app_calendar_theme.dart';
+import '../widgets/app_network_image.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../base/constant.dart';
 
@@ -398,12 +399,12 @@ class CreateEventViewState extends State<CreateEventView> {
                             height: double.infinity,
                           )
                         : (_existingBannerName != null && !_removeExistingBanner)
-                            ? Image.network(
-                                "https://micampus.co.in/admin/uploads/events/$_existingBannerName",
+                            ? AppNetworkImage(
+                                url: "https://micampus.co.in/admin/uploads/events/$_existingBannerName",
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,
-                                errorBuilder: (_, __, ___) => _buildEmptyBanner(),
+                                errorWidget: (_, __, ___) => _buildEmptyBanner(),
                               )
                             : _buildEmptyBanner(),
                   ),

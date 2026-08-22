@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../base/constant.dart';
+import '../widgets/app_network_image.dart';
 import 'api_service.dart';
 
 /// Default app mark (`assets/images/logo.jpeg`) plus optional admin URL from
@@ -424,15 +425,14 @@ class AppBranding {
     int? cacheWidth,
     int? cacheHeight,
   }) {
-    return Image.network(
-      url,
+    return AppNetworkImage(
+      url: url,
       fit: fit,
       alignment: alignment,
       cacheWidth: cacheWidth,
       cacheHeight: cacheHeight,
-      gaplessPlayback: true,
       filterQuality: FilterQuality.medium,
-      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      errorWidget: (_, __, ___) => const SizedBox.shrink(),
     );
   }
 
