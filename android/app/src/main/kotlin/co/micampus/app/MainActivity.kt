@@ -6,8 +6,8 @@ import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Edge-to-edge on Android 15+ (targetSdk 36); backward-compatible on older API levels.
-        WindowCompat.enableEdgeToEdge(window)
+        // Draw behind system bars; Flutter handles insets via SystemUiMode.edgeToEdge.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
     }
 }
