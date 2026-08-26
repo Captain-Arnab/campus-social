@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -26,7 +27,6 @@ import '../data/app_bootstrap.dart';
 import '../data/pref_service.dart';
 import '../utils/app_navigation.dart';
 import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_logo_lockup.dart';
 import '../widgets/app_loading_screen.dart';
 import '../widgets/app_network_image.dart';
 import '../widgets/home_ad_carousel.dart';
@@ -35,8 +35,8 @@ import '../widgets/app_empty_state.dart';
 import '../widgets/event_list_skeleton.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/ticket_event_card.dart';
-import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../widgets/app_calendar_theme.dart';
+import '../widgets/campus_app_bar.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../utils/event_participation_rules.dart';
 
@@ -615,120 +615,100 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
             .where((e) => _categoryMatch(e, browseCategory))
             .where(_browseRangeMatch)
             .toList();
-        return SafeArea(
-          child: CustomScrollView(
+        return CustomScrollView(
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             cacheExtent: 720,
             slivers: [
-          // Header — subtle orange→navy gradient, rounded bottom
-          SliverToBoxAdapter(
-            child: Container(
-              padding: EdgeInsets.fromLTRB(16.w, 10.h, 12.w, 18.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.accent, AppColors.accentDark, Color(0xFF2A1F18)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  stops: [0.0, 0.55, 1.0],
+          // Pinned header — elevation appears when content scrolls underneath
+          CampusSliverAppBar(
+            automaticallyImplyLeading: false,
+            leadingWidth: 220,
+            leading: CampusSliverAppBar.logoLeading(),
+            actions: [
+              TextButton(
+                onPressed: () => _openMicampusWebsite(context),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white.withValues(alpha: 0.9),
+                  padding: EdgeInsets.symmetric(horizontal: 6.w),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(22.r)),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.accent.withValues(alpha: 0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+                child: Text(
+                  'micampus.co.in',
+                  style: TextStyle(
+                    fontSize: 11.sp,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Colors.white54,
                   ),
-                ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: AppLogoLockup.header(onPrimaryBackground: true),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Search',
-                        icon: const Icon(Icons.search_rounded, color: Colors.white, size: 26),
-                        onPressed: () => _searchFocus.requestFocus(),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10.h),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Discover campus events',
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                color: Colors.white,
-                              ),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => _openMicampusWebsite(context),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.white.withValues(alpha: 0.9),
-                          padding: EdgeInsets.symmetric(horizontal: 4.w),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          'micampus.co.in',
-                          style: TextStyle(
-                            fontSize: 11.sp,
-                            decoration: TextDecoration.underline,
-                            decorationColor: Colors.white54,
+              IconButton(
+                tooltip: 'Search',
+                icon: const Icon(Icons.search_rounded, color: Colors.white, size: 26),
+                onPressed: () => _searchFocus.requestFocus(),
+              ),
+            ],
+            bottom: PreferredSize(
+              preferredSize: Size.fromHeight(100.h),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 12.h),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Obx(() {
+                      final name = Get.isRegistered<ProfileController>()
+                          ? Get.find<ProfileController>().displayNameObs.value
+                          : 'User';
+                      return Text(
+                        CampusAppBarTokens.greeting(name),
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      );
+                    }),
+                    SizedBox(height: 10.h),
+                    Material(
+                      elevation: 0,
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      color: AppColors.surface,
+                      child: TextField(
+                        controller: searchCtrl,
+                        focusNode: _searchFocus,
+                        style: const TextStyle(color: Colors.black87),
+                        decoration: InputDecoration(
+                          hintText: "Search by name, venue, category, organizer…",
+                          hintStyle: TextStyle(color: Colors.grey[600]),
+                          prefixIcon: Icon(Icons.search_rounded, color: Colors.grey[600]),
+                          suffixIcon: Obx(() {
+                            if (controller.exploreSearchQuery.value.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return IconButton(
+                              tooltip: 'Clear',
+                              icon: Icon(Icons.close_rounded, color: Colors.grey[700], size: 22),
+                              onPressed: () {
+                                searchCtrl.clear();
+                                _exploreSearchDebounce?.cancel();
+                                controller.clearExploreSearch();
+                              },
+                            );
+                          }),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.card),
+                            borderSide: BorderSide.none,
                           ),
+                          contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 20.w),
                         ),
+                        onChanged: _onSearchChanged,
                       ),
-                    ],
-                  ),
-                  SizedBox(height: 10.h),
-                  Material(
-                    elevation: 0,
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                    color: AppColors.surface,
-                    child: TextField(
-                      controller: searchCtrl,
-                      focusNode: _searchFocus,
-                      style: const TextStyle(color: Colors.black87),
-                      decoration: InputDecoration(
-                        hintText: "Search by name, venue, category, organizer…",
-                        hintStyle: TextStyle(color: Colors.grey[600]),
-                        prefixIcon: Icon(Icons.search_rounded, color: Colors.grey[600]),
-                        suffixIcon: Obx(() {
-                          if (controller.exploreSearchQuery.value.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-                          return IconButton(
-                            tooltip: 'Clear',
-                            icon: Icon(Icons.close_rounded, color: Colors.grey[700], size: 22),
-                            onPressed: () {
-                              searchCtrl.clear();
-                              _exploreSearchDebounce?.cancel();
-                              controller.clearExploreSearch();
-                            },
-                          );
-                        }),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.card),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 20.w),
-                      ),
-                      onChanged: _onSearchChanged,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -757,7 +737,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(height: 15.h),
+                  SizedBox(height: 8.h),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20.w),
                     child: Row(
@@ -771,17 +751,17 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                       ],
                     ),
                   ),
-                  SizedBox(height: 10.h),
+                  SizedBox(height: 8.h),
                   CarouselSlider.builder(
                     itemCount: featuredEvents.length,
                     options: CarouselOptions(
-                      height: 340.h,
+                      height: 320.h,
                       autoPlay: true,
                       autoPlayInterval: const Duration(milliseconds: 2600),
                       autoPlayAnimationDuration: const Duration(milliseconds: 520),
                       autoPlayCurve: Curves.fastEaseInToSlowEaseOut,
                       enlargeCenterPage: true,
-                      viewportFraction: 0.85,
+                      viewportFraction: 0.82,
                       enableInfiniteScroll: featuredEvents.length > 1,
                       scrollPhysics: const BouncingScrollPhysics(),
                     ),
@@ -793,8 +773,10 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                           child: TicketEventCard(
                             event: ev,
                             onTap: () => _openEventDetail(ev),
-                            posterHeight: 170,
-                            showRegistrationOpenTag: _showRegistrationOpenTagForFeatured(ev),
+                            width: double.infinity,
+                            posterHeight: 320,
+                            showRegistrationOpenTag:
+                                _showRegistrationOpenTagForFeatured(ev),
                             dateLineBuilder: (a, b) => _cardEventDateLine(a, b),
                             venueLineBuilder: (v) => _cardVenueLine(v),
                           ),
@@ -899,7 +881,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                         )
                       else
                         SizedBox(
-                          height: 350.h,
+                          height: 320.h,
                           child: ListView.separated(
                             padding: EdgeInsets.symmetric(horizontal: 20.w),
                             scrollDirection: Axis.horizontal,
@@ -990,7 +972,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                         )
                       else
                         SizedBox(
-                          height: 350.h,
+                          height: 320.h,
                           child: ListView.separated(
                             padding: EdgeInsets.symmetric(horizontal: 20.w),
                             scrollDirection: Axis.horizontal,
@@ -1011,13 +993,13 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                   ),
           ),
 
-          // Promotional / admissions carousel - after "Upcoming events" list (user scrolls past featured, live today, filters, then upcoming)
+          // Promotional / admissions carousel
           if (_adPosts.isNotEmpty)
             SliverToBoxAdapter(
               child: ColoredBox(
-                color: const Color(0xFFF8F9FD),
+                color: AppColors.cream,
                 child: Padding(
-                  padding: EdgeInsets.only(top: 8.h, bottom: 4.h),
+                  padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 12.h),
                   child: HomeAdCarousel(posts: _adPosts),
                 ),
               ),
@@ -1034,8 +1016,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 30.h)),
         ],
-      ),
-    );
+      );
       }),
     );
   }
@@ -1055,6 +1036,8 @@ class _AllEventCard extends StatelessWidget {
   const _AllEventCard({required this.event, this.showRegistrationOpenTag = false});
 
   /// Profile + organiser flag for home card actions (Join / Volunteer / Participate).
+  /// Kept for Part 3 sticky actions on event detail.
+  // ignore: unused_element
   Future<Map<String, dynamic>> _eventCardJoinGates() async {
     try {
       final userId = await PrefService.getUserId();
@@ -1095,23 +1078,21 @@ class _AllEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final EventController controller = AppBootstrap.ensureEventController();
-
     return TicketEventCard(
       event: event,
       onTap: () => _openEventDetail(event),
-      width: 280.w,
-      posterHeight: 140,
+      width: 260.w,
+      posterHeight: 320,
       showRegistrationOpenTag: showRegistrationOpenTag,
       posterCacheWidth: _eventPosterCacheWidth(context, 0.82),
       dateLineBuilder: (a, b) => _cardEventDateLine(a, b),
       venueLineBuilder: (v) => _cardVenueLine(v),
-      footer: _AllEventCardActions(event: event, controller: controller, joinGates: _eventCardJoinGates),
     );
   }
 }
 
-/// Join / volunteer / participate row for explore cards.
+/// Kept for Part 3 (event detail sticky actions). Not used on list cards anymore.
+// ignore: unused_element
 class _AllEventCardActions extends StatelessWidget {
   final dynamic event;
   final EventController controller;
@@ -1539,23 +1520,19 @@ class _MyEventsTab extends StatelessWidget {
     return DefaultTabController(
       length: 7,
       initialIndex: initialIndex.clamp(0, 6),
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FD),
-        appBar: AppBar(
-          title: const AppBarTitleWithBrandLogo(
-            onPrimaryBackground: false,
-            title: Text("My Activity", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-          ),
-          backgroundColor: Colors.white,
-          elevation: 0,
+      child: const Scaffold(
+        backgroundColor: AppColors.cream,
+        appBar: CampusAppBar(
+          titleText: 'My Activity',
+          automaticallyImplyLeading: false,
           bottom: TabBar(
-            labelColor: const Color(0xFFFF5F15),
-            unselectedLabelColor: Colors.grey[600],
-            indicatorColor: const Color(0xFFFF5F15),
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
             indicatorWeight: 3,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
             isScrollable: true,
-            tabs: const [
+            tabs: [
               Tab(text: "Viewing"),
               Tab(text: "Hosting"),
               Tab(text: "I can edit"),
@@ -1566,7 +1543,7 @@ class _MyEventsTab extends StatelessWidget {
             ],
           ),
         ),
-        body: const TabBarView(
+        body: TabBarView(
           children: [
             _EventListWidget(type: 'attending'),
             _EventListWidget(type: 'hosted'),
@@ -1978,7 +1955,7 @@ class _ProfileTab extends StatelessWidget {
     final AuthController authController = Get.find<AuthController>();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FD),
+      backgroundColor: AppColors.cream,
       body: Obx(() {
         if (controller.isLoading.value) {
           return const AppLoadingScreen(message: 'Loading profile...');
@@ -1987,7 +1964,7 @@ class _ProfileTab extends StatelessWidget {
         final user = controller.userData.value;
         return RefreshIndicator(
           onRefresh: _refreshProfile,
-          color: const Color(0xFFFF5F15),
+          color: AppColors.accent,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             cacheExtent: 300,
@@ -1996,29 +1973,20 @@ class _ProfileTab extends StatelessWidget {
               expandedHeight: 56.h,
               floating: false,
               pinned: true,
+              elevation: 0,
+              scrolledUnderElevation: CampusAppBarTokens.scrolledUnderElevation,
+              shadowColor: CampusAppBarTokens.shadowColor,
+              surfaceTintColor: Colors.transparent,
               backgroundColor: AppColors.accent,
               leadingWidth: 200,
-              leading: const Padding(
-                padding: EdgeInsets.only(left: 12),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: AppLogoLockup.appBar(onPrimaryBackground: true),
-                ),
-              ),
+              leading: CampusSliverAppBar.logoLeading(),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppColors.accent, AppColors.accentDark],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
+                  decoration: CampusAppBarTokens.gradientDecoration(),
                 ),
               ),
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-              ),
+              shape: CampusAppBarTokens.shape,
+              systemOverlayStyle: SystemUiOverlayStyle.light,
               actions: [
                 const IconButton(
                   icon: Icon(Icons.edit_outlined, color: Colors.white, size: 22),
@@ -2043,7 +2011,7 @@ class _ProfileTab extends StatelessWidget {
                             Navigator.pop(context);
                             authController.logout();
                           },
-                          backgroundColor: const Color(0xFFFF5F15),
+                          backgroundColor: AppColors.accent,
                           child: const Text("Yes"),
                         ),
                       ],
@@ -2688,10 +2656,16 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
+        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 6.h),
         child: SizedBox(
-          height: 60.h,
-          child: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
+          height: 36.h,
+          child: const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2.5),
+            ),
+          ),
         ),
       );
     }
@@ -2701,85 +2675,90 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
     final remindersToShow = _nearestRemindersOnly(_dates);
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 8.h),
+      padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 4.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.notifications_active_outlined, color: const Color(0xFFFF5F15), size: 22.sp),
-              SizedBox(width: 8.w),
+              Icon(Icons.notifications_active_outlined, color: AppColors.accent, size: 18.sp),
+              SizedBox(width: 6.w),
               Text(
                 "Upcoming reminders",
-                style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AppColors.navy),
               ),
             ],
           ),
-          SizedBox(height: 10.h),
+          SizedBox(height: 6.h),
           ...(remindersToShow.map<Widget>((d) {
             final title = (d is Map ? d['title'] : null)?.toString() ?? 'Reminder';
             final dateStr = (d is Map ? d['notify_date'] : null)?.toString() ?? '';
-            final message = (d is Map ? d['message'] : null)?.toString() ?? '';
             final source = (d is Map ? d['source'] : null)?.toString() ?? '';
             final eventIdRaw = d is Map ? d['event_id'] : null;
             final eventId = eventIdRaw is int ? eventIdRaw : int.tryParse(eventIdRaw?.toString() ?? '');
-            return Padding(
-              padding: EdgeInsets.only(bottom: 10.h),
-              child: Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                elevation: 1,
-                child: InkWell(
-                  onTap: () {
-                    final id = eventId;
-                    if (id != null && id > 0) {
-                      _openEventDetail({'id': id});
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: EdgeInsets.all(14.w),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(8.w),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF5F15).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(Icons.calendar_today, color: const Color(0xFFFF5F15), size: 20.sp),
+            final meta = [if (dateStr.isNotEmpty) dateStr, if (source.isNotEmpty) source].join(' · ');
+            return Material(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(10),
+              elevation: 0,
+              child: InkWell(
+                onTap: () {
+                  final id = eventId;
+                  if (id != null && id > 0) {
+                    _openEventDetail({'id': id});
+                  }
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(6.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        SizedBox(width: 12.w),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp)),
-                              if (dateStr.isNotEmpty)
-                                Text(dateStr, style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
-                              if (message.isNotEmpty && message != title)
-                                Padding(
-                                  padding: EdgeInsets.only(top: 4.h),
-                                  child: Text(message, style: TextStyle(fontSize: 12.sp, color: Colors.grey[700]), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                ),
-                              if (source.isNotEmpty)
-                                Padding(
-                                  padding: EdgeInsets.only(top: 2.h),
-                                  child: Text(source, style: TextStyle(fontSize: 11.sp, color: Colors.grey[500])),
-                                ),
-                            ],
-                          ),
+                        child: Icon(Icons.calendar_today, color: AppColors.accent, size: 16.sp),
+                      ),
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              title,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13.sp,
+                                color: AppColors.navy,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (meta.isNotEmpty)
+                              Text(
+                                meta,
+                                style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
                         ),
-                        if (eventId != null) Icon(Icons.chevron_right, color: Colors.grey[400], size: 20.sp),
-                      ],
-                    ),
+                      ),
+                      if (eventId != null)
+                        Icon(Icons.chevron_right, color: AppColors.textSecondary, size: 18.sp),
+                    ],
                   ),
                 ),
               ),
             );
           })),
-          SizedBox(height: 8.h),
         ],
       ),
     );

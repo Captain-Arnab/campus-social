@@ -7,7 +7,8 @@ import '../modal/model_inbox_notification.dart';
 import 'event_detail_view.dart';
 import '../data/api_service.dart';
 import '../widgets/app_loading_screen.dart';
-import '../widgets/app_bar_title_with_brand_logo.dart';
+import '../widgets/campus_app_bar.dart';
+import '../theme/app_theme.dart';
 
 class NotificationsView extends StatelessWidget {
   /// When true, shown as a Home bottom-nav tab (no back button).
@@ -24,34 +25,16 @@ class NotificationsView extends StatelessWidget {
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F4EF),
-      appBar: AppBar(
-        title: AppBarTitleWithBrandLogo(
-          onPrimaryBackground: true,
-          logoUnit: 34,
-          titleMaxLines: 1,
-          title: Text(
-            'Notifications',
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 17.sp),
-          ),
-        ),
-        backgroundColor: const Color(0xFFFF5F15),
-        elevation: 0,
-        centerTitle: false,
+      backgroundColor: AppColors.cream,
+      appBar: CampusAppBar(
+        titleText: 'Notifications',
         automaticallyImplyLeading: !asTab,
-        leadingWidth: asTab ? 0 : null,
         leading: asTab
             ? null
             : IconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
                 onPressed: () => Get.back(),
               ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-        ),
         actions: [
           Obx(() {
             if (controller.unreadCount.value == 0) return const SizedBox.shrink();

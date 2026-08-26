@@ -1,12 +1,13 @@
 import 'dart:async';
 
-import 'package:any_link_preview/any_link_preview.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../base/constant.dart';
+import '../theme/app_theme.dart';
 import 'app_network_image.dart';
 
 String? _youtubeVideoId(String raw) {
@@ -87,14 +88,27 @@ class _HomeAdCarouselState extends State<HomeAdCarousel> {
     super.dispose();
   }
 
+  bool get _preferCompactHeight {
+    if (widget.posts.isEmpty) return true;
+    return widget.posts.every((m) {
+      final mediaType = (m['media_type'] ?? '').toString().trim().toLowerCase();
+      final mediaUrl = (m['media_url'] ?? '').toString().trim();
+      final linkUrl = (m['link_url'] ?? '').toString().trim();
+      if (mediaType == 'image' || mediaType == 'video') return false;
+      if (mediaUrl.isNotEmpty && mediaType != 'link') return false;
+      return mediaType == 'link' || linkUrl.isNotEmpty || mediaUrl.isEmpty;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.posts.isEmpty) return const SizedBox.shrink();
+    final compact = _preferCompactHeight;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          height: 168,
+          height: compact ? 118.h : 168.h,
           child: PageView.builder(
             controller: _pageController,
             itemCount: widget.posts.length,
@@ -106,7 +120,10 @@ class _HomeAdCarouselState extends State<HomeAdCarousel> {
             itemBuilder: (context, i) {
               final m = widget.posts[i];
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 6.w,
+                  vertical: compact ? 4.h : 8.h,
+                ),
                 child: _AdSlideCard(data: m, isActive: i == _index),
               );
             },
@@ -119,11 +136,11 @@ class _HomeAdCarouselState extends State<HomeAdCarousel> {
               final on = i == _index;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
-                margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-                width: on ? 18 : 6,
-                height: 6,
+                margin: EdgeInsets.symmetric(horizontal: 3.w, vertical: 2.h),
+                width: on ? 18.w : 6.w,
+                height: 6.h,
                 decoration: BoxDecoration(
-                  color: on ? Constant.primaryColor : Colors.grey.shade400,
+                  color: on ? AppColors.accent : AppColors.border,
                   borderRadius: BorderRadius.circular(3),
                 ),
               );
@@ -175,10 +192,10 @@ class _AdSlideCard extends StatelessWidget {
     }
 
     return Material(
-      elevation: 2,
-      borderRadius: BorderRadius.circular(14),
+      elevation: 0,
+      borderRadius: BorderRadius.circular(AppRadius.card),
       clipBehavior: Clip.antiAlias,
-      color: Colors.white,
+      color: Colors.transparent,
       child: inner,
     );
   }
@@ -213,49 +230,124 @@ class _LinkAdBody extends StatelessWidget {
     await launchUrl(u, mode: LaunchMode.externalApplication);
   }
 
+  String get _hostLabel {
+    final u = Uri.tryParse(url);
+    final host = (u?.host ?? '').replaceFirst(RegExp(r'^www\.'), '');
+    if (host.isEmpty) return 'Visit link';
+    return 'Visit $host →';
+  }
+
+  String get _headline {
+    if (title.isNotEmpty) return title;
+    final lower = url.toLowerCase();
+    if (lower.contains('gnu') || lower.contains('admission')) {
+      return 'Admissions are open now';
+    }
+    return 'Campus announcement';
+  }
+
+  IconData get _badgeIcon {
+    final t = '$_headline $url'.toLowerCase();
+    if (t.contains('admission') || t.contains('gnu') || t.contains('graduat')) {
+      return Icons.school_rounded;
+    }
+    return Icons.campaign_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: _open,
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (title.isNotEmpty)
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-              ),
-            if (title.isNotEmpty) const SizedBox(height: 6),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: AnyLinkPreview(
-                  link: url,
-                  displayDirection: UIDirection.uiDirectionVertical,
-                  cache: const Duration(hours: 6),
-                  backgroundColor: Colors.grey.shade100,
-                  errorWidget: ColoredBox(
-                    color: Colors.grey.shade200,
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          url,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.grey.shade800, fontSize: 12),
+    return Material(
+      color: AppColors.accent.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _open,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: AppColors.accent.withValues(alpha: 0.22)),
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: 4,
+                  color: AppColors.accent,
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44.w,
+                          height: 44.w,
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            _badgeIcon,
+                            color: AppColors.accent,
+                            size: 24.sp,
+                          ),
                         ),
-                      ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'ANNOUNCEMENT',
+                                style: TextStyle(
+                                  fontSize: 10.sp,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.8,
+                                  color: AppColors.accent,
+                                ),
+                              ),
+                              SizedBox(height: 4.h),
+                              Text(
+                                _headline,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.navy,
+                                  height: 1.25,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              Text(
+                                _hostLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.accent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 14.sp,
+                          color: AppColors.accent,
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

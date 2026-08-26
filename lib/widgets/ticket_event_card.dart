@@ -7,21 +7,23 @@ import '../theme/app_theme.dart';
 import 'animated_favorite_button.dart';
 import 'event_poster_image.dart';
 import 'pressable_scale.dart';
-import 'ticket_perforation.dart';
 
-/// Campus event ticket-stub card — wraps to content height (no reserved blank footer).
+/// Full-bleed event preview card: poster fills the card; title/meta overlay the
+/// bottom gradient. Tap opens event detail — no action buttons on the card.
 class TicketEventCard extends StatelessWidget {
   final dynamic event;
   final VoidCallback onTap;
   final double? width;
+
+  /// Used when [expandToFit] is false (Featured / Upcoming).
   final double posterHeight;
   final bool showFavorite;
   final bool showRegistrationOpenTag;
   final bool compact;
 
-  /// When true (My Activity grid), fill parent height.
+  /// When true (My Activity grid), fill the parent cell.
   final bool expandToFit;
-  final Widget? footer;
+
   final String Function(dynamic, dynamic)? dateLineBuilder;
   final String Function(dynamic)? venueLineBuilder;
   final int? posterCacheWidth;
@@ -31,12 +33,11 @@ class TicketEventCard extends StatelessWidget {
     required this.event,
     required this.onTap,
     this.width,
-    this.posterHeight = 140,
+    this.posterHeight = 280,
     this.showFavorite = true,
     this.showRegistrationOpenTag = false,
     this.compact = false,
     this.expandToFit = false,
-    this.footer,
     this.dateLineBuilder,
     this.venueLineBuilder,
     this.posterCacheWidth,
@@ -50,169 +51,170 @@ class TicketEventCard extends StatelessWidget {
           ? (event as Map)['title']?.toString() ?? 'Untitled Event'
           : 'Untitled Event';
 
+  String get _dateText {
+    if (dateLineBuilder != null) {
+      return dateLineBuilder!(
+        event is Map ? event['event_date'] : null,
+        event is Map ? event['event_end_date'] : null,
+      );
+    }
+    return event is Map
+        ? event['event_date']?.toString() ?? 'Date TBD'
+        : 'Date TBD';
+  }
+
+  String get _venueText {
+    if (venueLineBuilder != null) {
+      return venueLineBuilder!(event is Map ? event['venue'] : null);
+    }
+    return event is Map
+        ? event['venue']?.toString() ?? 'Venue TBD'
+        : 'Venue TBD';
+  }
+
   @override
   Widget build(BuildContext context) {
     final categoryColor = AppColors.categoryColor(_category);
-    final textTheme = Theme.of(context).textTheme;
+    final h = compact ? 220.0 : posterHeight;
 
-    final details = Padding(
-      padding: EdgeInsets.fromLTRB(
-        compact ? AppSpacing.sm.w : AppSpacing.md.w,
-        compact ? 8.h : 12.h,
-        compact ? AppSpacing.sm.w : AppSpacing.md.w,
-        compact ? 10.h : 14.h,
+    final card = Container(
+      width: width,
+      height: expandToFit ? null : h.h,
+      decoration: BoxDecoration(
+        color: AppColors.navy,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: AppShadows.cardLifted,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Text(
-            _title,
-            style: (compact ? textTheme.titleSmall : textTheme.titleMedium)
-                ?.copyWith(
-              fontWeight: FontWeight.w700,
-              height: 1.22,
-              color: AppColors.navy,
-              fontSize: compact ? 13.sp : 16.sp,
+          EventPosterImage(
+            event: event,
+            cacheWidth: posterCacheWidth,
+          ),
+          // Light top scrim for category / favorite.
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 72.h,
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0x66000000),
+                    Color(0x00000000),
+                  ],
+                ),
+              ),
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            softWrap: true,
           ),
-          SizedBox(height: compact ? 6.h : 8.h),
-          _MetaRow(
-            icon: Icons.calendar_today_rounded,
-            text: dateLineBuilder != null
-                ? dateLineBuilder!(event['event_date'], event['event_end_date'])
-                : (event is Map
-                    ? event['event_date']?.toString() ?? 'Date TBD'
-                    : 'Date TBD'),
-            compact: compact,
+          // Bottom ~half scrim: transparent → ~75% black for overlay text.
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0x00000000),
+                      Color(0x00000000),
+                      Color(0x99000000),
+                      Color(0xBF000000),
+                    ],
+                    stops: [0.0, 0.42, 0.72, 1.0],
+                  ),
+                ),
+              ),
+            ),
           ),
-          SizedBox(height: compact ? 3.h : 4.h),
-          _MetaRow(
-            icon: Icons.location_on_rounded,
-            text: venueLineBuilder != null
-                ? venueLineBuilder!(event is Map ? event['venue'] : null)
-                : (event is Map
-                    ? event['venue']?.toString() ?? 'Venue TBD'
-                    : 'Venue TBD'),
-            compact: compact,
-            maxLines: compact ? 1 : 2,
+          // Category + registration (top-left).
+          Positioned(
+            left: AppSpacing.sm.w,
+            top: AppSpacing.sm.h,
+            right: showFavorite ? 48.w : AppSpacing.sm.w,
+            child: Wrap(
+              spacing: 6.w,
+              runSpacing: 4.h,
+              children: [
+                _CategoryChip(label: _category, color: categoryColor),
+                if (showRegistrationOpenTag)
+                  const _CategoryChip(
+                    label: 'Registration open',
+                    color: AppColors.success,
+                  ),
+              ],
+            ),
           ),
-          if (footer != null) ...[
-            SizedBox(height: compact ? 8.h : 10.h),
-            footer!,
-          ],
+          if (showFavorite)
+            Positioned(
+              top: 4.h,
+              right: 4.w,
+              child: _FavoriteToggle(event: event),
+            ),
+          // Title + meta overlay (bottom).
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                compact ? 10.w : 14.w,
+                0,
+                compact ? 10.w : 14.w,
+                compact ? 12.h : 14.h,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _title,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: compact ? 13.sp : 16.sp,
+                      height: 1.2,
+                      shadows: const [
+                        Shadow(
+                          color: Color(0x66000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
+                  ),
+                  SizedBox(height: compact ? 5.h : 7.h),
+                  _OverlayMetaRow(
+                    icon: Icons.calendar_today_rounded,
+                    text: _dateText,
+                    compact: compact,
+                  ),
+                  SizedBox(height: compact ? 3.h : 4.h),
+                  _OverlayMetaRow(
+                    icon: Icons.location_on_rounded,
+                    text: _venueText,
+                    compact: compact,
+                    maxLines: 1,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
 
-    final posterStack = Stack(
-      fit: StackFit.expand,
-      children: [
-        EventPosterImage(
-          event: event,
-          cacheWidth: posterCacheWidth,
-        ),
-        // Top scrim — category + favorite legibility.
-        Positioned(
-          left: 0,
-          right: 0,
-          top: 0,
-          height: 64.h,
-          child: const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0x66000000),
-                  Color(0x00000000),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // Bottom scrim — soft transition into content / perforation.
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 40.h,
-          child: const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [
-                  Color(0x33000000),
-                  Color(0x00000000),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: AppSpacing.sm.w,
-          top: AppSpacing.sm.h,
-          right: showFavorite ? 48.w : AppSpacing.sm.w,
-          child: Wrap(
-            spacing: 6.w,
-            runSpacing: 4.h,
-            children: [
-              _CategoryChip(label: _category, color: categoryColor),
-              if (showRegistrationOpenTag)
-                const _CategoryChip(
-                  label: 'Registration open',
-                  color: AppColors.success,
-                ),
-            ],
-          ),
-        ),
-        if (showFavorite)
-          Positioned(
-            top: 4.h,
-            right: 4.w,
-            child: _FavoriteToggle(event: event),
-          ),
-      ],
-    );
-
-    final column = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: expandToFit ? MainAxisSize.max : MainAxisSize.min,
-      children: [
-        if (expandToFit)
-          Expanded(flex: 5, child: posterStack)
-        else
-          SizedBox(height: posterHeight.h, child: posterStack),
-        const TicketPerforation(),
-        if (expandToFit)
-          Flexible(
-            flex: 4,
-            child: SingleChildScrollView(
-              physics: const NeverScrollableScrollPhysics(),
-              child: details,
-            ),
-          )
-        else
-          details,
-      ],
-    );
-
     return PressableScale(
       onTap: onTap,
-      child: Container(
-        width: width,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          boxShadow: AppShadows.cardLifted,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: column,
-      ),
+      child: expandToFit ? SizedBox.expand(child: card) : card,
     );
   }
 }
@@ -232,7 +234,7 @@ class _CategoryChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.chip),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.35),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -252,45 +254,40 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
-class _MetaRow extends StatelessWidget {
+class _OverlayMetaRow extends StatelessWidget {
   final IconData icon;
   final String text;
   final bool compact;
   final int maxLines;
 
-  const _MetaRow({
+  const _OverlayMetaRow({
     required this.icon,
     required this.text,
     this.compact = false,
-    this.maxLines = 2,
+    this.maxLines = 1,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: EdgeInsets.only(top: 1.h),
-          child: Icon(
-            icon,
-            size: compact ? 12 : 14,
-            color: AppColors.textSecondary,
-          ),
+        Icon(
+          icon,
+          size: compact ? 11 : 13,
+          color: Colors.white.withValues(alpha: 0.82),
         ),
-        SizedBox(width: 6.w),
+        SizedBox(width: 5.w),
         Expanded(
           child: Text(
             text,
             style: TextStyle(
               fontSize: compact ? 10.sp : 12.sp,
-              color: AppColors.textSecondary,
-              height: 1.3,
+              color: Colors.white.withValues(alpha: 0.88),
               fontWeight: FontWeight.w400,
+              height: 1.25,
             ),
             maxLines: maxLines,
             overflow: TextOverflow.ellipsis,
-            softWrap: true,
           ),
         ),
       ],

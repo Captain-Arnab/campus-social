@@ -22,6 +22,7 @@ import '../data/pref_service.dart';
 import '../widgets/app_loading_screen.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../utils/event_participation_rules.dart';
+import '../theme/app_theme.dart';
 
 List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
   if (ev is! Map) return [];
@@ -595,10 +596,10 @@ class _EventDetailViewState extends State<EventDetailView> {
     final List<Map<String, dynamic>> reviewFiles = reviewFilesFromEvent(_event);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.cream,
       body: RefreshIndicator(
         onRefresh: _loadFullEvent,
-        color: const Color(0xFFFF5F15),
+        color: AppColors.accent,
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
           cacheExtent: 400,
@@ -606,7 +607,7 @@ class _EventDetailViewState extends State<EventDetailView> {
           SliverAppBar(
             expandedHeight: 400.h,
             pinned: true,
-            backgroundColor: const Color(0xFFFF5F15),
+            backgroundColor: AppColors.accent,
             leading: IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),
@@ -672,99 +673,110 @@ class _EventDetailViewState extends State<EventDetailView> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.all(24.w),
+              padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 24.h),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [const Color(0xFFFF5F15).withValues(alpha: 0.2), const Color(0xFFE04E0B).withValues(alpha: 0.2)],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
+                      color: AppColors.categoryColor(_event['category']?.toString())
+                          .withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(AppRadius.chip),
                     ),
                     child: Text(
                       _event['category'] ?? "Event",
-                      style: const TextStyle(color: Color(0xFFFF5F15), fontWeight: FontWeight.bold, fontSize: 12),
+                      style: TextStyle(
+                        color: AppColors.categoryColor(_event['category']?.toString()),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.sp,
+                      ),
                     ),
                   ),
-                  SizedBox(height: 16.h),
+                  SizedBox(height: 12.h),
                   
                   Text(
                     _event['title'] ?? "Untitled Event",
-                    // Show the full event name on the detail page (no truncation).
-                    style: TextStyle(fontSize: 28.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                    style: TextStyle(
+                      fontSize: 26.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.navy,
+                      height: 1.2,
+                    ),
                     softWrap: true,
                   ),
                   
-                  SizedBox(height: 24.h),
+                  SizedBox(height: 20.h),
                   
                   _buildInfoTile(
-                    Icons.calendar_today,
+                    Icons.calendar_today_rounded,
                     "Date & Time",
                     _formatEventDateRange(),
                   ),
                   
-                  SizedBox(height: 16.h),
+                  SizedBox(height: 10.h),
                   
                   _buildInfoTile(
-                    Icons.location_on,
+                    Icons.location_on_rounded,
                     "Venue",
                     _event['venue'] ?? "Venue TBD",
+                  ),
+
+                  SizedBox(height: 10.h),
+
+                  _buildInfoTile(
+                    Icons.category_outlined,
+                    "Category",
+                    (_event['category'] ?? 'Event').toString(),
                   ),
 
                   SizedBox(height: 16.h),
                   _buildEngagementCountsStrip(),
                   
-                  SizedBox(height: 24.h),
-                  Divider(color: Colors.grey[300]),
-                  SizedBox(height: 24.h),
-                  
-                  Text(
-                    "About Event",
-                    style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                  SizedBox(height: 12.h),
+                  SizedBox(height: 28.h),
+                  _sectionHeading("About Event"),
+                  SizedBox(height: 10.h),
                   
                   Text(
                     _event['description'] ?? "No description available for this event.",
-                    style: TextStyle(fontSize: 15.sp, color: Colors.grey[700], height: 1.55),
+                    style: TextStyle(
+                      fontSize: 15.sp,
+                      color: AppColors.navyMuted,
+                      height: 1.6,
+                    ),
                     softWrap: true,
                   ),
 
                   SizedBox(height: 24.h),
 
                   if (rulesText.isNotEmpty) ...[
-                    Text(
-                      "Event rules",
-                      style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                    ),
-                    SizedBox(height: 12.h),
+                    _sectionHeading("Event rules"),
+                    SizedBox(height: 10.h),
                     Container(
                       width: double.infinity,
                       padding: EdgeInsets.all(16.w),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade300),
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.card),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: Text(
                         rulesText,
-                        style: TextStyle(fontSize: 15.sp, color: Colors.grey[800], height: 1.55),
+                        style: TextStyle(
+                          fontSize: 15.sp,
+                          color: AppColors.navyMuted,
+                          height: 1.6,
+                        ),
                       ),
                     ),
                     SizedBox(height: 24.h),
                   ],
 
-                  Text(
-                    "Team",
-                    style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                  SizedBox(height: 8.h),
+                  _sectionHeading("Team"),
+                  SizedBox(height: 6.h),
                   Text(
                     "Volunteers and participants. Contact numbers are private and visible only to the organizer, who can use the edit icon to set volunteer role or participant department/class.",
-                    style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary, height: 1.4),
                   ),
                   SizedBox(height: 12.h),
                   if (volunteerList.isEmpty && participantList.isEmpty)
@@ -772,13 +784,13 @@ class _EventDetailViewState extends State<EventDetailView> {
                       width: double.infinity,
                       padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 16.w),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: Text(
                         "No team members listed yet.",
-                        style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700),
+                        style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary),
                       ),
                     )
                   else
@@ -790,7 +802,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (volunteerList.isNotEmpty) ...[
-                              Text("Volunteers", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFFFF5F15))),
+                              Text("Volunteers", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.accent)),
                               SizedBox(height: 8.h),
                               ...volunteerList.map<Widget>((v) {
                                 if (v is! Map) return const SizedBox.shrink();
@@ -809,7 +821,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                               SizedBox(height: 16.h),
                             ],
                             if (participantList.isNotEmpty) ...[
-                              Text("Participants", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: const Color(0xFF2E7D32))),
+                              Text("Participants", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.success)),
                               SizedBox(height: 8.h),
                               ...participantList.map<Widget>((p) {
                                 if (p is! Map) return const SizedBox.shrink();
@@ -859,7 +871,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                         if (snap.connectionState != ConnectionState.done) {
                           return Padding(
                             padding: EdgeInsets.only(bottom: 16.h),
-                            child: const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF5F15)))),
+                            child: const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent))),
                           );
                         }
                         final isOrg = snap.data == true;
@@ -883,30 +895,27 @@ class _EventDetailViewState extends State<EventDetailView> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                "Organizer review",
-                                style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                              ),
+                              _sectionHeading("Organizer review"),
                               SizedBox(height: 12.h),
                               if (existingOrganizerReview.isNotEmpty)
                                 Container(
                                   width: double.infinity,
                                   padding: EdgeInsets.all(16.w),
                                   decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
+                                    color: AppColors.surface,
                                     borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: Colors.blue.shade200),
+                                    border: Border.all(color: AppColors.border),
                                   ),
                                   child: Text(
                                     existingOrganizerReview,
-                                    style: TextStyle(fontSize: 15.sp, color: Colors.blueGrey.shade900, height: 1.5),
+                                    style: TextStyle(fontSize: 15.sp, color: AppColors.navyMuted, height: 1.5),
                                   ),
                                 ),
                               if (reviewFiles.isNotEmpty) ...[
                                 if (existingOrganizerReview.isNotEmpty) SizedBox(height: 12.h),
                                 Text(
                                   'Attachments',
-                                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600, color: Colors.black87),
+                                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600, color: AppColors.navy),
                                 ),
                                 SizedBox(height: 8.h),
                                 Wrap(
@@ -957,31 +966,42 @@ class _EventDetailViewState extends State<EventDetailView> {
                   ],
 
                   // Winners section (always show; empty state when no winners)
-                  Text(
-                    "Winners",
-                    style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
+                  _sectionHeading("Winners"),
                   SizedBox(height: 12.h),
                   if (winners.isNotEmpty)
                     ...winners.map<Widget>((w) {
-                      final pos = (w is Map ? w['position'] : null) ?? 0;
+                      final posRaw = w is Map ? w['position'] : null;
+                      final pos = posRaw is int
+                          ? posRaw
+                          : int.tryParse(posRaw?.toString() ?? '') ?? 0;
                       final name = (w is Map ? w['full_name'] : null)?.toString() ?? '—';
                       return Padding(
                         padding: EdgeInsets.only(bottom: 8.h),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 28.w,
-                              height: 28.w,
-                              decoration: BoxDecoration(
-                                color: pos == 1 ? const Color(0xFFFFD700) : (pos == 2 ? Colors.grey.shade400 : Colors.brown.shade300),
-                                shape: BoxShape.circle,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Row(
+                            children: [
+                              _DetailRankBadge(position: pos),
+                              SizedBox(width: 12.w),
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  style: TextStyle(
+                                    fontSize: 15.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.navy,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              child: Center(child: Text('$pos', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold))),
-                            ),
-                            SizedBox(width: 12.w),
-                            Text(name, style: TextStyle(fontSize: 15.sp)),
-                          ],
+                            ],
+                          ),
                         ),
                       );
                     })
@@ -990,17 +1010,17 @@ class _EventDetailViewState extends State<EventDetailView> {
                       width: double.infinity,
                       padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 16.w),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.emoji_events_outlined, size: 24.w, color: Colors.grey.shade500),
+                          Icon(Icons.emoji_events_outlined, size: 24.w, color: AppColors.textSecondary),
                           SizedBox(width: 12.w),
                           Text(
                             "No winners are announced yet.",
-                            style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700),
+                            style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary),
                           ),
                         ],
                       ),
@@ -1073,7 +1093,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("Manage editors", style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          _sectionHeading("Manage editors"),
                           SizedBox(height: 8.h),
                           ...editorIds.map<Widget>((e) {
                             final uid = e.toString();
@@ -1095,7 +1115,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                             onPressed: () => _showAddEditorDialog(context),
                             icon: const Icon(Icons.person_add),
                             label: const Text("Add editor"),
-                            style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFFF5F15), side: const BorderSide(color: Color(0xFFFF5F15))),
+                            style: OutlinedButton.styleFrom(foregroundColor: AppColors.accent, side: const BorderSide(color: AppColors.accent)),
                           ),
                         ],
                       ),
@@ -1112,13 +1132,13 @@ class _EventDetailViewState extends State<EventDetailView> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Upload e-certificate", style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
+                            _sectionHeading("Upload e-certificate"),
                             SizedBox(height: 8.h),
                             OutlinedButton.icon(
                               onPressed: () => _showUploadCertificateSheet(context),
                               icon: const Icon(Icons.upload_file),
                               label: const Text("Upload for volunteer/participant"),
-                              style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFFF5F15), side: const BorderSide(color: Color(0xFFFF5F15))),
+                              style: OutlinedButton.styleFrom(foregroundColor: AppColors.accent, side: const BorderSide(color: AppColors.accent)),
                             ),
                           ],
                         ),
@@ -1127,23 +1147,22 @@ class _EventDetailViewState extends State<EventDetailView> {
                   
                   SizedBox(height: 32.h),
                   
-                  Text(
-                    "Hosted By",
-                    style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
+                  _sectionHeading("Hosted By"),
                   SizedBox(height: 12.h),
                   
                   Container(
                     padding: EdgeInsets.all(16.w),
                     decoration: BoxDecoration(
-                      color: Colors.grey[100],
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.border),
+                      boxShadow: AppShadows.card,
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
                           radius: 25.w,
-                          backgroundColor: const Color(0xFFFF5F15),
+                          backgroundColor: AppColors.accent,
                           backgroundImage: organizerAvatar != 'default_avatar.png'
                             ? appNetworkImageProvider("https://micampus.co.in/admin/uploads/profiles/$organizerAvatar")
                             : null,
@@ -1160,15 +1179,16 @@ class _EventDetailViewState extends State<EventDetailView> {
                               Text(
                                 organizerName,
                                 style: TextStyle(
-                                  fontWeight: FontWeight.bold, 
+                                  fontWeight: FontWeight.w700, 
                                   fontSize: 16.sp,
+                                  color: AppColors.navy,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 maxLines: 1,
                               ),
                               Text(
                                 "Event Organizer",
-                                style: TextStyle(color: Colors.grey[600], fontSize: 13.sp),
+                                style: TextStyle(color: AppColors.textSecondary, fontSize: 13.sp),
                               ),
                             ],
                           ),
@@ -1188,16 +1208,29 @@ class _EventDetailViewState extends State<EventDetailView> {
       bottomSheet: FutureBuilder<Map<String, dynamic>>(
         future: _getUserAndOrganizerRoles(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return Container(
-              padding: EdgeInsets.all(20.w),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, -3))
-                ],
+          Widget sheetShell({required Widget child}) {
+            return Material(
+              color: AppColors.surface,
+              elevation: 12,
+              shadowColor: AppColors.navy.withValues(alpha: 0.18),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 12.h),
+                  child: child,
+                ),
               ),
-              child: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
+            );
+          }
+
+          if (!snapshot.hasData) {
+            return sheetShell(
+              child: SizedBox(
+                height: 48.h,
+                child: const Center(
+                  child: CircularProgressIndicator(color: AppColors.accent),
+                ),
+              ),
             );
           }
           
@@ -1211,50 +1244,31 @@ class _EventDetailViewState extends State<EventDetailView> {
           debugPrint("🔍 Final check - User: $isStudent, Organizer: $organizerIsStudent, Match: $rolesMatch");
           
           if (isOrganizer) {
-            return Container(
-              padding: EdgeInsets.all(16.w),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, -3))
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(12.w),
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blueGrey.shade200),
+            return sheetShell(
+              child: Container(
+                padding: EdgeInsets.all(12.w),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: AppColors.navyMuted, size: 22),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Text(
+                        'As the organiser, you cannot attend, volunteer, or register as a participant for this event.',
+                        style: TextStyle(color: AppColors.navy, fontSize: 13.sp, height: 1.35),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.blueGrey.shade700, size: 22),
-                        SizedBox(width: 12.w),
-                        Expanded(
-                          child: Text(
-                            'As the organiser, you cannot attend, volunteer, or register as a participant for this event.',
-                            style: TextStyle(color: Colors.blueGrey.shade900, fontSize: 13.sp, height: 1.35),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           }
           
-          return Container(
-            padding: EdgeInsets.all(16.w),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, -3))
-              ],
-            ),
+          return sheetShell(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1263,20 +1277,20 @@ class _EventDetailViewState extends State<EventDetailView> {
                   Container(
                     padding: EdgeInsets.all(12.w),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
+                      color: AppColors.gold.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.schedule, color: Colors.orange, size: 20),
+                        Icon(Icons.schedule, color: AppColors.gold, size: 20),
                         SizedBox(width: 12.w),
                         Expanded(
                           child: Text(
                             "This event is ${_eventStatus().isEmpty ? 'pending' : _eventStatus()}. "
                             "Join/Volunteer/Participate will be enabled after admin approval.",
                             style: TextStyle(
-                              color: Colors.orange[800],
+                              color: AppColors.navy,
                               fontSize: 12.sp,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1293,19 +1307,19 @@ class _EventDetailViewState extends State<EventDetailView> {
                   Container(
                     padding: EdgeInsets.all(12.w),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
+                      color: AppColors.gold.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                        Icon(Icons.info_outline, color: AppColors.gold, size: 20),
                         SizedBox(width: 12.w),
                         Expanded(
                           child: Text(
                             "Volunteer and participant registration is only for events organised by your own group. You can still join this event as a viewer.",
                             style: TextStyle(
-                              color: Colors.orange[800],
+                              color: AppColors.navy,
                               fontSize: 12.sp,
                               fontWeight: FontWeight.w500,
                             ),
@@ -1339,11 +1353,11 @@ class _EventDetailViewState extends State<EventDetailView> {
                                     userIsStudent: isStudent,
                                   ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: attending ? Colors.grey[300] : const Color(0xFFFF5F15),
-                            foregroundColor: attending ? Colors.grey[600] : Colors.white,
-                            disabledBackgroundColor: Colors.grey[300],
-                            disabledForegroundColor: Colors.grey[600],
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            backgroundColor: attending ? AppColors.surfaceMuted : AppColors.accent,
+                            foregroundColor: attending ? AppColors.textSecondary : Colors.white,
+                            disabledBackgroundColor: AppColors.surfaceMuted,
+                            disabledForegroundColor: AppColors.textSecondary,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
                             padding: EdgeInsets.symmetric(vertical: 12.h),
                             elevation: 0,
                           ),
@@ -1389,15 +1403,15 @@ class _EventDetailViewState extends State<EventDetailView> {
                                         ),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: canSwitchToParticipant
-                                  ? const Color(0xFF4CAF50)
-                                  : (volunteering ? Colors.grey[600] : const Color(0xFFFF5F15)),
+                                  ? AppColors.success
+                                  : (volunteering ? AppColors.textSecondary : AppColors.accent),
                               side: BorderSide(
                                 color: canSwitchToParticipant
-                                    ? const Color(0xFF4CAF50)
-                                    : (volunteering ? Colors.grey[400]! : const Color(0xFFFF5F15)),
+                                    ? AppColors.success
+                                    : (volunteering ? AppColors.border : AppColors.accent),
                                 width: 2,
                               ),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
                               padding: EdgeInsets.symmetric(vertical: 12.h),
                             ),
                             child: Column(
@@ -1440,15 +1454,15 @@ class _EventDetailViewState extends State<EventDetailView> {
                                     : () => _showParticipateDialog(context, userIsStudent: isStudent),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: canSwitchToVolunteer
-                                  ? const Color(0xFFFF5F15)
-                                  : (participating ? Colors.grey[600] : const Color(0xFF4CAF50)),
+                                  ? AppColors.accent
+                                  : (participating ? AppColors.textSecondary : AppColors.success),
                               side: BorderSide(
                                 color: canSwitchToVolunteer
-                                    ? const Color(0xFFFF5F15)
-                                    : (participating ? Colors.grey[400]! : const Color(0xFF4CAF50)),
+                                    ? AppColors.accent
+                                    : (participating ? AppColors.border : AppColors.success),
                                 width: 2,
                               ),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
                               padding: EdgeInsets.symmetric(vertical: 12.h),
                             ),
                             child: Column(
@@ -1481,10 +1495,21 @@ class _EventDetailViewState extends State<EventDetailView> {
     );
   }
 
+  Widget _sectionHeading(String title) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 18.sp,
+        fontWeight: FontWeight.w700,
+        color: AppColors.navy,
+      ),
+    );
+  }
+
   Widget _buildPlaceholder() => Container(
     decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: [const Color(0xFFFF5F15).withValues(alpha: 0.3), const Color(0xFFE04E0B).withValues(alpha: 0.3)],
+        colors: [AppColors.accent.withValues(alpha: 0.3), AppColors.accentDark.withValues(alpha: 0.3)],
       ),
     ),
     child: const Center(child: Icon(Icons.event, size: 80, color: Colors.white)),
@@ -1508,15 +1533,15 @@ class _EventDetailViewState extends State<EventDetailView> {
         child: Container(
           padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 4.w),
           decoration: BoxDecoration(
-            color: Colors.grey.shade50,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(ic, size: 20, color: const Color(0xFFFF5F15)),
+              Icon(ic, size: 20, color: AppColors.accent),
               SizedBox(height: 6.h),
               FittedBox(
                 fit: BoxFit.scaleDown,
@@ -1528,7 +1553,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   style: TextStyle(
                     fontSize: 11.sp,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                    color: AppColors.navy,
                     height: 1.1,
                   ),
                 ),
@@ -1541,7 +1566,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                 style: TextStyle(
                   fontSize: 14.sp,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: AppColors.navy,
                 ),
               ),
             ],
@@ -1564,31 +1589,146 @@ class _EventDetailViewState extends State<EventDetailView> {
 
   Widget _buildInfoTile(IconData icon, String title, String value) {
     return Container(
-      padding: EdgeInsets.all(16.w),
+      padding: EdgeInsets.all(14.w),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[200]!),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppShadows.card,
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
+              color: AppColors.accent.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: const Color(0xFFFF5F15), size: 24),
+            child: Icon(icon, color: AppColors.accent, size: 22),
           ),
-          SizedBox(width: 16.w),
+          SizedBox(width: 14.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 12.sp)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
                 SizedBox(height: 4.h),
-                Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp)),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15.sp,
+                    color: AppColors.navy,
+                    height: 1.3,
+                  ),
+                ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRankBadge extends StatelessWidget {
+  final int position;
+
+  const _DetailRankBadge({required this.position});
+
+  static const _gold = Color(0xFFFFD700);
+  static const _silver = Color(0xFFC0C0C0);
+  static const _bronze = Color(0xFFCD7F32);
+
+  @override
+  Widget build(BuildContext context) {
+    final Color bg;
+    final Color fg;
+    final bool isMedal;
+    switch (position) {
+      case 1:
+        bg = _gold;
+        fg = Colors.white;
+        isMedal = true;
+        break;
+      case 2:
+        bg = _silver;
+        fg = const Color(0xFF2F2F2F);
+        isMedal = true;
+        break;
+      case 3:
+        bg = _bronze;
+        fg = Colors.white;
+        isMedal = true;
+        break;
+      default:
+        bg = AppColors.surfaceMuted;
+        fg = AppColors.navyMuted;
+        isMedal = false;
+    }
+
+    return Container(
+      width: 30.w,
+      height: 30.w,
+      decoration: BoxDecoration(
+        gradient: isMedal
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color.lerp(bg, Colors.white, 0.28)!,
+                  bg,
+                  Color.lerp(bg, Colors.black, 0.12)!,
+                ],
+              )
+            : null,
+        color: isMedal ? null : bg,
+        shape: BoxShape.circle,
+        boxShadow: isMedal
+            ? [
+                BoxShadow(
+                  color: bg.withValues(alpha: 0.4),
+                  blurRadius: 5,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+        border: Border.all(
+          color: isMedal
+              ? Colors.white.withValues(alpha: 0.65)
+              : AppColors.border,
+          width: isMedal ? 1.5 : 1,
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (position == 1)
+            Positioned(
+              top: 2.h,
+              child: Icon(
+                Icons.star_rounded,
+                size: 8.w,
+                color: Colors.white.withValues(alpha: 0.95),
+              ),
+            ),
+          Padding(
+            padding: EdgeInsets.only(top: position == 1 ? 4.h : 0),
+            child: Text(
+              '$position',
+              style: TextStyle(
+                fontSize: position == 1 ? 11.sp : 12.sp,
+                fontWeight: FontWeight.w800,
+                color: fg,
+                height: 1,
+              ),
             ),
           ),
         ],

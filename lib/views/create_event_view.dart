@@ -12,7 +12,8 @@ import '../utils/app_navigation.dart';
 import 'bootstrap_views.dart';
 import '../widgets/app_calendar_theme.dart';
 import '../widgets/app_network_image.dart';
-import '../widgets/app_bar_title_with_brand_logo.dart';
+import '../widgets/campus_app_bar.dart';
+import '../theme/app_theme.dart';
 import '../base/constant.dart';
 
 class CreateEventView extends StatefulWidget {
@@ -319,17 +320,9 @@ class CreateEventViewState extends State<CreateEventView> {
   Widget build(BuildContext context) {
     final isEdit = widget.existingEvent != null;
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: AppBarTitleWithBrandLogo(
-          onPrimaryBackground: true,
-          title: Text(
-            isEdit ? "Edit Pending Event" : "Host an Event",
-            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-        ),
-        backgroundColor: const Color(0xFFFF5F15),
-        elevation: 0,
+      backgroundColor: AppColors.cream,
+      appBar: CampusAppBar(
+        titleText: isEdit ? 'Edit Pending Event' : 'Host an Event',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Get.back(),
