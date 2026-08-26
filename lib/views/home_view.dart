@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -26,9 +25,16 @@ import '../data/app_branding.dart';
 import '../data/app_bootstrap.dart';
 import '../data/pref_service.dart';
 import '../utils/app_navigation.dart';
+import '../widgets/app_bottom_nav.dart';
+import '../widgets/app_logo_lockup.dart';
 import '../widgets/app_loading_screen.dart';
-import '../widgets/home_ad_carousel.dart';
 import '../widgets/app_network_image.dart';
+import '../widgets/home_ad_carousel.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_empty_state.dart';
+import '../widgets/event_list_skeleton.dart';
+import '../widgets/pressable_scale.dart';
+import '../widgets/ticket_event_card.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../widgets/app_calendar_theme.dart';
 import '../widgets/participate_registration_sheet.dart';
@@ -54,14 +60,6 @@ void _openWinners() {
     () => const WinnersView(),
     prepare: AppBootstrap.prepareWinners,
     loadingMessage: 'Loading winners...',
-  );
-}
-
-void _openNotifications() {
-  AppNavigation.to(
-    () => const NotificationsView(),
-    prepare: AppBootstrap.prepareNotifications,
-    loadingMessage: 'Loading notifications...',
   );
 }
 
@@ -95,9 +93,9 @@ String _cardEventDateLine(dynamic raw, [dynamic endRaw]) {
   final df = DateFormat('dd MMM yyyy');
   final tf = DateFormat('hh:mm a');
   if (startDt.year == endDt.year && startDt.month == endDt.month && startDt.day == endDt.day) {
-    return '${df.format(startDt)}, ${tf.format(startDt)} – ${tf.format(endDt)}';
+    return '${df.format(startDt)}, ${tf.format(startDt)} - ${tf.format(endDt)}';
   }
-  return '${df.format(startDt)} – ${df.format(endDt)}';
+  return '${df.format(startDt)} - ${df.format(endDt)}';
 }
 
 String _cardVenueLine(dynamic raw) {
@@ -123,21 +121,41 @@ class HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<HomeView> {
-  late int _currentIndex;
+  /// Visual bottom-nav index: 0 Explore, 1 My Events, 3 Notifications, 4 Profile (2 = Host action).
+  late int _navIndex;
   late final List<Widget> _tabs;
-  
+
   final AuthController authController = Get.put(AuthController());
-  final EventController eventController = Get.put(EventController());
-  final ProfileController profileController = Get.put(ProfileController());
+  late final EventController eventController;
   final InboxNotificationController inboxController = Get.put(InboxNotificationController(), permanent: true);
+
+  /// Maps visual nav index → IndexedStack index (Host has no page).
+  int get _stackIndex {
+    switch (_navIndex) {
+      case 0:
+        return 0;
+      case 1:
+        return 1;
+      case 3:
+        return 2;
+      case 4:
+        return 3;
+      default:
+        return 0;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialBottomTabIndex.clamp(0, 2);
+    eventController = AppBootstrap.ensureEventController();
+    // Legacy initialBottomTabIndex: 0 Explore, 1 My Events, 2 Profile.
+    final initial = widget.initialBottomTabIndex.clamp(0, 2);
+    _navIndex = initial == 2 ? 4 : initial;
     _tabs = [
       const _ExploreTab(),
       _MyEventsTab(initialIndex: widget.initialMyEventsTabIndex),
+      const NotificationsView(asTab: true),
       const _ProfileTab(),
     ];
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -148,60 +166,20 @@ class _HomeViewState extends State<HomeView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FD),
+      backgroundColor: AppColors.cream,
       body: IndexedStack(
-        index: _currentIndex,
+        index: _stackIndex,
         sizing: StackFit.expand,
         children: _tabs,
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, -3))
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          backgroundColor: Colors.white,
-          selectedItemColor: const Color(0xFFFF5F15),
-          unselectedItemColor: Colors.grey[400],
-          showUnselectedLabels: true,
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore), label: "Explore"),
-            BottomNavigationBarItem(icon: Icon(Icons.calendar_month_outlined), activeIcon: Icon(Icons.calendar_month), label: "My Events"),
-            BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: "Profile"),
-          ],
-        ),
+      bottomNavigationBar: AppBottomNav(
+        currentIndex: _navIndex,
+        onTap: (i) {
+          if (i == 2) return;
+          setState(() => _navIndex = i);
+        },
+        onHostTap: _openCreateEvent,
       ),
-      ),
-      floatingActionButton: _currentIndex == 0
-          ? SizedBox(
-              height: 56,
-              width: 56,
-              child: FloatingActionButton(
-                tooltip: "Host Event",
-                onPressed: _openCreateEvent,
-                backgroundColor: const Color(0xFFFF5F15),
-                elevation: 10,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18), // stylish rounded square
-                ),
-                child: const Icon(
-                  Icons.add,
-                  size: 28,
-                  color: Colors.white,
-                ),
-              ),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
@@ -224,208 +202,7 @@ Future<void> _openMicampusWebsite(BuildContext context) async {
   }
 }
 
-/// Full-width website CTA in the Explore header (opens [Constant.websiteUrl]).
-class _ExploreWebsiteLink extends StatelessWidget {
-  const _ExploreWebsiteLink();
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _openMicampusWebsite(context),
-        borderRadius: BorderRadius.circular(12),
-        child: Ink(
-          width: double.infinity,
-          padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 14.w),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.22),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.public_rounded, color: Colors.white, size: 18.sp),
-              SizedBox(width: 8.w),
-              Flexible(
-                child: Text(
-                  'Visit micampus.co.in',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ),
-              SizedBox(width: 6.w),
-              Icon(
-                Icons.open_in_new_rounded,
-                color: Colors.white.withValues(alpha: 0.92),
-                size: 16.sp,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Explore header marks on the gradient — no filled plate behind the artwork.
-
-// --- Cracker burst painter: sparks bursting from a rounded rect border ---
-class _CrackerBurstPainter extends CustomPainter {
-  final double progress;
-  final double borderRadius;
-
-  _CrackerBurstPainter({required this.progress, required this.borderRadius});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const double inset = 14.0; // match burst padding so sparks start at button edge
-    final center = Offset(size.width / 2, size.height / 2);
-    final halfW = (size.width - inset * 2) / 2;
-    final halfH = (size.height - inset * 2) / 2;
-    const int sparkCount = 18;
-    const double burstLength = 22.0;
-    final colors = [
-      const Color(0xFFFFD700), // gold
-      const Color(0xFFFF8C00), // orange
-      Colors.white,
-      const Color(0xFFFFA500),
-    ];
-
-    for (var i = 0; i < sparkCount; i++) {
-      final angle = (i / sparkCount) * 2 * math.pi;
-      final cosA = math.cos(angle);
-      final sinA = math.sin(angle);
-      // Point on ellipse = button border (rounded rect approximated by ellipse)
-      final start = Offset(
-        center.dx + halfW * cosA,
-        center.dy + halfH * sinA,
-      );
-      final unit = Offset(cosA, sinA);
-      final end = start + unit * (burstLength * progress);
-      final opacity = (1.0 - progress).clamp(0.0, 1.0);
-      final color = colors[i % colors.length].withOpacity(opacity * 0.95);
-      final paint = Paint()
-        ..color = color
-        ..strokeWidth = 2.2
-        ..strokeCap = StrokeCap.round;
-      canvas.drawLine(start, end, paint);
-      canvas.drawCircle(end, 2.0, Paint()..color = color);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _CrackerBurstPainter oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.borderRadius != borderRadius;
-}
-
-// --- Celebrating Winners button: cracker burst from border radius ---
-class _CelebratingWinnersButton extends StatefulWidget {
-  const _CelebratingWinnersButton();
-
-  @override
-  State<_CelebratingWinnersButton> createState() => _CelebratingWinnersButtonState();
-}
-
-class _CelebratingWinnersButtonState extends State<_CelebratingWinnersButton>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _burstAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 900),
-      vsync: this,
-    )..repeat();
-
-    _burstAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    const double borderRadius = 22.0;
-    const double burstPadding = 14.0;
-
-    return AnimatedBuilder(
-      animation: _burstAnimation,
-      builder: (context, child) {
-        return RepaintBoundary(
-          child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            CustomPaint(
-              size: Size(120.w + burstPadding * 2, 40.h + burstPadding * 2),
-              painter: _CrackerBurstPainter(
-                progress: _burstAnimation.value,
-                borderRadius: borderRadius,
-              ),
-            ),
-            Material(
-              color: Colors.white.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(borderRadius),
-              child: InkWell(
-                onTap: _openWinners,
-                borderRadius: BorderRadius.circular(borderRadius),
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(borderRadius),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.8),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.emoji_events, color: Colors.white, size: 20.w),
-                      SizedBox(width: 6.w),
-                      Text(
-                        "Winners",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14.sp,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withOpacity(0.25),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        );
-      },
-    );
-  }
-}
+/// Explore header marks on the gradient - no filled plate behind the artwork.
 
 enum _BrowseDatePreset { any, next7, next15, thisMonth, custom }
 
@@ -438,8 +215,9 @@ class _ExploreTab extends StatefulWidget {
 }
 
 class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientMixin {
-  final EventController controller = Get.find<EventController>();
+  late final EventController controller;
   final TextEditingController searchCtrl = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
   /// Category filter for "Live today" only (featured carousel ignores this).
   String liveTodayCategory = "All";
   /// Category + date range for upcoming list (and search bar).
@@ -448,8 +226,6 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
   DateTime? _browseCustomStart;
   DateTime? _browseCustomEnd;
   final List<String> categories = ["All", "IT/Tech", "Cultural", "Sports", "Academic", "Social"];
-  List<MapEntry<dynamic, List<dynamic>>> _winnersSwiperData = [];
-  bool _winnersLoading = false;
   List<Map<String, dynamic>> _adPosts = [];
   Timer? _exploreSearchDebounce;
 
@@ -484,64 +260,23 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
     } catch (_) {}
   }
 
-  Future<void> _loadWinnersSwiper() async {
-    if (_winnersLoading) return;
-    setState(() => _winnersLoading = true);
-    try {
-      final response = await ApiService.getPastEvents();
-      final data = response.data;
-      if (data is! Map || data['status'] != 'success') {
-        if (mounted) setState(() => _winnersLoading = false);
-        return;
-      }
-      final list = data['data'];
-      final events = list is List ? list : [];
-      final pending = <Future<MapEntry<dynamic, List<dynamic>>?>>[];
-      for (var i = 0; i < events.length && i < 8; i++) {
-        final e = events[i];
-        final idRaw = e is Map ? e['id'] : null;
-        final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
-        if (id == null) continue;
-        pending.add(() async {
-          try {
-            final winRes = await ApiService.getWinnersByEventId(id);
-            if (winRes.data is Map && winRes.data['status'] == 'success') {
-              final wList = winRes.data['data'];
-              if (wList is List && wList.isNotEmpty) {
-                return MapEntry<dynamic, List<dynamic>>(e, List<dynamic>.from(wList));
-              }
-            }
-          } catch (_) {}
-          return null;
-        }());
-      }
-      final resolved = await Future.wait(pending);
-      final result = <MapEntry<dynamic, List<dynamic>>>[];
-      for (final x in resolved) {
-        if (x != null) result.add(x);
-      }
-      if (mounted) setState(() { _winnersSwiperData = result; _winnersLoading = false; });
-    } catch (_) {
-      if (mounted) setState(() => _winnersLoading = false);
-    }
-  }
-
   @override
   void initState() {
     super.initState();
+    controller = AppBootstrap.ensureEventController();
     // Paint Explore shell immediately. Catalog already loads from
-    // EventController.onInit; ads/winners are secondary chrome.
+    // EventController.onInit; ads are secondary chrome.
     if (controller.liveEventCatalog.isEmpty && !controller.isLoading.value) {
       unawaited(controller.fetchLiveEventCatalog());
     }
     unawaited(_loadAdPosts());
-    unawaited(_loadWinnersSwiper());
   }
 
   @override
   void dispose() {
     _exploreSearchDebounce?.cancel();
     searchCtrl.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -671,7 +406,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
         return 'This month';
       case _BrowseDatePreset.custom:
         if (_browseCustomStart != null && _browseCustomEnd != null) {
-          return '${DateFormat.yMMMd().format(_browseCustomStart!)} – ${DateFormat.yMMMd().format(_browseCustomEnd!)}';
+          return '${DateFormat.yMMMd().format(_browseCustomStart!)} - ${DateFormat.yMMMd().format(_browseCustomEnd!)}';
         }
         return 'Custom range';
     }
@@ -702,7 +437,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                 borderRadius: BorderRadius.circular(25),
                 border: Border.all(color: isSelected ? Colors.transparent : Colors.grey[300]!),
                 boxShadow: isSelected
-                    ? [BoxShadow(color: const Color(0xFFFF5F15).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                    ? [BoxShadow(color: const Color(0xFFFF5F15).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))]
                     : null,
               ),
               child: Center(
@@ -758,7 +493,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
     }
     if (v.isNotEmpty) parts.add(v);
     if (org.isNotEmpty) parts.add(org);
-    return parts.join(' · ');
+    return parts.join(' Â· ');
   }
 
   Widget _buildExploreSearchResultsPanel() {
@@ -812,7 +547,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                             dense: true,
                             contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 2.h),
                             leading: CircleAvatar(
-                              backgroundColor: const Color(0xFFFF5F15).withOpacity(0.15),
+                              backgroundColor: const Color(0xFFFF5F15).withValues(alpha: 0.15),
                               radius: 20,
                               child: const Icon(Icons.event_rounded, color: Color(0xFFFF5F15), size: 22),
                             ),
@@ -854,7 +589,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
       label: Text(label, style: TextStyle(fontSize: 11.sp)),
       selected: selected,
       onSelected: (_) => _setBrowsePreset(preset),
-      selectedColor: const Color(0xFFFF5F15).withOpacity(0.22),
+      selectedColor: const Color(0xFFFF5F15).withValues(alpha: 0.22),
       checkmarkColor: const Color(0xFFFF5F15),
       labelStyle: TextStyle(
         color: selected ? const Color(0xFFFF5F15) : Colors.black87,
@@ -885,92 +620,84 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             cacheExtent: 720,
             slivers: [
-          // Header with gradient
+          // Header — subtle orange→navy gradient, rounded bottom
           SliverToBoxAdapter(
             child: Container(
-              padding: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 15.h),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xFFFF4D00),
-                    Color(0xFFFF6B35),
-                    Color(0xFFFF8F6B),
-                  ],
+              padding: EdgeInsets.fromLTRB(16.w, 10.h, 12.w, 18.h),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.accent, AppColors.accentDark, Color(0xFF2A1F18)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
+                  stops: [0.0, 0.55, 1.0],
                 ),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(22.r)),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.25),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Expanded(
+                      const Expanded(
                         child: Align(
                           alignment: Alignment.centerLeft,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: AppBranding.exploreHeaderLogos(),
-                          ),
+                          child: AppLogoLockup.header(onPrimaryBackground: true),
                         ),
                       ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const _CelebratingWinnersButton(),
-                          SizedBox(width: 8.w),
-                          Obx(() {
-                            final unread = Get.find<InboxNotificationController>().unreadCount.value;
-                            return Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-                                  iconSize: 32,
-                                  onPressed: _openNotifications,
-                                ),
-                                if (unread > 0)
-                                  Positioned(
-                                    right: 6,
-                                    top: 6,
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.h),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red,
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: Colors.white, width: 1.5),
-                                      ),
-                                      constraints: BoxConstraints(minWidth: 18.w, minHeight: 14.h),
-                                      child: Text(
-                                        unread > 99 ? '99+' : '$unread',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9.sp,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          }),
-                        ],
+                      IconButton(
+                        tooltip: 'Search',
+                        icon: const Icon(Icons.search_rounded, color: Colors.white, size: 26),
+                        onPressed: () => _searchFocus.requestFocus(),
                       ),
                     ],
                   ),
                   SizedBox(height: 10.h),
-                  const _ExploreWebsiteLink(),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Discover campus events',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                color: Colors.white,
+                              ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _openMicampusWebsite(context),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white.withValues(alpha: 0.9),
+                          padding: EdgeInsets.symmetric(horizontal: 4.w),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          'micampus.co.in',
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            decoration: TextDecoration.underline,
+                            decorationColor: Colors.white54,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   SizedBox(height: 10.h),
                   Material(
-                    elevation: 8,
-                    shadowColor: Colors.black26,
-                    borderRadius: BorderRadius.circular(18),
-                    color: Colors.white,
+                    elevation: 0,
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    color: AppColors.surface,
                     child: TextField(
                       controller: searchCtrl,
+                      focusNode: _searchFocus,
                       style: const TextStyle(color: Colors.black87),
                       decoration: InputDecoration(
                         hintText: "Search by name, venue, category, organizer…",
@@ -993,7 +720,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
                           borderSide: BorderSide.none,
                         ),
                         contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 20.w),
@@ -1006,7 +733,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
             ),
           ),
 
-          // Server-backed search results (events.php ?search=) — above reminders
+          // Server-backed search results (events.php ?search=) - above reminders
           SliverToBoxAdapter(
             child: _buildExploreSearchResultsPanel(),
           ),
@@ -1020,9 +747,9 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
           SliverToBoxAdapter(
             child: () {
               if (loading && catalog.isEmpty) {
-                return SizedBox(
-                  height: 280.h,
-                  child: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
+                return Padding(
+                  padding: EdgeInsets.only(top: AppSpacing.md.h),
+                  child: const EventListSkeleton(count: 2),
                 );
               }
               if (catalog.isEmpty) return const SizedBox.shrink();
@@ -1038,11 +765,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                         Expanded(
                           child: Text(
                             "Featured Events",
-                            style: TextStyle(
-                              fontSize: 20.sp,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
+                            style: Theme.of(context).textTheme.headlineSmall,
                           ),
                         ),
                       ],
@@ -1052,7 +775,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                   CarouselSlider.builder(
                     itemCount: featuredEvents.length,
                     options: CarouselOptions(
-                      height: 400.h,
+                      height: 340.h,
                       autoPlay: true,
                       autoPlayInterval: const Duration(milliseconds: 2600),
                       autoPlayAnimationDuration: const Duration(milliseconds: 520),
@@ -1065,9 +788,16 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                     itemBuilder: (context, index, realIndex) {
                       final ev = featuredEvents[index];
                       return RepaintBoundary(
-                        child: _FeaturedEventCard(
-                          event: ev,
-                          showRegistrationOpenTag: _showRegistrationOpenTagForFeatured(ev),
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: TicketEventCard(
+                            event: ev,
+                            onTap: () => _openEventDetail(ev),
+                            posterHeight: 170,
+                            showRegistrationOpenTag: _showRegistrationOpenTagForFeatured(ev),
+                            dateLineBuilder: (a, b) => _cardEventDateLine(a, b),
+                            venueLineBuilder: (v) => _cardVenueLine(v),
+                          ),
                         ),
                       );
                     },
@@ -1078,155 +808,49 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
             }(),
           ),
 
-          // Winners section — horizontal swiper of winner cards
+          // Winners — single entry (removed from app bar)
           SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 16.h),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "Winners",
-                        style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                      ),
-                      TextButton(
-                        onPressed: _openWinners,
-                        child: Text("See all", style: TextStyle(color: const Color(0xFFFF5F15), fontWeight: FontWeight.w600, fontSize: 14.sp)),
-                      ),
-                    ],
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(20.w, 4.h, 20.w, 8.h),
+              child: PressableScale(
+                onTap: _openWinners,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+                    boxShadow: AppShadows.card,
                   ),
-                ),
-                SizedBox(height: 10.h),
-                if (_winnersLoading)
-                  SizedBox(
-                    height: 200.h,
-                    child: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
-                  )
-                else if (_winnersSwiperData.isEmpty)
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20.w),
-                    child: GestureDetector(
-                      onTap: _openWinners,
-                      child: Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.symmetric(vertical: 20.h, horizontal: 20.w),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(10.w),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [const Color(0xFFFF5F15).withOpacity(0.15), const Color(0xFFFF9068).withOpacity(0.1)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFFF5F15).withOpacity(0.3)),
+                          color: AppColors.gold.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(AppRadius.chip),
                         ),
-                        child: Row(
+                        child: Icon(Icons.emoji_events_rounded, color: AppColors.gold, size: 26.sp),
+                      ),
+                      SizedBox(width: 14.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              padding: EdgeInsets.all(12.w),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF5F15).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.emoji_events, color: Color(0xFFFF5F15), size: 36),
+                            Text('Winners', style: Theme.of(context).textTheme.titleMedium),
+                            SizedBox(height: 2.h),
+                            Text(
+                              'See who won past campus events',
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
-                            SizedBox(width: 16.w),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text("Event winners", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp)),
-                                  SizedBox(height: 4.h),
-                                  Text("See who won past events", style: TextStyle(fontSize: 13.sp, color: Colors.grey[700])),
-                                ],
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right, color: Color(0xFFFF5F15)),
                           ],
                         ),
                       ),
-                    ),
-                  )
-                else
-                  SizedBox(
-                    height: 220.h,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      itemCount: _winnersSwiperData.length,
-                      itemBuilder: (context, index) {
-                        final entry = _winnersSwiperData[index];
-                        final event = entry.key;
-                        final winners = entry.value;
-                        final title = (event is Map ? event['title'] : null)?.toString() ?? 'Event';
-                        final date = (event is Map ? event['event_date'] : null)?.toString() ?? '';
-                        return GestureDetector(
-                          onTap: () => _openEventDetail(event),
-                          child: Container(
-                            width: 260.w,
-                            margin: EdgeInsets.only(right: 12.w),
-                            padding: EdgeInsets.all(14.w),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.emoji_events, color: const Color(0xFFFF5F15), size: 24.w),
-                                    SizedBox(width: 8.w),
-                                    Expanded(
-                                      child: Text(
-                                        title,
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (date.isNotEmpty) Text(date, style: TextStyle(fontSize: 11.sp, color: Colors.grey[600])),
-                                SizedBox(height: 10.h),
-                                ...winners.take(3).map<Widget>((w) {
-                                  final pos = (w is Map ? w['position'] : null) ?? 0;
-                                  final name = (w is Map ? w['full_name'] : null)?.toString() ?? '—';
-                                  return Padding(
-                                    padding: EdgeInsets.only(bottom: 4.h),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 20.w,
-                                          height: 20.w,
-                                          decoration: BoxDecoration(
-                                            color: pos == 1 ? const Color(0xFFFFD700) : (pos == 2 ? Colors.grey.shade400 : Colors.brown.shade300),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Center(child: Text('$pos', style: TextStyle(fontSize: 10.sp, fontWeight: FontWeight.bold))),
-                                        ),
-                                        SizedBox(width: 8.w),
-                                        Expanded(child: Text(name, style: TextStyle(fontSize: 12.sp), overflow: TextOverflow.ellipsis)),
-                                      ],
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                      const Icon(Icons.chevron_right_rounded, color: AppColors.accent),
+                    ],
                   ),
-                SizedBox(height: 20.h),
-              ],
+                ),
+              ),
             ),
           ),
 
@@ -1262,21 +886,15 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                       if (liveTodayFiltered.isEmpty)
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 20.w),
-                          child: Container(
-                            width: double.infinity,
-                            padding: EdgeInsets.symmetric(vertical: 18.h, horizontal: 16.w),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.grey.shade300),
-                            ),
-                            child: Text(
-                              catalog.where(_isLiveTodayEvent).isEmpty
-                                  ? "No live events today"
-                                  : "No live events today for this type",
-                              style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade700),
-                              textAlign: TextAlign.center,
-                            ),
+                          child: AppEmptyState(
+                            icon: Icons.event_busy_rounded,
+                            accentColor: AppColors.teal,
+                            headline: catalog.where(_isLiveTodayEvent).isEmpty
+                                ? 'Nothing live right now'
+                                : 'No events for this type today',
+                            supporting: catalog.where(_isLiveTodayEvent).isEmpty
+                                ? 'Check back soon or browse upcoming events below.'
+                                : 'Try another category or check upcoming events.',
                           ),
                         )
                       else
@@ -1288,7 +906,10 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                             itemCount: liveTodayFiltered.length,
                             separatorBuilder: (_, __) => SizedBox(width: 16.w),
                             itemBuilder: (context, i) => RepaintBoundary(
-                              child: _AllEventCard(event: liveTodayFiltered[i]),
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: _AllEventCard(event: liveTodayFiltered[i]),
+                              ),
                             ),
                           ),
                         ),
@@ -1296,7 +917,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20.w),
                         child: Text(
-                          "Upcoming events — filters",
+                          "Upcoming events - filters",
                           style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.black87),
                         ),
                       ),
@@ -1376,7 +997,13 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                             itemCount: upcomingFiltered.length,
                             separatorBuilder: (_, __) => SizedBox(width: 16.w),
                             itemBuilder: (context, i) => RepaintBoundary(
-                              child: _AllEventCard(event: upcomingFiltered[i], showRegistrationOpenTag: true),
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: _AllEventCard(
+                                  event: upcomingFiltered[i],
+                                  showRegistrationOpenTag: true,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -1384,7 +1011,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                   ),
           ),
 
-          // Promotional / admissions carousel — after "Upcoming events" list (user scrolls past featured, live today, filters, then upcoming)
+          // Promotional / admissions carousel - after "Upcoming events" list (user scrolls past featured, live today, filters, then upcoming)
           if (_adPosts.isNotEmpty)
             SliverToBoxAdapter(
               child: ColoredBox(
@@ -1413,25 +1040,12 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
     );
   }
 
-  Widget _buildEmptyState() => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          padding: EdgeInsets.all(30.w),
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.event_busy, size: 70.w, color: Colors.grey[400]),
-        ),
-        SizedBox(height: 20.h),
-        Text("No events found", style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600, color: Colors.grey[700])),
-        SizedBox(height: 8.h),
-        Text("Try adjusting your filters", style: TextStyle(color: Colors.grey[500])),
-      ],
-    ),
-  );
+  Widget _buildEmptyState() => const AppEmptyState(
+        icon: Icons.confirmation_number_outlined,
+        headline: 'No events found',
+        supporting: 'Try adjusting your filters or search terms.',
+        accentColor: AppColors.accent,
+      );
 }
 
 // --- ALL EVENT CARD (Horizontal Scrollable - Poster Style) ---
@@ -1445,7 +1059,7 @@ class _AllEventCard extends StatelessWidget {
     try {
       final userId = await PrefService.getUserId();
       if (userId == null) {
-        debugPrint("❌ No user ID found");
+        debugPrint("âŒ No user ID found");
         return {'success': false};
       }
 
@@ -1463,8 +1077,8 @@ class _AllEventCard extends StatelessWidget {
       final bool userIsStudent = userIsStudentInt == 1;
       final bool organizerIsStudent = organizerIsStudentInt == 1;
 
-      debugPrint("👤 User is student: $userIsStudent (raw: $userIsStudentValue, converted: $userIsStudentInt)");
-      debugPrint("🎯 Organizer is student: $organizerIsStudent (raw: $organizerIsStudentValue, converted: $organizerIsStudentInt)");
+      debugPrint("ðŸ‘¤ User is student: $userIsStudent (raw: $userIsStudentValue, converted: $userIsStudentInt)");
+      debugPrint("ðŸŽ¯ Organizer is student: $organizerIsStudent (raw: $organizerIsStudentValue, converted: $organizerIsStudentInt)");
 
       return {
         'success': true,
@@ -1474,662 +1088,324 @@ class _AllEventCard extends StatelessWidget {
         'isOrganizer': EventParticipationRules.isUserEventOrganizer(event, userId),
       };
     } catch (e) {
-      debugPrint("❌ Error checking join gates: $e");
+      debugPrint("âŒ Error checking join gates: $e");
       return {'success': false};
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final EventController controller = Get.find<EventController>();
-    final List banners = event['banners'] ?? [];
-    final String imageUrl = banners.isNotEmpty 
-        ? "https://micampus.co.in/admin/uploads/events/${banners[0]}" 
-        : "";
+    final EventController controller = AppBootstrap.ensureEventController();
 
-    return GestureDetector(
+    return TicketEventCard(
+      event: event,
       onTap: () => _openEventDetail(event),
-      child: Container(
-        width: 280.w,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 15,
-              offset: const Offset(0, 6),
-            )
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Background Image (Poster)
-              imageUrl.isNotEmpty
-                ? AppNetworkImage(
-                    url: imageUrl,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.medium,
-                    cacheWidth: _eventPosterCacheWidth(context, 0.82),
-                    errorWidget: (_, __, ___) => _buildPlaceholder(),
-                  )
-                : _buildPlaceholder(),
+      width: 280.w,
+      posterHeight: 140,
+      showRegistrationOpenTag: showRegistrationOpenTag,
+      posterCacheWidth: _eventPosterCacheWidth(context, 0.82),
+      dateLineBuilder: (a, b) => _cardEventDateLine(a, b),
+      venueLineBuilder: (v) => _cardVenueLine(v),
+      footer: _AllEventCardActions(event: event, controller: controller, joinGates: _eventCardJoinGates),
+    );
+  }
+}
 
-              // Light top scrim so chips stay readable; leave poster visible in the middle.
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.42),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+/// Join / volunteer / participate row for explore cards.
+class _AllEventCardActions extends StatelessWidget {
+  final dynamic event;
+  final EventController controller;
+  final Future<Map<String, dynamic>> Function() joinGates;
 
-              // Category + tags (top)
-              Positioned(
-                left: 12.w,
-                top: 12.h,
-                right: 52.w,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF5F15),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.25),
-                              blurRadius: 8,
-                            )
-                          ],
-                        ),
-                        child: Text(
-                          event['category'] ?? "Event",
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (showRegistrationOpenTag) ...[
-                      SizedBox(width: 8.w),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2E7D32),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          "Registration open",
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10.sp),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+  const _AllEventCardActions({
+    required this.event,
+    required this.controller,
+    required this.joinGates,
+  });
 
-              // Favorite (top-right)
-              Positioned(
-                top: 6.h,
-                right: 6.w,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 8,
-                      )
-                    ],
-                  ),
-                  child: Obx(() {
-                    final eid = event['id'].toString();
-                    final isFav = controller.favoriteList.any(
-                      (e) => e is Map && e['id']?.toString() == eid,
-                    );
-                    return IconButton(
-                      icon: Icon(
-                        isFav ? Icons.favorite : Icons.favorite_border,
-                        color: Colors.red,
-                        size: 20,
-                      ),
-                      padding: EdgeInsets.all(8.w),
-                      constraints: const BoxConstraints(),
-                      onPressed: () => controller.toggleFavorite(eid),
-                    );
-                  }),
-                ),
-              ),
-
-              // Title + meta + actions on a dark bottom scrim (readable over bright poster art).
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: const Alignment(0, 0.45),
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.92),
-                      ],
-                    ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(14.w, 18.h, 14.w, 12.h),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          event['title'] ?? "Untitled Event",
-                          style: TextStyle(
-                            fontSize: 18.sp,
-                            fontWeight: FontWeight.bold,
-                            height: 1.2,
-                            color: Colors.white,
-                            shadows: const [
-                              Shadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 1)),
-                            ],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 8.h),
-                        Row(
-                          children: [
-                            const Icon(Icons.calendar_today, size: 14, color: Colors.white),
-                            SizedBox(width: 6.w),
-                            Expanded(
-                              child: Text(
-                                _cardEventDateLine(event['event_date'], event['event_end_date']),
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 4.h),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on, size: 14, color: Colors.white),
-                            SizedBox(width: 6.w),
-                            Expanded(
-                              child: Text(
-                                _cardVenueLine(event['venue']),
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 12.h),
-                        FutureBuilder<Map<String, dynamic>>(
-                          future: _eventCardJoinGates(),
-                          builder: (context, snap) {
-                            final waiting = snap.connectionState == ConnectionState.waiting;
-                            final g = snap.data;
-                            final ready = g != null && g['success'] == true;
-                            final isOrganizer = ready && g['isOrganizer'] == true;
-                            final rolesMatch = ready && g['rolesMatch'] == true;
-                            final userId = ready ? g['userId'] as String? : null;
-                            final userIsStudent = ready ? g['userIsStudent'] as bool? : null;
-                            final showJoin = !isOrganizer;
-                            final showVolPart = ready && rolesMatch;
-                            final eid = event['id'].toString();
-                            final status = (event['status'] ?? '').toString().toLowerCase();
-                            final isApproved = status == 'approved' || status.isEmpty;
-
-                            if (waiting) {
-                              return SizedBox(
-                                height: 40.h,
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF5F15)),
-                                  ),
-                                ),
-                              );
-                            }
-
-                            if (isOrganizer) {
-                              return Row(
-                                children: [
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      onPressed: null,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.white.withOpacity(0.28),
-                                        foregroundColor: Colors.white,
-                                        disabledBackgroundColor: Colors.white.withOpacity(0.28),
-                                        disabledForegroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        padding: EdgeInsets.symmetric(vertical: 8.h),
-                                      ),
-                                      child: Text(
-                                        'Your event',
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.sp),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }
-
-                            return Row(
-                              children: [
-                                if (showJoin)
-                                  Expanded(
-                                    child: Obx(() {
-                                      final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
-                                      final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
-                                          (userId != null && EventParticipationRules.userInVolunteerList(event, userId));
-                                      final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
-                                          (userId != null && EventParticipationRules.userInParticipantList(event, userId));
-                                      final blockJoin = volunteering || participating;
-                                      return ElevatedButton(
-                                        onPressed: (!isApproved || attending || blockJoin)
-                                            ? null
-                                            : () => controller.joinEvent(
-                                                  eid,
-                                                  organizerId: event['organizer_id']?.toString(),
-                                                  eventSnapshot: event,
-                                                  userIsStudent: userIsStudent,
-                                                ),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: attending ? Colors.grey[300] : Colors.white,
-                                          foregroundColor: attending ? Colors.grey[600] : const Color(0xFFFF5F15),
-                                          disabledBackgroundColor: Colors.grey[300],
-                                          disabledForegroundColor: Colors.grey[600],
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          padding: EdgeInsets.symmetric(vertical: 8.h),
-                                          elevation: attending ? 0 : 2,
-                                        ),
-                                        child: Text(
-                                          attending ? "Viewer" : "Join",
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                        ),
-                                      );
-                                    }),
-                                  ),
-                                if (showJoin && showVolPart) SizedBox(width: 8.w),
-                                if (showVolPart) ...[
-                                  Expanded(
-                                    flex: 2,
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Obx(() {
-                                            final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
-                                            final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
-                                                (userId != null && EventParticipationRules.userInVolunteerList(event, userId));
-                                            final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
-                                                (userId != null && EventParticipationRules.userInParticipantList(event, userId));
-                                            final canSwitchToParticipant =
-                                                volunteering && !participating && isApproved;
-                                            return ElevatedButton(
-                                              onPressed: canSwitchToParticipant
-                                                  ? () {
-                                                      showParticipateRegistrationSheet(
-                                                        context,
-                                                        eventId: eid,
-                                                        eventTitle: (event['title'] ?? 'Event').toString(),
-                                                        organizerId: event['organizer_id']?.toString(),
-                                                        eventSnapshot: event,
-                                                        userIsStudent: userIsStudent,
-                                                        switchFromVolunteer: true,
-                                                      );
-                                                    }
-                                                  : (volunteering || attending || participating || !isApproved)
-                                                      ? null
-                                                      : () {
-                                                          showDialog(
-                                                            context: context,
-                                                            builder: (context) => VolunteerDialog(
-                                                              event: event,
-                                                              userIsStudent: userIsStudent,
-                                                            ),
-                                                          );
-                                                        },
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: canSwitchToParticipant
-                                                    ? const Color(0xFF4CAF50)
-                                                    : (volunteering ? Colors.grey[300] : const Color(0xFFFF5F15)),
-                                                foregroundColor: canSwitchToParticipant
-                                                    ? Colors.white
-                                                    : (volunteering ? Colors.grey[600] : Colors.white),
-                                                disabledBackgroundColor: Colors.grey[300],
-                                                disabledForegroundColor: Colors.grey[600],
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(10),
-                                                ),
-                                                padding: EdgeInsets.symmetric(vertical: 8.h),
-                                                elevation: (volunteering && !canSwitchToParticipant) ? 0 : 2,
-                                              ),
-                                              child: Text(
-                                                canSwitchToParticipant
-                                                    ? "→ Participant"
-                                                    : (volunteering ? "Volunteered" : "Volunteer"),
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 11,
-                                                ),
-                                              ),
-                                            );
-                                          }),
-                                        ),
-                                        SizedBox(width: 6.w),
-                                        Expanded(
-                                          child: Obx(() {
-                                            final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
-                                            final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
-                                                (userId != null && EventParticipationRules.userInVolunteerList(event, userId));
-                                            final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
-                                                (userId != null && EventParticipationRules.userInParticipantList(event, userId));
-                                            final canSwitchToVolunteer =
-                                                participating && !volunteering && isApproved;
-                                            return ElevatedButton(
-                                              onPressed: canSwitchToVolunteer
-                                                  ? () {
-                                                      showDialog(
-                                                        context: context,
-                                                        builder: (context) => VolunteerDialog(
-                                                          event: event,
-                                                          userIsStudent: userIsStudent,
-                                                          switchFromParticipant: true,
-                                                        ),
-                                                      );
-                                                    }
-                                                  : (participating || attending || volunteering || !isApproved)
-                                                      ? null
-                                                      : () {
-                                                          showParticipateRegistrationSheet(
-                                                            context,
-                                                            eventId: eid,
-                                                            eventTitle: (event['title'] ?? 'Event').toString(),
-                                                            organizerId: event['organizer_id']?.toString(),
-                                                            eventSnapshot: event,
-                                                            userIsStudent: userIsStudent,
-                                                          );
-                                                        },
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: canSwitchToVolunteer
-                                                    ? const Color(0xFFFF5F15)
-                                                    : (participating ? Colors.grey[300] : const Color(0xFF4CAF50)),
-                                                foregroundColor: canSwitchToVolunteer
-                                                    ? Colors.white
-                                                    : (participating ? Colors.grey[600] : Colors.white),
-                                                disabledBackgroundColor: Colors.grey[300],
-                                                disabledForegroundColor: Colors.grey[600],
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(10),
-                                                ),
-                                                padding: EdgeInsets.symmetric(vertical: 8.h),
-                                                elevation: (participating && !canSwitchToVolunteer) ? 0 : 2,
-                                              ),
-                                              child: Text(
-                                                canSwitchToVolunteer
-                                                    ? "→ Volunteer"
-                                                    : (participating ? "Participating" : "Participate"),
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 11,
-                                                ),
-                                              ),
-                                            );
-                                          }),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+  ButtonStyle _pillStyle({
+    required Color bg,
+    required Color fg,
+  }) {
+    return FilledButton.styleFrom(
+      backgroundColor: bg,
+      foregroundColor: fg,
+      disabledBackgroundColor: AppColors.surfaceMuted,
+      disabledForegroundColor: AppColors.textSecondary,
+      elevation: 0,
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 10.h),
+      minimumSize: Size(0, 40.h),
+      maximumSize: Size(double.infinity, 40.h),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.button),
       ),
     );
   }
 
-  Widget _buildPlaceholder() => Container(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [
-          const Color(0xFFFF5F15).withOpacity(0.3), 
-          const Color(0xFFFF9068).withOpacity(0.3)
-        ],
+  Widget _pill({
+    required String label,
+    required IconData icon,
+    required VoidCallback? onPressed,
+    required Color bg,
+    Color fg = Colors.white,
+  }) {
+    return FilledButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 14.sp),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11.sp),
       ),
-    ),
-    child: const Center(child: Icon(Icons.event, size: 80, color: Colors.white))
-  );
-}
-
-// --- FEATURED EVENT CARD (Slider) ---
-class _FeaturedEventCard extends StatelessWidget {
-  final dynamic event;
-  final bool showRegistrationOpenTag;
-
-  const _FeaturedEventCard({
-    required this.event,
-    this.showRegistrationOpenTag = false,
-  });
+      style: _pillStyle(bg: bg, fg: fg),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final List banners = event['banners'] ?? [];
-    final String imageUrl = banners.isNotEmpty 
-        ? "https://micampus.co.in/admin/uploads/events/${banners[0]}" 
-        : "";
+    return FutureBuilder<Map<String, dynamic>>(
+      future: joinGates(),
+      builder: (context, snap) {
+        final waiting = snap.connectionState == ConnectionState.waiting;
+        final g = snap.data;
+        final ready = g != null && g['success'] == true;
+        final isOrganizer = ready && g['isOrganizer'] == true;
+        final rolesMatch = ready && g['rolesMatch'] == true;
+        final userId = ready ? g['userId'] as String? : null;
+        final userIsStudent = ready ? g['userIsStudent'] as bool? : null;
+        final showJoin = !isOrganizer;
+        final showVolPart = ready && rolesMatch;
+        final eid = event['id'].toString();
+        final status = (event['status'] ?? '').toString().toLowerCase();
+        final isApproved = status == 'approved' || status.isEmpty;
 
-    return GestureDetector(
-      onTap: () => _openEventDetail(event),
-      child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 5.w),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            )
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            fit: StackFit.expand,
+        if (waiting) {
+          return SizedBox(
+            height: 28.h,
+            child: const Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.accent,
+                ),
+              ),
+            ),
+          );
+        }
+
+        if (isOrganizer) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              imageUrl.isNotEmpty
-                ? AppNetworkImage(
-                    url: imageUrl,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.medium,
-                    cacheWidth: _eventPosterCacheWidth(context, 0.92),
-                    errorWidget: (_, __, ___) => _buildPlaceholder(),
-                  )
-                : _buildPlaceholder(),
-
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.38),
-                        Colors.transparent,
-                      ],
-                    ),
+              const Divider(height: 1, thickness: 1, color: AppColors.border),
+              SizedBox(height: 10.h),
+              OutlinedButton(
+                onPressed: null,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: Size(0, 40.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
                   ),
                 ),
-              ),
-
-              Positioned(
-                left: 16.w,
-                top: 16.h,
-                right: 16.w,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF5F15),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          event['category'] ?? "Event",
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (showRegistrationOpenTag) ...[
-                      SizedBox(width: 8.w),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2E7D32),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          "Registration open",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10.sp,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: const Alignment(0, 0.42),
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.92),
-                      ],
-                    ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 18.h),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          event['title'] ?? "Untitled Event",
-                          style: TextStyle(
-                            fontSize: 20.sp,
-                            fontWeight: FontWeight.bold,
-                            height: 1.2,
-                            color: Colors.white,
-                            shadows: const [
-                              Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 1)),
-                            ],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 10.h),
-                        Row(
-                          children: [
-                            const Icon(Icons.calendar_today, size: 14, color: Colors.white),
-                            SizedBox(width: 6.w),
-                            Expanded(
-                              child: Text(
-                                _cardEventDateLine(event['event_date'], event['event_end_date']),
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 4.h),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on, size: 14, color: Colors.white),
-                            SizedBox(width: 6.w),
-                            Expanded(
-                              child: Text(
-                                _cardVenueLine(event['venue']),
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                child: const Text('Your event'),
               ),
             ],
-          ),
-        ),
-      ),
+          );
+        }
+
+        // No actions for this viewer — take zero height (fixes blank footer band).
+        if (!showJoin && !showVolPart) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Divider(height: 1, thickness: 1, color: AppColors.border),
+            SizedBox(height: 10.h),
+            Row(
+              children: [
+                if (showJoin)
+                  Expanded(
+                    child: Obx(() {
+                      final attending = controller.attendingList
+                          .any((e) => e['id'].toString() == eid);
+                      final volunteering = controller.volunteeringList
+                              .any((e) => e['id'].toString() == eid) ||
+                          (userId != null &&
+                              EventParticipationRules.userInVolunteerList(
+                                  event, userId));
+                      final participating = controller.participatingList
+                              .any((e) => e['id'].toString() == eid) ||
+                          (userId != null &&
+                              EventParticipationRules.userInParticipantList(
+                                  event, userId));
+                      final blockJoin = volunteering || participating;
+                      return _pill(
+                        label: attending ? 'Viewer' : 'Join',
+                        icon: attending
+                            ? Icons.visibility_rounded
+                            : Icons.check_circle_outline_rounded,
+                        bg: attending ? AppColors.surfaceMuted : AppColors.accent,
+                        fg: attending ? AppColors.textSecondary : Colors.white,
+                        onPressed: (!isApproved || attending || blockJoin)
+                            ? null
+                            : () => controller.joinEvent(
+                                  eid,
+                                  organizerId: event['organizer_id']?.toString(),
+                                  eventSnapshot: event,
+                                  userIsStudent: userIsStudent,
+                                ),
+                      );
+                    }),
+                  ),
+                if (showJoin && showVolPart) SizedBox(width: 6.w),
+                if (showVolPart)
+                  Expanded(
+                    flex: 2,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Obx(() {
+                            final attending = controller.attendingList
+                                .any((e) => e['id'].toString() == eid);
+                            final volunteering = controller.volunteeringList
+                                    .any((e) => e['id'].toString() == eid) ||
+                                (userId != null &&
+                                    EventParticipationRules.userInVolunteerList(
+                                        event, userId));
+                            final participating = controller.participatingList
+                                    .any((e) => e['id'].toString() == eid) ||
+                                (userId != null &&
+                                    EventParticipationRules
+                                        .userInParticipantList(event, userId));
+                            final canSwitchToParticipant =
+                                volunteering && !participating && isApproved;
+                            return _pill(
+                              label: canSwitchToParticipant
+                                  ? '→ Participant'
+                                  : (volunteering ? 'Volunteered' : 'Volunteer'),
+                              icon: Icons.front_hand_outlined,
+                              bg: canSwitchToParticipant
+                                  ? AppColors.success
+                                  : (volunteering
+                                      ? AppColors.surfaceMuted
+                                      : AppColors.accent),
+                              fg: volunteering && !canSwitchToParticipant
+                                  ? AppColors.textSecondary
+                                  : Colors.white,
+                              onPressed: canSwitchToParticipant
+                                  ? () {
+                                      showParticipateRegistrationSheet(
+                                        context,
+                                        eventId: eid,
+                                        eventTitle:
+                                            (event['title'] ?? 'Event').toString(),
+                                        organizerId:
+                                            event['organizer_id']?.toString(),
+                                        eventSnapshot: event,
+                                        userIsStudent: userIsStudent,
+                                        switchFromVolunteer: true,
+                                      );
+                                    }
+                                  : (volunteering ||
+                                          attending ||
+                                          participating ||
+                                          !isApproved)
+                                      ? null
+                                      : () {
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => VolunteerDialog(
+                                              event: event,
+                                              userIsStudent: userIsStudent,
+                                            ),
+                                          );
+                                        },
+                            );
+                          }),
+                        ),
+                        SizedBox(width: 6.w),
+                        Expanded(
+                          child: Obx(() {
+                            final attending = controller.attendingList
+                                .any((e) => e['id'].toString() == eid);
+                            final volunteering = controller.volunteeringList
+                                    .any((e) => e['id'].toString() == eid) ||
+                                (userId != null &&
+                                    EventParticipationRules.userInVolunteerList(
+                                        event, userId));
+                            final participating = controller.participatingList
+                                    .any((e) => e['id'].toString() == eid) ||
+                                (userId != null &&
+                                    EventParticipationRules
+                                        .userInParticipantList(event, userId));
+                            final canSwitchToVolunteer =
+                                participating && !volunteering && isApproved;
+                            return _pill(
+                              label: canSwitchToVolunteer
+                                  ? '→ Volunteer'
+                                  : (participating
+                                      ? 'Participating'
+                                      : 'Participate'),
+                              icon: Icons.person_add_alt_1_rounded,
+                              bg: canSwitchToVolunteer
+                                  ? AppColors.accent
+                                  : (participating
+                                      ? AppColors.surfaceMuted
+                                      : AppColors.teal),
+                              fg: participating && !canSwitchToVolunteer
+                                  ? AppColors.textSecondary
+                                  : Colors.white,
+                              onPressed: canSwitchToVolunteer
+                                  ? () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => VolunteerDialog(
+                                          event: event,
+                                          userIsStudent: userIsStudent,
+                                          switchFromParticipant: true,
+                                        ),
+                                      );
+                                    }
+                                  : (participating ||
+                                          attending ||
+                                          volunteering ||
+                                          !isApproved)
+                                      ? null
+                                      : () {
+                                          showParticipateRegistrationSheet(
+                                            context,
+                                            eventId: eid,
+                                            eventTitle: (event['title'] ?? 'Event')
+                                                .toString(),
+                                            organizerId:
+                                                event['organizer_id']?.toString(),
+                                            eventSnapshot: event,
+                                            userIsStudent: userIsStudent,
+                                          );
+                                        },
+                            );
+                          }),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
-
-  Widget _buildPlaceholder() => Container(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [const Color(0xFFFF5F15).withOpacity(0.3), const Color(0xFFFF9068).withOpacity(0.3)],
-      ),
-    ),
-    child: const Center(child: Icon(Icons.event, size: 80, color: Colors.white))
-  );
 }
-// --- Certificates tab (user-wise, from My Events) ---
+
 class _CertificatesTab extends StatefulWidget {
   const _CertificatesTab();
 
@@ -2240,9 +1516,9 @@ class _CertificatesTabState extends State<_CertificatesTab> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
               contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-              leading: CircleAvatar(backgroundColor: const Color(0xFFFF5F15).withOpacity(0.2), child: const Icon(Icons.card_membership, color: Color(0xFFFF5F15))),
+              leading: CircleAvatar(backgroundColor: const Color(0xFFFF5F15).withValues(alpha: 0.2), child: const Icon(Icons.card_membership, color: Color(0xFFFF5F15))),
               title: Text(eventTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp)),
-              subtitle: Text('${type.toUpperCase()} • $eventDate', style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
+              subtitle: Text('${type.toUpperCase()} | $eventDate', style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
               trailing: const Icon(Icons.more_vert),
               onTap: () => showCertificateViewDownloadSheet(context, url: url, title: eventTitle),
             ),
@@ -2266,9 +1542,9 @@ class _MyEventsTab extends StatelessWidget {
       child: Scaffold(
         backgroundColor: const Color(0xFFF8F9FD),
         appBar: AppBar(
-          title: AppBarTitleWithBrandLogo(
+          title: const AppBarTitleWithBrandLogo(
             onPrimaryBackground: false,
-            title: const Text("My Activity", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+            title: Text("My Activity", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
           ),
           backgroundColor: Colors.white,
           elevation: 0,
@@ -2290,15 +1566,15 @@ class _MyEventsTab extends StatelessWidget {
             ],
           ),
         ),
-        body: TabBarView(
+        body: const TabBarView(
           children: [
             _EventListWidget(type: 'attending'),
             _EventListWidget(type: 'hosted'),
             _EventListWidget(type: 'editing'),
             _EventListWidget(type: 'volunteering'),
             _EventListWidget(type: 'participating'),
-            const FavoritesView(),
-            const _CertificatesTab(),
+            FavoritesView(),
+            _CertificatesTab(),
           ],
         ),
       ),
@@ -2335,7 +1611,7 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
     if (!mounted) return;
     setState(() => _listLoading = true);
     
-    final EventController controller = Get.find<EventController>();
+    final EventController controller = AppBootstrap.ensureEventController();
     try {
       switch(widget.type) {
         case 'attending':
@@ -2363,7 +1639,7 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
     
-    final EventController controller = Get.find<EventController>();
+    final EventController controller = AppBootstrap.ensureEventController();
     
     // Fetch data only once
     if (!_hasInitialized) {
@@ -2496,9 +1772,9 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
                       decoration: BoxDecoration(
-                        color: chipColor.withOpacity(0.15),
+                        color: chipColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: chipColor.withOpacity(0.35)),
+                        border: Border.all(color: chipColor.withValues(alpha: 0.35)),
                       ),
                       child: Text(
                         "${items.length}",
@@ -2686,7 +1962,7 @@ class _ProfileTab extends StatelessWidget {
 
   Future<void> _refreshProfile() async {
     final ProfileController controller = Get.find<ProfileController>();
-    final EventController eventController = Get.find<EventController>();
+    final EventController eventController = AppBootstrap.ensureEventController();
     
     await Future.wait([
       controller.loadProfile(),
@@ -2698,7 +1974,7 @@ class _ProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ProfileController controller = Get.find<ProfileController>();
-    final EventController eventController = Get.find<EventController>();
+    final EventController eventController = AppBootstrap.ensureEventController();
     final AuthController authController = Get.find<AuthController>();
 
     return Scaffold(
@@ -2717,32 +1993,35 @@ class _ProfileTab extends StatelessWidget {
             cacheExtent: 300,
             slivers: [
             SliverAppBar(
-              expandedHeight: 50.h,
+              expandedHeight: 56.h,
               floating: false,
               pinned: true,
-              backgroundColor: const Color(0xFFFF5F15),
-
-              leadingWidth: 196,
-              leading: Padding(
-                padding: EdgeInsets.all(8.w),
-                child: AppBranding.compactDualLogos(size: 56, gap: 10),
+              backgroundColor: AppColors.accent,
+              leadingWidth: 200,
+              leading: const Padding(
+                padding: EdgeInsets.only(left: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppLogoLockup.appBar(onPrimaryBackground: true),
+                ),
               ),
-
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
+                      colors: [AppColors.accent, AppColors.accentDark],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                   ),
                 ),
               ),
-
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+              ),
               actions: [
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 22),
+                const IconButton(
+                  icon: Icon(Icons.edit_outlined, color: Colors.white, size: 22),
                   onPressed: _openEditProfile,
                 ),
                 IconButton(
@@ -2756,16 +2035,16 @@ class _ProfileTab extends StatelessWidget {
                       actions: [
                         ArtAlertButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text("Cancel"),
                           backgroundColor: Colors.grey,
+                          child: const Text("Cancel"),
                         ),
                         ArtAlertButton(
                           onPressed: () {
                             Navigator.pop(context);
                             authController.logout();
                           },
-                          child: const Text("Yes"),
                           backgroundColor: const Color(0xFFFF5F15),
+                          child: const Text("Yes"),
                         ),
                       ],
                     );
@@ -2787,7 +2066,7 @@ class _ProfileTab extends StatelessWidget {
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 20,
                             offset: const Offset(0, 4)
                           )
@@ -2804,7 +2083,7 @@ class _ProfileTab extends StatelessWidget {
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFFF5F15).withOpacity(0.3),
+                                color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
                                 blurRadius: 20,
                                 offset: const Offset(0, 8)
                               )
@@ -2833,7 +2112,7 @@ class _ProfileTab extends StatelessWidget {
                         SizedBox(height: 16.h),
                         
                         Text(
-                          user.fullName ?? "Guest User", 
+                          controller.displayNameObs.value,
                           style: TextStyle(
                             fontSize: 22.sp, 
                             fontWeight: FontWeight.bold, 
@@ -2847,13 +2126,13 @@ class _ProfileTab extends StatelessWidget {
                         Container(
                           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF5F15).withOpacity(0.08),
+                            color: const Color(0xFFFF5F15).withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.email_outlined, size: 14, color: const Color(0xFFFF5F15)),
+                              const Icon(Icons.email_outlined, size: 14, color: Color(0xFFFF5F15)),
                               SizedBox(width: 6.w),
                               Flexible(
                                 child: Text(
@@ -2913,7 +2192,7 @@ class _ProfileTab extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 20,
                             offset: const Offset(0, 4)
                           )
@@ -2960,7 +2239,7 @@ class _ProfileTab extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withValues(alpha: 0.04),
                           blurRadius: 20,
                           offset: const Offset(0, 4)
                         )
@@ -2974,7 +2253,7 @@ class _ProfileTab extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF5F15).withOpacity(0.1),
+                                color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Icon(Icons.person_outline, color: Color(0xFFFF5F15), size: 20),
@@ -3008,7 +2287,7 @@ class _ProfileTab extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withValues(alpha: 0.04),
                           blurRadius: 20,
                           offset: const Offset(0, 4)
                         )
@@ -3022,7 +2301,7 @@ class _ProfileTab extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF5F15).withOpacity(0.1),
+                                color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Icon(Icons.interests_outlined, color: Color(0xFFFF5F15), size: 20),
@@ -3042,13 +2321,13 @@ class _ProfileTab extends StatelessWidget {
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [
-                                        const Color(0xFFFF5F15).withOpacity(0.1),
-                                        const Color(0xFFFF9068).withOpacity(0.1)
+                                        const Color(0xFFFF5F15).withValues(alpha: 0.1),
+                                        const Color(0xFFFF9068).withValues(alpha: 0.1)
                                       ],
                                     ),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: const Color(0xFFFF5F15).withOpacity(0.2),
+                                      color: const Color(0xFFFF5F15).withValues(alpha: 0.2),
                                       width: 1
                                     )
                                   ),
@@ -3112,7 +2391,7 @@ class _ProfileTab extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFFF5F15).withOpacity(0.3),
+                color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
                 blurRadius: 8,
                 offset: const Offset(0, 4)
               )
@@ -3133,204 +2412,24 @@ class _ProfileTab extends StatelessWidget {
   }
 }
 
-// --- EVENT CARD WIDGET ---
+// --- EVENT CARD WIDGET (My Activity grid) ---
 class _EventCard extends StatelessWidget {
   final dynamic event;
   const _EventCard({required this.event});
 
   @override
   Widget build(BuildContext context) {
-    final EventController controller = Get.find<EventController>();
-    final List banners = event['banners'] ?? [];
-    final String imageUrl = banners.isNotEmpty 
-        ? "https://micampus.co.in/admin/uploads/events/${banners[0]}" 
-        : "";
-
-    return GestureDetector(
+    return TicketEventCard(
+      event: event,
       onTap: () => _openEventDetail(event),
-      child: Container(
-        margin: EdgeInsets.zero,
-        height: 350.h,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            )
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              imageUrl.isNotEmpty
-                ? AppNetworkImage(
-                    url: imageUrl,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.medium,
-                    cacheWidth: _eventPosterCacheWidth(context, 0.96),
-                    errorWidget: (_, __, ___) => _buildPlaceholder(),
-                  )
-                : _buildPlaceholder(),
-
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.4),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              Positioned(
-                left: 10.w,
-                top: 10.h,
-                right: 48.w,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF5F15),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8),
-                    ],
-                  ),
-                  child: Text(
-                    event['category'] ?? "Event",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-              ),
-
-              Positioned(
-                top: 4.h,
-                right: 4.w,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8),
-                    ],
-                  ),
-                  child: Obx(() {
-                    final eid = event['id'].toString();
-                    final isFav = controller.favoriteList.any(
-                      (e) => e is Map && e['id']?.toString() == eid,
-                    );
-                    return IconButton(
-                      icon: Icon(
-                        isFav ? Icons.favorite : Icons.favorite_border,
-                        color: Colors.red,
-                        size: 20,
-                      ),
-                      padding: EdgeInsets.all(8.w),
-                      constraints: const BoxConstraints(),
-                      onPressed: () => controller.toggleFavorite(eid),
-                    );
-                  }),
-                ),
-              ),
-
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: const Alignment(0, 0.45),
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.92),
-                      ],
-                    ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(12.w, 16.h, 12.w, 12.h),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          event['title'] ?? "Untitled Event",
-                          style: TextStyle(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.bold,
-                            height: 1.2,
-                            color: Colors.white,
-                            shadows: const [
-                              Shadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 1)),
-                            ],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 6.h),
-                        Row(
-                          children: [
-                            const Icon(Icons.calendar_today, size: 12, color: Colors.white),
-                            SizedBox(width: 4.w),
-                            Expanded(
-                              child: Text(
-                                _cardEventDateLine(event['event_date'], event['event_end_date']),
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 3.h),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on, size: 12, color: Colors.white),
-                            SizedBox(width: 4.w),
-                            Expanded(
-                              child: Text(
-                                _cardVenueLine(event['venue']),
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      posterHeight: 100,
+      compact: true,
+      expandToFit: true,
+      posterCacheWidth: _eventPosterCacheWidth(context, 0.96),
+      dateLineBuilder: (a, b) => _cardEventDateLine(a, b),
+      venueLineBuilder: (v) => _cardVenueLine(v),
     );
   }
-
-  Widget _buildPlaceholder() => Container(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [const Color(0xFFFF5F15).withOpacity(0.3), const Color(0xFFFF9068).withOpacity(0.3)],
-      ),
-    ),
-    child: const Center(child: Icon(Icons.event, size: 80, color: Colors.white))
-  );
 }
 
 class _HostedEventTile extends StatelessWidget {
@@ -3369,7 +2468,7 @@ class _HostedEventTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final EventController controller = Get.find<EventController>();
+    final EventController controller = AppBootstrap.ensureEventController();
     final status = (event is Map ? event['status'] : null)?.toString().toLowerCase() ?? '';
     final canEditDelete = status == 'pending';
 
@@ -3384,7 +2483,7 @@ class _HostedEventTile extends StatelessWidget {
           border: Border.all(color: Colors.grey[200]!),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 10,
               offset: const Offset(0, 6),
             )
@@ -3397,7 +2496,7 @@ class _HostedEventTile extends StatelessWidget {
               width: 54.w,
               height: 54.w,
               decoration: BoxDecoration(
-                color: const Color(0xFFFF5F15).withOpacity(0.12),
+                color: const Color(0xFFFF5F15).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Icon(Icons.event, color: Color(0xFFFF5F15)),
@@ -3425,9 +2524,9 @@ class _HostedEventTile extends StatelessWidget {
                       Container(
                         padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
                         decoration: BoxDecoration(
-                          color: _statusColor(status).withOpacity(0.15),
+                          color: _statusColor(status).withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: _statusColor(status).withOpacity(0.35)),
+                          border: Border.all(color: _statusColor(status).withValues(alpha: 0.35)),
                         ),
                         child: Text(
                           _statusLabel(status),
@@ -3479,16 +2578,16 @@ class _HostedEventTile extends StatelessWidget {
                       actions: [
                         ArtAlertButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text("Cancel"),
                           backgroundColor: Colors.grey,
+                          child: const Text("Cancel"),
                         ),
                         ArtAlertButton(
                           onPressed: () async {
                             Navigator.pop(context);
                             await controller.deleteHostedEvent(event: event);
                           },
-                          child: const Text("Delete"),
                           backgroundColor: Colors.red,
+                          child: const Text("Delete"),
                         ),
                       ],
                     );
@@ -3575,11 +2674,13 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _dates = [];
         _loading = false;
         _error = e.toString();
       });
+      }
     }
   }
 
@@ -3644,7 +2745,7 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
                         Container(
                           padding: EdgeInsets.all(8.w),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF5F15).withOpacity(0.12),
+                            color: const Color(0xFFFF5F15).withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(Icons.calendar_today, color: const Color(0xFFFF5F15), size: 20.sp),

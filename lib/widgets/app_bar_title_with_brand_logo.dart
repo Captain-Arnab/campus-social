@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-import '../data/app_branding.dart';
+import 'app_logo_lockup.dart';
 
-/// App bar title row: default MiCampus mark, optional admin logo from API, then [title].
-/// Marks are drawn without a filled chip so they sit directly on the app bar background.
+/// App bar title row: [AppLogoLockup] then [title].
 class AppBarTitleWithBrandLogo extends StatelessWidget {
   final Widget title;
 
-  /// Reserved for callers that switch title contrast on orange vs white bars.
+  /// When true, lockup uses light divider colors for orange bars.
   final bool onPrimaryBackground;
 
-  /// Logical logo square (before [.w]) for each mark.
+  /// Logical logo height (passed through to [AppLogoLockup]).
   final double logoUnit;
 
   /// Max lines for the title area (use 1 to avoid awkward wraps, e.g. "Notifications").
@@ -21,17 +20,20 @@ class AppBarTitleWithBrandLogo extends StatelessWidget {
     super.key,
     required this.title,
     this.onPrimaryBackground = false,
-    this.logoUnit = 52,
+    this.logoUnit = 34,
     this.titleMaxLines = 2,
   });
 
   @override
   Widget build(BuildContext context) {
-    final br = BorderRadius.circular(8);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        AppBranding.compactDualLogos(size: logoUnit, gap: 12, borderRadius: br),
+        AppLogoLockup(
+          size: logoUnit.clamp(28, 40),
+          gap: 10,
+          onPrimaryBackground: onPrimaryBackground,
+        ),
         SizedBox(width: 12.w),
         Expanded(
           child: DefaultTextStyle.merge(

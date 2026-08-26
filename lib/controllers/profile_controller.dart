@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -15,10 +16,70 @@ class ProfileController extends GetxController {
   var volunteeringCount = 0.obs; // ADDED: Volunteering count
   var participatingCount = 0.obs;
 
+  /// Name from login session — shown until profile API returns (avoids "Guest" flash).
+  var sessionDisplayName = ''.obs;
+
+  /// Reactive display name for Obx — updated whenever session or API data changes.
+  var displayNameObs = 'User'.obs;
+
+  int _loadSeq = 0;
+
   @override
   void onInit() {
-    loadProfile();
     super.onInit();
+    unawaited(_initProfile());
+  }
+
+  Future<void> _initProfile() async {
+    await seedFromSession();
+    await loadProfile();
+  }
+
+  /// Wipes in-memory profile state (call before logout navigation or controller delete).
+  void resetProfileState() {
+    _loadSeq++;
+    userData.value = ModelUser();
+    sessionDisplayName.value = '';
+    displayNameObs.value = 'User';
+    createdCount.value = 0;
+    attendedCount.value = 0;
+    favoritesCount.value = 0;
+    volunteeringCount.value = 0;
+    participatingCount.value = 0;
+    isLoading.value = false;
+  }
+
+  void _refreshDisplayName() {
+    final fromApi = userData.value.fullName?.trim();
+    if (fromApi != null && fromApi.isNotEmpty) {
+      displayNameObs.value = fromApi;
+      return;
+    }
+    final fromSession = sessionDisplayName.value.trim();
+    displayNameObs.value = fromSession.isNotEmpty ? fromSession : 'User';
+  }
+
+  String get displayName => displayNameObs.value;
+
+  /// Hydrate visible name from SharedPreferences before network profile fetch.
+  /// Pass [userId]/[name] on the login path to avoid any prefs read race.
+  Future<void> seedFromSession({String? userId, String? name}) async {
+    final resolvedUserId = userId ?? await PrefService.getUserId();
+    final resolvedName = name ?? await PrefService.getUserName();
+    sessionDisplayName.value = resolvedName?.trim() ?? '';
+
+    if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      userData.value = ModelUser();
+      _refreshDisplayName();
+      return;
+    }
+
+    final trimmedName = resolvedName?.trim() ?? '';
+    userData.value = ModelUser(
+      id: resolvedUserId,
+      fullName: trimmedName.isNotEmpty ? trimmedName : null,
+    );
+    _refreshDisplayName();
   }
 
   Future<void> loadProfile() async {
@@ -27,16 +88,32 @@ class ProfileController extends GetxController {
       debugPrint("✗ User ID not found in preferences");
       return;
     }
+
+    final seq = ++_loadSeq;
+    final expectedUserId = userId;
+
+    await seedFromSession(userId: userId);
     
     isLoading.value = true;
     try {
       debugPrint("📱 Loading profile for user: $userId");
       final response = await ApiService.getUserProfile(userId);
+
+      if (seq != _loadSeq) {
+        debugPrint("✗ Profile fetch discarded — superseded by newer request");
+        return;
+      }
+      final currentUserId = await PrefService.getUserId();
+      if (currentUserId != expectedUserId) {
+        debugPrint("✗ Profile fetch discarded — session user changed");
+        return;
+      }
       
       debugPrint("🔵 Profile API response: ${response.data}");
       
       if (response.data['status'] == 'success') {
         userData.value = ModelUser.fromJson(response.data['data']);
+        _refreshDisplayName();
         
         // UPDATED: Parse all stats including favorites and volunteering
         if (response.data['stats'] != null) {

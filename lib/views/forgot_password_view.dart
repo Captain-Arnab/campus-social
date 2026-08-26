@@ -54,7 +54,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                     "Don't worry, we'll help you reset it",
                     style: TextStyle(
                       fontSize: 15.sp,
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontWeight: FontWeight.w400,
                     ),
                     textAlign: TextAlign.center,
@@ -69,7 +69,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
@@ -178,7 +178,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                   Container(
                     padding: EdgeInsets.all(16.w),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -189,7 +189,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                           child: Text(
                             "If you don't receive an email within 5 minutes, please check your spam folder",
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 12.sp,
                             ),
                           ),

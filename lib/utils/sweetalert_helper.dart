@@ -66,6 +66,47 @@ class SweetAlertHelper {
     _show(context, title, message, type: ArtAlertType.error, onConfirm: onConfirm);
   }
 
+  /// Error with Retry + Cancel when a network call timed out or failed transiently.
+  static void showErrorWithRetry(
+    BuildContext? context,
+    String title,
+    String message, {
+    required VoidCallback onRetry,
+    VoidCallback? onCancel,
+  }) {
+    BuildContext? ctx = context;
+    if (ctx != null && !ctx.mounted) ctx = null;
+    ctx ??= Get.context;
+    if (ctx == null || !ctx.mounted) return;
+    ArtSweetAlert.show(
+      context: ctx,
+      title: Text(title),
+      content: Text(message),
+      type: ArtAlertType.error,
+      actions: [
+        ArtAlertButton(
+          onPressed: () {
+            _popAlertRoute();
+            final cb = onCancel;
+            if (cb != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) => cb());
+            }
+          },
+          backgroundColor: Colors.grey,
+          child: const Text('Cancel'),
+        ),
+        ArtAlertButton(
+          onPressed: () {
+            _popAlertRoute();
+            WidgetsBinding.instance.addPostFrameCallback((_) => onRetry());
+          },
+          backgroundColor: const Color(0xFFFF5F15),
+          child: const Text('Retry'),
+        ),
+      ],
+    );
+  }
+
   /// Show info alert.
   static void showInfo(BuildContext? context, String title, String message, {VoidCallback? onConfirm}) {
     _show(context, title, message, type: ArtAlertType.info, onConfirm: onConfirm);

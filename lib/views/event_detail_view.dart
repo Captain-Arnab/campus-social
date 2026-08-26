@@ -14,13 +14,13 @@ import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/sweetalert_helper.dart';
 import '../widgets/app_network_image.dart';
+import '../widgets/event_poster_image.dart';
 import 'volunteer_dialog.dart';
 import 'edit_event_view.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../widgets/app_loading_screen.dart';
 import '../widgets/participate_registration_sheet.dart';
-import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../utils/event_participation_rules.dart';
 
 List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
@@ -269,6 +269,7 @@ class _EventDetailViewState extends State<EventDetailView> {
     final id = int.tryParse((_event['id']).toString());
     if (id == null) return;
     final userIdCtrl = TextEditingController();
+    final parentContext = context;
     Get.dialog(
       AlertDialog(
         title: const Text("Add editor"),
@@ -285,15 +286,16 @@ class _EventDetailViewState extends State<EventDetailView> {
               if (uid.isEmpty) return;
               Get.back();
               final r = await ApiService.addEventEditor(eventId: id, userId: uid);
+              if (!parentContext.mounted) return;
               if (r.data is Map && r.data['status'] == 'success') {
                 SweetAlertHelper.showSuccess(
-                  context,
+                  parentContext,
                   "Success",
                   "Editor added.",
                   onConfirm: _loadFullEvent,
                 );
               } else {
-                SweetAlertHelper.showError(context, "Error", (r.data is Map ? r.data['message'] : null)?.toString() ?? "Failed");
+                SweetAlertHelper.showError(parentContext, "Error", (r.data is Map ? r.data['message'] : null)?.toString() ?? "Failed");
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF5F15), foregroundColor: Colors.white),
@@ -307,6 +309,7 @@ class _EventDetailViewState extends State<EventDetailView> {
   void _showUploadCertificateSheet(BuildContext context) {
     final eventId = int.tryParse((_event['id']).toString());
     if (eventId == null) return;
+    final parentContext = context;
     final volunteers = _event['volunteer_list'] is List ? _event['volunteer_list'] as List : [];
     final participants = _event['participant_list'] is List ? _event['participant_list'] as List : [];
     final allUsers = <Map<String, dynamic>>[];
@@ -317,7 +320,7 @@ class _EventDetailViewState extends State<EventDetailView> {
       if (p is Map && p['user_id'] != null) allUsers.add({'user_id': p['user_id'], 'name': p['student_name'] ?? 'Participant', 'type': 'participant'});
     }
     if (allUsers.isEmpty) {
-      SweetAlertHelper.showInfo(context, "Info", "No volunteers or participants for this event.");
+      SweetAlertHelper.showInfo(parentContext, "Info", "No volunteers or participants for this event.");
       return;
     }
     String? selectedUserId = allUsers.first['user_id']?.toString();
@@ -325,7 +328,7 @@ class _EventDetailViewState extends State<EventDetailView> {
     File? selectedFile;
     Get.bottomSheet(
       StatefulBuilder(
-        builder: (context, setModalState) {
+        builder: (sheetContext, setModalState) {
           return Container(
             padding: EdgeInsets.all(20.w),
             decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -368,10 +371,11 @@ class _EventDetailViewState extends State<EventDetailView> {
                             if (uid == null) return;
                             final r = await ApiService.uploadCertificate(eventId: eventId, userId: uid, type: selectedType, file: selectedFile!);
                             Get.back();
+                            if (!parentContext.mounted) return;
                             if (r.data is Map && r.data['status'] == 'success') {
-                              SweetAlertHelper.showSuccess(context, "Success", "Certificate uploaded.");
+                              SweetAlertHelper.showSuccess(parentContext, "Success", "Certificate uploaded.");
                             } else {
-                              SweetAlertHelper.showError(context, "Error", (r.data is Map ? r.data['message'] : null)?.toString() ?? "Failed");
+                              SweetAlertHelper.showError(parentContext, "Error", (r.data is Map ? r.data['message'] : null)?.toString() ?? "Failed");
                             }
                           },
                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF5F15), foregroundColor: Colors.white),
@@ -607,7 +611,7 @@ class _EventDetailViewState extends State<EventDetailView> {
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.arrow_back, color: Colors.black87),
@@ -623,7 +627,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   icon: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.share, color: Colors.black87),
@@ -640,7 +644,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   icon: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -657,10 +661,9 @@ class _EventDetailViewState extends State<EventDetailView> {
                 ? PageView.builder(
                     itemCount: banners.length,
                     itemBuilder: (context, index) {
-                      return AppNetworkImage(
-                        url: "https://micampus.co.in/admin/uploads/events/${banners[index]}",
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => _buildPlaceholder(),
+                      return EventPosterImage.fromUrl(
+                        "https://micampus.co.in/admin/uploads/events/${banners[index]}",
+                        category: _event is Map ? _event['category']?.toString() : null,
                       );
                     },
                   )
@@ -677,7 +680,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                     padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [const Color(0xFFFF5F15).withOpacity(0.2), const Color(0xFFE04E0B).withOpacity(0.2)],
+                        colors: [const Color(0xFFFF5F15).withValues(alpha: 0.2), const Color(0xFFE04E0B).withValues(alpha: 0.2)],
                       ),
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -933,7 +936,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                     Container(
                       padding: EdgeInsets.all(12.w),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.15),
+                        color: Colors.amber.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.amber.shade700),
                       ),
@@ -1191,7 +1194,7 @@ class _EventDetailViewState extends State<EventDetailView> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, -3))
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, -3))
                 ],
               ),
               child: const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15))),
@@ -1213,7 +1216,7 @@ class _EventDetailViewState extends State<EventDetailView> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, -3))
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, -3))
                 ],
               ),
               child: Column(
@@ -1249,7 +1252,7 @@ class _EventDetailViewState extends State<EventDetailView> {
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, -3))
+                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, -3))
               ],
             ),
             child: Column(
@@ -1260,9 +1263,9 @@ class _EventDetailViewState extends State<EventDetailView> {
                   Container(
                     padding: EdgeInsets.all(12.w),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
+                      color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
@@ -1290,9 +1293,9 @@ class _EventDetailViewState extends State<EventDetailView> {
                   Container(
                     padding: EdgeInsets.all(12.w),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
+                      color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
@@ -1481,7 +1484,7 @@ class _EventDetailViewState extends State<EventDetailView> {
   Widget _buildPlaceholder() => Container(
     decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: [const Color(0xFFFF5F15).withOpacity(0.3), const Color(0xFFE04E0B).withOpacity(0.3)],
+        colors: [const Color(0xFFFF5F15).withValues(alpha: 0.3), const Color(0xFFE04E0B).withValues(alpha: 0.3)],
       ),
     ),
     child: const Center(child: Icon(Icons.event, size: 80, color: Colors.white)),
@@ -1572,7 +1575,7 @@ class _EventDetailViewState extends State<EventDetailView> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFF5F15).withOpacity(0.1),
+              color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: const Color(0xFFFF5F15), size: 24),
@@ -1780,10 +1783,10 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
     final vl = widget.event['volunteer_list'];
     final pl = widget.event['participant_list'];
     final volRows = vl is List
-        ? vl.where((e) => e is Map).map((e) => e as Map<dynamic, dynamic>).toList()
+        ? vl.whereType<Map>().map((e) => e).toList()
         : <Map<dynamic, dynamic>>[];
     final partRows = pl is List
-        ? pl.where((e) => e is Map).map((e) => e as Map<dynamic, dynamic>).toList()
+        ? pl.whereType<Map>().map((e) => e).toList()
         : <Map<dynamic, dynamic>>[];
 
     return Container(
@@ -2400,7 +2403,7 @@ class _OrganizerBroadcastAllCardState extends State<_OrganizerBroadcastAllCard> 
                     SizedBox(height: 2.h),
                     Text(
                       "Sends the same message to every active user (general notification in inbox + push). Use for important event-wide announcements.",
-                      style: TextStyle(fontSize: 12.sp, color: Colors.deepOrange.shade900.withOpacity(0.9)),
+                      style: TextStyle(fontSize: 12.sp, color: Colors.deepOrange.shade900.withValues(alpha: 0.9)),
                     ),
                   ],
                 ),

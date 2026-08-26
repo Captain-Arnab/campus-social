@@ -28,13 +28,8 @@ class _PosterCopyLimits {
   static const int basketballAddress = 26;
   static const int trainerName = 40;
   static const int venue = 56;
-  static const int stadium = 48;
-  static const int address = 72;
-  static const int location = 56;
   static const int phone = 32;
 
-  static String get titleGuidance =>
-      'Headlines use very large type. Aim for about 6–8 short words (max $title characters) so nothing is cut off.';
   static String get graduationTitleGuidance =>
       'Graduation headline: max $graduationTitle characters so it fits the layout.';
   static String get graduationDescriptionGuidance =>
@@ -61,9 +56,6 @@ class _PosterCopyLimits {
   static String get basketballAddressGuidance => 'Address: max $basketballAddress characters.';
   static String get trainerGuidance => 'Max $trainerName characters so it fits next to the photo.';
   static String get venueGuidance => 'Max $venue characters; long venue names may wrap or clip.';
-  static String get stadiumGuidance => 'Max $stadium characters.';
-  static String get addressGuidance => 'Max $address characters; use line breaks sparingly.';
-  static String get locationGuidance => 'Max $location characters.';
 }
 
 class PosterEditorView extends StatefulWidget {
@@ -242,10 +234,10 @@ class _PosterEditorViewState extends State<PosterEditorView> {
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         toolbarHeight: 44.h,
-        title: AppBarTitleWithBrandLogo(
+        title: const AppBarTitleWithBrandLogo(
           onPrimaryBackground: false,
           logoUnit: 28,
-          title: const Text("Customize Poster", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          title: Text("Customize Poster", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -261,7 +253,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                 child: Padding(
                   padding: EdgeInsets.all(15.w),
                   child: Container(
-                    decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 20, offset: const Offset(0, 5))]),
+                    decoration: const BoxDecoration(boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 5))]),
                     child: RepaintBoundary(
                       key: _boundaryKey,
                       child: Obx(() {
@@ -632,7 +624,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
       // --- BOTTOM BAR ---
       bottomNavigationBar: Container(
         padding: EdgeInsets.all(15.w),
-        decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, -5))]),
+        decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))]),
         child: SafeArea(
           child: Row(
             children: [
@@ -652,12 +644,14 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                   onPressed: _isProcessing ? null : () async {
                     setState(() => _isProcessing = true);
                     _clampAllPosterInputsToLimits(syncToRx: true);
+                    final scaffoldContext = context;
                     File? posterFile = await controller.saveForEvent(_boundaryKey);
+                    if (!scaffoldContext.mounted) return;
                     setState(() => _isProcessing = false);
 
                     if (posterFile != null) {
                       if (controller.posterStartDate.value == null) {
-                        SweetAlertHelper.showError(context, "Required", "Please choose a start date.");
+                        SweetAlertHelper.showError(scaffoldContext, "Required", "Please choose a start date.");
                         setState(() => _isProcessing = false);
                         return;
                       }
@@ -665,13 +659,13 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                       final endTimeRaw = _posterSaveEndTimeRaw();
                       if (isGraduationTheme || isTechTheme) {
                         if (_parseTimeForPoster(startTimeRaw) == null || _parseTimeForPoster(endTimeRaw) == null) {
-                          SweetAlertHelper.showError(context, "Required", "Please set valid start and end times.");
+                          SweetAlertHelper.showError(scaffoldContext, "Required", "Please set valid start and end times.");
                           setState(() => _isProcessing = false);
                           return;
                         }
                       } else if (!isEnglishTheme && !isMusicFestivalTheme && !isBasketballTheme &&
                           controller.timeStr.value.toUpperCase() == 'TIME') {
-                        SweetAlertHelper.showError(context, "Required", "Please set the event time.");
+                        SweetAlertHelper.showError(scaffoldContext, "Required", "Please set the event time.");
                         setState(() => _isProcessing = false);
                         return;
                       }
@@ -682,7 +676,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                         final b = DateTime.tryParse(endIso.replaceAll(' ', 'T'));
                         if (a != null && b != null && b.isBefore(a)) {
                           SweetAlertHelper.showError(
-                            context,
+                            scaffoldContext,
                             "Invalid",
                             "End date and time must be on or after the start.",
                           );
@@ -710,7 +704,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                       }
                       Get.back(result: result);
                     } else {
-                      SweetAlertHelper.showError(context, "Error", "Failed to generate poster");
+                      SweetAlertHelper.showError(scaffoldContext, "Error", "Failed to generate poster");
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -866,7 +860,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
       ),
       child: Row(
         children: [
-          Icon(Icons.settings, size: 18, color: Colors.orange),
+          const Icon(Icons.settings, size: 18, color: Colors.orange),
           SizedBox(width: 8.w),
           Text(
             "Mode:",
@@ -939,7 +933,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
           children: [
             Row(
               children: [
-                Icon(Icons.calendar_today, size: 18, color: Colors.orange),
+                const Icon(Icons.calendar_today, size: 18, color: Colors.orange),
                 SizedBox(width: 8.w),
                 Expanded(
                   child: Text(
@@ -963,7 +957,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.event, color: Colors.orange, size: 20),
+                    const Icon(Icons.event, color: Colors.orange, size: 20),
                     SizedBox(width: 10.w),
                     Expanded(
                       child: Text(
@@ -1048,7 +1042,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
         children: [
           Row(
             children: [
-              Icon(Icons.access_time, size: 18, color: Colors.orange),
+              const Icon(Icons.access_time, size: 18, color: Colors.orange),
               SizedBox(width: 8.w),
               Text("Time Duration:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.sp)),
             ],
@@ -1099,7 +1093,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
         children: [
           Row(
             children: [
-              Icon(Icons.checklist, size: 18, color: Colors.orange),
+              const Icon(Icons.checklist, size: 18, color: Colors.orange),
               SizedBox(width: 8.w),
               Text("Course Points:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.sp)),
             ],
@@ -1132,7 +1126,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                 ],
               ),
             );
-          }).toList(),
+          }),
           
           // Add new point
           Row(

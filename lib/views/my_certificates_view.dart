@@ -78,9 +78,9 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
       return Scaffold(
         backgroundColor: const Color(0xFFF8F9FD),
         appBar: AppBar(
-          title: AppBarTitleWithBrandLogo(
+          title: const AppBarTitleWithBrandLogo(
             onPrimaryBackground: false,
-            title: const Text("My Certificates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+            title: Text("My Certificates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
           ),
           backgroundColor: Colors.white,
           elevation: 0,
@@ -92,9 +92,9 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: AppBarTitleWithBrandLogo(
+        title: const AppBarTitleWithBrandLogo(
           onPrimaryBackground: false,
-          title: const Text("My Certificates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+          title: Text("My Certificates", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -174,7 +174,7 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
                         child: ListTile(
                           contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
                           leading: CircleAvatar(
-                            backgroundColor: const Color(0xFFFF5F15).withOpacity(0.2),
+                            backgroundColor: const Color(0xFFFF5F15).withValues(alpha: 0.2),
                             child: const Icon(Icons.card_membership, color: Color(0xFFFF5F15)),
                           ),
                           title: Text(

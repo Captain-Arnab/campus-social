@@ -5,9 +5,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
+import '../data/app_bootstrap.dart';
 import '../utils/sweetalert_helper.dart';
 import 'template_gallery_view.dart';
-import '../data/app_bootstrap.dart';
 import '../utils/app_navigation.dart';
 import 'bootstrap_views.dart';
 import '../widgets/app_calendar_theme.dart';
@@ -37,13 +37,14 @@ class CreateEventViewState extends State<CreateEventView> {
   TimeOfDay? selectedEndTime;
   final List<String> categories = ["IT/Tech", "Cultural", "Sports", "Academic", "Social"];
 
-  final EventController controller = Get.find<EventController>();
+  late final EventController controller;
   String? _existingBannerName;
   bool _removeExistingBanner = false;
 
   @override
   void initState() {
     super.initState();
+    controller = AppBootstrap.ensureEventController();
     Get.put(this);
 
     // Prefill fields when editing an existing (pending) event
@@ -115,7 +116,7 @@ class CreateEventViewState extends State<CreateEventView> {
   Future<void> _openPosterDesigner() async {
     final result = await Get.to(() => const TemplateGalleryView());
 
-    if (result == null) return;
+    if (!mounted || result == null) return;
 
     // result can be a Map (new flow with prefill data) or a File (legacy)
     if (result is Map<String, dynamic>) {
@@ -262,6 +263,8 @@ class CreateEventViewState extends State<CreateEventView> {
             eventEndDate: endDateStr,
           );
 
+    if (!mounted) return;
+
     if (success) {
       final String successBody = isEdit
           ? (Constant.notifyAdminsBySmsOnEventSubmit
@@ -383,7 +386,7 @@ class CreateEventViewState extends State<CreateEventView> {
                 borderRadius: BorderRadius.circular(15),
                 color: Colors.grey[200],
                 border: Border.all(
-                  color: const Color(0xFFFF5F15).withOpacity(0.3),
+                  color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
                   width: 2.5,
                 ),
               ),

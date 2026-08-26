@@ -97,9 +97,9 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
               Container(
                 padding: EdgeInsets.all(16.w),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF5F15).withOpacity(0.08),
+                  color: const Color(0xFFFF5F15).withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFFF5F15).withOpacity(0.2), width: 1.5),
+                  border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.2), width: 1.5),
                 ),
                 child: Row(
                   children: [

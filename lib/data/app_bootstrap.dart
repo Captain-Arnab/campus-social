@@ -37,17 +37,47 @@ class AppBootstrap {
   /// Register controllers so [onInit] starts fetches in the background.
   /// Do NOT await events / profile / inbox / branding HTTP here — that was the
   /// multi-second "Loading MiCampus..." splash after cold start.
-  static Future<void> prepareHome(BuildContext context) async {
-    if (!Get.isRegistered<EventController>()) {
-      Get.put(EventController());
+  ///
+  /// Pass [sessionUserId]/[sessionName] on the post-login path so seeding does not
+  /// depend on a SharedPreferences read that could race with a prior user.
+  static Future<void> prepareHome(
+    BuildContext context, {
+    String? sessionUserId,
+    String? sessionName,
+  }) async {
+    ensureEventController();
+    // Always a fresh ProfileController — never reuse in-memory data across users.
+    if (Get.isRegistered<ProfileController>()) {
+      Get.find<ProfileController>().resetProfileState();
+      await Get.delete<ProfileController>(force: true);
     }
-    if (!Get.isRegistered<ProfileController>()) {
-      Get.put(ProfileController());
-    }
+    final profile = Get.put(ProfileController());
     if (!Get.isRegistered<InboxNotificationController>()) {
       Get.put(InboxNotificationController(), permanent: true);
     }
+    // Session name must be visible before first profile-tab paint (post-login race).
+    await profile.seedFromSession(userId: sessionUserId, name: sessionName);
     unawaited(AppBranding.refresh());
+  }
+
+  /// Safe accessor — never throws if a prior logout deleted the controller.
+  static EventController ensureEventController() {
+    if (Get.isRegistered<EventController>()) {
+      return Get.find<EventController>();
+    }
+    return Get.put(EventController());
+  }
+
+  /// Drop cached home controllers so the next login gets a fresh profile fetch.
+  /// Call only AFTER navigating away from Home (Home widgets Get.find EventController).
+  static Future<void> clearHomeControllers() async {
+    if (Get.isRegistered<ProfileController>()) {
+      Get.find<ProfileController>().resetProfileState();
+      await Get.delete<ProfileController>(force: true);
+    }
+    if (Get.isRegistered<EventController>()) {
+      await Get.delete<EventController>(force: true);
+    }
   }
 
   static Future<void> prepareWinners(BuildContext context) async {
@@ -72,6 +102,7 @@ class AppBootstrap {
 
   static Future<void> prepareCreateEvent(BuildContext context) async {
     unawaited(AppBranding.refresh());
+    ensureEventController();
   }
 
   static Future<void> prepareEditProfile(BuildContext context) async {

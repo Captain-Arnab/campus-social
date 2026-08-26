@@ -49,9 +49,9 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: AppBarTitleWithBrandLogo(
+        title: const AppBarTitleWithBrandLogo(
           onPrimaryBackground: false,
-          title: const Text(
+          title: Text(
             "Select Template",
             style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
           ),
@@ -193,7 +193,7 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 20,
             offset: const Offset(0, 8),
           )
@@ -213,8 +213,8 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        const Color(0xFFFF5F15).withOpacity(0.3),
-                        const Color(0xFFFF9068).withOpacity(0.3)
+                        const Color(0xFFFF5F15).withValues(alpha: 0.3),
+                        const Color(0xFFFF9068).withValues(alpha: 0.3)
                       ],
                     ),
                   ),
@@ -232,9 +232,9 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.3),
+                    Colors.black.withValues(alpha: 0.3),
                     Colors.transparent,
-                    Colors.black.withOpacity(0.8),
+                    Colors.black.withValues(alpha: 0.8),
                   ],
                   stops: const [0.0, 0.4, 1.0],
                 ),
@@ -260,7 +260,7 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
+                              color: Colors.black.withValues(alpha: 0.15),
                               blurRadius: 8,
                             )
                           ],
@@ -282,7 +282,7 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFFFF5F15).withOpacity(0.4),
+                              color: const Color(0xFFFF5F15).withValues(alpha: 0.4),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             )
@@ -324,7 +324,7 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                       Container(
                         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -362,10 +362,10 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: Colors.white.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha: 0.3),
           width: 1,
         ),
       ),

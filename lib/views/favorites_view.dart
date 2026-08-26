@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/event_controller.dart';
-import '../widgets/app_network_image.dart';
+import '../widgets/event_poster_image.dart';
 import 'event_detail_view.dart';
 
 String _eventDateRange(dynamic event) {
@@ -131,7 +131,7 @@ class _FavoriteEventCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.08),
+              color: Colors.grey.withValues(alpha: 0.08),
               blurRadius: 12,
               offset: const Offset(0, 4),
             )
@@ -144,15 +144,14 @@ class _FavoriteEventCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                  child: imageUrl.isNotEmpty
-                      ? AppNetworkImage(
-                          url: imageUrl,
-                          height: 180.h,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => _buildPlaceholder(),
-                        )
-                      : _buildPlaceholder(),
+                  child: SizedBox(
+                    height: 180.h,
+                    width: double.infinity,
+                    child: EventPosterImage.fromUrl(
+                      imageUrl.isNotEmpty ? imageUrl : null,
+                      category: event is Map ? event['category']?.toString() : null,
+                    ),
+                  ),
                 ),
                 Positioned(
                   top: 12,
@@ -165,7 +164,7 @@ class _FavoriteEventCard extends StatelessWidget {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 8,
                           )
                         ]
@@ -189,7 +188,7 @@ class _FavoriteEventCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 8,
                         )
                       ]
@@ -267,24 +266,5 @@ class _FavoriteEventCard extends StatelessWidget {
       ),
     );
   }
-
-  Widget _buildPlaceholder() => Container(
-    height: 180.h,
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [
-          const Color(0xFFFF5F15).withOpacity(0.1),
-          const Color(0xFFE04E0B).withOpacity(0.1),
-        ],
-      ),
-    ),
-    child: const Center(
-      child: Icon(
-        Icons.event,
-        size: 50,
-        color: Color(0xFFFF5F15),
-      ),
-    ),
-  );
 }
 

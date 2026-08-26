@@ -71,7 +71,7 @@ static Widget graduationTheme({
               width: 200.w, height: 200.w,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: gradBlue.withOpacity(0.1),
+                color: gradBlue.withValues(alpha: 0.1),
               ),
             ),
           ),
@@ -81,7 +81,7 @@ static Widget graduationTheme({
               width: 250.w, height: 250.w,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: gradBlue.withOpacity(0.08),
+                color: gradBlue.withValues(alpha: 0.08),
               ),
             ),
           ),
@@ -99,7 +99,7 @@ static Widget graduationTheme({
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(2.r),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 2))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 2))],
                   ),
                   child: Icon(Icons.school, size: 55.sp, color: gradBlue),
                 ),
@@ -163,7 +163,7 @@ static Widget graduationTheme({
             right: 30.w,
             child: Container(
               padding: EdgeInsets.symmetric(vertical: 10.h),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 border: Border(
                   top: BorderSide(color: gradBlue, width: 2),
                   bottom: BorderSide(color: gradBlue, width: 2),
@@ -256,7 +256,7 @@ static Widget graduationTheme({
                               : Icon(
                                   Icons.qr_code_2,
                                   size: 60.sp,
-                                  color: gradBlue.withOpacity(0.3),
+                                  color: gradBlue.withValues(alpha: 0.3),
                                 ),
                         ),
                         SizedBox(height: 8.h),
@@ -625,7 +625,7 @@ static Widget graduationTheme({
                   borderRadius: BorderRadius.circular(30.r),
                   boxShadow: [
                     BoxShadow(
-                      color: techOrange.withOpacity(0.5),
+                      color: techOrange.withValues(alpha: 0.5),
                       blurRadius: 15,
                       offset: const Offset(0, 5),
                     ),
@@ -706,7 +706,7 @@ static Widget englishTheme({
                   end: Alignment.bottomCenter,
                   colors: [
                     engBlue,
-                    engBlue.withOpacity(0.9),
+                    engBlue.withValues(alpha: 0.9),
                   ],
                 ),
               ),
@@ -919,7 +919,7 @@ static Widget englishTheme({
                 borderRadius: BorderRadius.circular(30.r),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFFFB93E).withOpacity(0.4),
+                    color: const Color(0xFFFFB93E).withValues(alpha: 0.4),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -1130,7 +1130,7 @@ static Widget englishTheme({
                           GoogleFonts.leagueSpartan(
                             fontSize: 41.sp,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             letterSpacing: 1.5,
                           ),
                           maxLines: 2,
@@ -1190,7 +1190,7 @@ static Widget englishTheme({
                   borderRadius: BorderRadius.circular(20.r),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 15,
                       offset: const Offset(0, 5),
                     ),
@@ -1367,15 +1367,7 @@ static Widget englishTheme({
   }) {
     return AspectRatio(
     aspectRatio: 3 / 4,
-    child: Container(
-      // decoration: const BoxDecoration(
-      //   gradient: LinearGradient(
-      //     begin: Alignment.topLeft,
-      //     end: Alignment.bottomRight,
-      //     colors: [Color(0xFF2B5BA8), Color(0xFF1E4078)],
-      //   ),
-      // ),
-      child: Stack(
+    child: Stack(
         clipBehavior: Clip.none,
         children: [
 
@@ -1489,7 +1481,7 @@ static Widget englishTheme({
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.25),
+                      color: Colors.black.withValues(alpha: 0.25),
                       blurRadius: 18,
                       offset: const Offset(0, 8),
                     ),
@@ -1518,7 +1510,7 @@ static Widget englishTheme({
               //   borderRadius: BorderRadius.circular(8.r),
               //   boxShadow: [
               //     BoxShadow(
-              //       color: Colors.black.withOpacity(0.2),
+              //       color: Colors.black.withValues(alpha: 0.2),
               //       blurRadius: 15,
               //       offset: const Offset(0, 5),
               //     ),
@@ -1635,7 +1627,6 @@ static Widget englishTheme({
           ),
         ],
       ),
-    ),
   );
   }
 }
@@ -1644,7 +1635,7 @@ static Widget englishTheme({
 
 class TechCirclesPainter extends CustomPainter {
   @override void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withOpacity(0.05)..style = PaintingStyle.stroke..strokeWidth = 1.0;
+    final paint = Paint()..color = Colors.white.withValues(alpha: 0.05)..style = PaintingStyle.stroke..strokeWidth = 1.0;
     canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.4), size.width * 0.35, paint);
     canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.4), size.width * 0.55, paint);
   }

@@ -10,7 +10,7 @@ class OtpService {
   //   (credentials + OTP generation must live on your backend).
   // - This file keeps the current approach, but improves TLS handling + logging.
 
-  static Dio _dio = Dio();
+  static final Dio _dio = Dio();
 
   /// Temporarily allow insecure TLS only in debug/profile to unblock testing
   /// when the SMS provider serves an incomplete certificate chain.

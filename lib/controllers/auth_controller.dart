@@ -9,14 +9,95 @@ import '../data/otp_service.dart';
 import '../data/pref_service.dart';
 import '../services/notification_service.dart';
 import '../utils/app_navigation.dart';
+import '../utils/network_error_helper.dart';
 import '../utils/sweetalert_helper.dart';
 import '../views/bootstrap_views.dart';
+
+class _PendingLoginOtp {
+  final String identifier;
+  final String emailOrPhone;
+  final bool isStudent;
+
+  const _PendingLoginOtp({
+    required this.identifier,
+    required this.emailOrPhone,
+    required this.isStudent,
+  });
+}
+
+class _PendingLogin {
+  final String identifier;
+  final String emailOrPhone;
+  final bool isStudent;
+  final bool byMobile;
+  final String password;
+  final String? otp;
+
+  const _PendingLogin({
+    required this.identifier,
+    required this.emailOrPhone,
+    required this.isStudent,
+    required this.byMobile,
+    required this.password,
+    this.otp,
+  });
+}
+
+class _PendingRegister {
+  final String name;
+  final String email;
+  final String phone;
+  final String password;
+  final String bio;
+  final String interests;
+  final bool isStudent;
+  final String? rollNumber;
+  final String? empNumber;
+  final String? departmentClass;
+
+  const _PendingRegister({
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.password,
+    required this.bio,
+    required this.interests,
+    required this.isStudent,
+    this.rollNumber,
+    this.empNumber,
+    this.departmentClass,
+  });
+}
 
 class AuthController extends GetxController {
   var isLoading = false.obs;
   var isSendingLoginOtp = false.obs;
   var sentOtp = ''.obs;
   var otpSentTime = DateTime.now().obs;
+
+  _PendingLoginOtp? _pendingLoginOtp;
+  _PendingLogin? _pendingLogin;
+  _PendingRegister? _pendingRegister;
+
+  void _showRequestFailure(
+    String title,
+    String rawMessage, {
+    Object? error,
+    VoidCallback? onRetry,
+  }) {
+    final message = NetworkErrorHelper.userMessage(error, apiMessage: rawMessage);
+    final retry = onRetry;
+    if (retry != null && NetworkErrorHelper.isRetryable(error, apiMessage: rawMessage)) {
+      SweetAlertHelper.showErrorWithRetry(
+        Get.context,
+        title,
+        message,
+        onRetry: retry,
+      );
+      return;
+    }
+    SweetAlertHelper.showError(Get.context, title, message);
+  }
 
   /// FCM registration must never block auth navigation.
   void _registerFcmInBackground({required String reason}) {
@@ -48,6 +129,11 @@ class AuthController extends GetxController {
     String emailOrPhone,
     bool isStudent,
   ) async {
+    _pendingLoginOtp = _PendingLoginOtp(
+      identifier: identifier,
+      emailOrPhone: emailOrPhone,
+      isStudent: isStudent,
+    );
     isSendingLoginOtp.value = true;
     try {
       final response = await ApiService.sendLoginOtp(
@@ -57,7 +143,11 @@ class AuthController extends GetxController {
       );
       final data = response.data;
       if (data == null || data is! Map) {
-        SweetAlertHelper.showError(Get.context, "Error", "No response from server");
+        _showRequestFailure(
+          "Error",
+          "No response from server",
+          onRetry: _retrySendLoginOtp,
+        );
         return false;
       }
       if (data['status'] == 'success') {
@@ -66,15 +156,25 @@ class AuthController extends GetxController {
         return true;
       }
       final err = data['message']?.toString() ?? "Could not send OTP";
-      SweetAlertHelper.showError(Get.context, "OTP", err);
+      _showRequestFailure("OTP", err, onRetry: _retrySendLoginOtp);
       return false;
     } catch (e, st) {
       debugPrint("sendLoginOtp error: $e\n$st");
-      SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
+      _showRequestFailure("Error", e.toString(), error: e, onRetry: _retrySendLoginOtp);
       return false;
     } finally {
       isSendingLoginOtp.value = false;
     }
+  }
+
+  void _retrySendLoginOtp() {
+    final pending = _pendingLoginOtp;
+    if (pending == null) return;
+    unawaited(sendLoginOtp(
+      pending.identifier,
+      pending.emailOrPhone,
+      pending.isStudent,
+    ));
   }
 
   //Verify OTP
@@ -109,6 +209,18 @@ class AuthController extends GetxController {
     String? empNumber, {
     String? departmentClass,
   }) async {
+    _pendingRegister = _PendingRegister(
+      name: name,
+      email: email,
+      phone: phone,
+      password: password,
+      bio: bio,
+      interests: interests,
+      isStudent: isStudent,
+      rollNumber: rollNumber,
+      empNumber: empNumber,
+      departmentClass: departmentClass,
+    );
     isLoading.value = true;
     try {
       debugPrint('[Auth] register start');
@@ -127,12 +239,12 @@ class AuthController extends GetxController {
       
       final data = response.data;
       if (data == null) {
-        SweetAlertHelper.showError(Get.context, "Error", "No response from server");
+        _showRequestFailure("Error", "No response from server", onRetry: _retryRegister);
         return;
       }
 
       if (data is! Map) {
-        SweetAlertHelper.showError(Get.context, "Error", "Invalid response format");
+        _showRequestFailure("Error", "Invalid response format", onRetry: _retryRegister);
         return;
       }
       
@@ -161,14 +273,31 @@ class AuthController extends GetxController {
         );
       } else {
         String errorMsg = data['message']?.toString() ?? "Registration failed";
-        SweetAlertHelper.showError(Get.context, "Registration Failed", errorMsg);
+        _showRequestFailure("Registration Failed", errorMsg, onRetry: _retryRegister);
       }
     } catch (e, st) {
       debugPrint("Registration error: $e\n$st");
-      SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
+      _showRequestFailure("Error", e.toString(), error: e, onRetry: _retryRegister);
     } finally {
       isLoading.value = false;
     }
+  }
+
+  void _retryRegister() {
+    final pending = _pendingRegister;
+    if (pending == null) return;
+    unawaited(register(
+      pending.name,
+      pending.email,
+      pending.phone,
+      pending.password,
+      pending.bio,
+      pending.interests,
+      pending.isStudent,
+      pending.rollNumber,
+      pending.empNumber,
+      departmentClass: pending.departmentClass,
+    ));
   }
 
   /// [otp]: when non-empty, backend uses SMS OTP (requires [byMobile] true). Otherwise [password] is used.
@@ -180,6 +309,14 @@ class AuthController extends GetxController {
     String password = '',
     String? otp,
   }) async {
+    _pendingLogin = _PendingLogin(
+      identifier: identifier,
+      emailOrPhone: emailOrPhone,
+      isStudent: isStudent,
+      byMobile: byMobile,
+      password: password,
+      otp: otp,
+    );
     isLoading.value = true;
     try {
       debugPrint(
@@ -198,12 +335,12 @@ class AuthController extends GetxController {
       final data = response.data;
       debugPrint('[Auth] login response statusCode=${response.statusCode} data=$data');
       if (data == null) {
-        SweetAlertHelper.showError(Get.context, "Error", "No response from server");
+        _showRequestFailure("Error", "No response from server", onRetry: _retryLogin);
         return;
       }
 
       if (data is! Map) {
-        SweetAlertHelper.showError(Get.context, "Error", "Invalid response format");
+        _showRequestFailure("Error", "Invalid response format", onRetry: _retryLogin);
         return;
       }
 
@@ -212,6 +349,8 @@ class AuthController extends GetxController {
         String name = data['user_name']?.toString() ?? "User";
         String token = data['token']?.toString() ?? "";
 
+        // Fresh session prefs, then navigate; prepareHome registers controllers.
+        await PrefService.clearProfileSession();
         await PrefService.saveUserSession(userId, name, token, isStudent: isStudent);
         debugPrint('[Auth] session saved userId=$userId tokenLen=${token.length}');
 
@@ -226,20 +365,35 @@ class AuthController extends GetxController {
         debugPrint('[Auth] navigating to home');
         await AppNavigation.offAll(
           () => const HomeBootstrapView(),
-          prepare: AppBootstrap.prepareHome,
+          prepare: (ctx) => AppBootstrap.prepareHome(ctx, sessionUserId: userId, sessionName: name),
           loadingMessage: 'Loading MiCampus...',
         );
+        // Drop any leftover prior-user controllers only after Home is up with fresh ones.
+        // prepareHome already replaced ProfileController; EventController was re-put.
         SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
       } else {
         String errorMsg = data['message']?.toString() ?? "Unknown error";
-        SweetAlertHelper.showError(Get.context, "Login Failed", errorMsg);
+        _showRequestFailure("Login Failed", errorMsg, onRetry: _retryLogin);
       }
     } catch (e, st) {
       debugPrint("Login error: $e\n$st");
-      SweetAlertHelper.showError(Get.context, "Error", "Connection failed: ${e.toString()}");
+      _showRequestFailure("Error", e.toString(), error: e, onRetry: _retryLogin);
     } finally {
       isLoading.value = false;
     }
+  }
+
+  void _retryLogin() {
+    final pending = _pendingLogin;
+    if (pending == null) return;
+    unawaited(loginWithIdentifier(
+      pending.identifier,
+      pending.emailOrPhone,
+      pending.isStudent,
+      pending.byMobile,
+      password: pending.password,
+      otp: pending.otp,
+    ));
   }
 
   // Forgot Password
@@ -265,17 +419,17 @@ class AuthController extends GetxController {
         SweetAlertHelper.showSuccess(Get.context, "Success", msg);
       } else {
         String errorMsg = data['message']?.toString() ?? "Failed to process request";
-        SweetAlertHelper.showError(Get.context, "Error", errorMsg);
+        _showRequestFailure("Error", errorMsg);
       }
     } catch (e, st) {
       debugPrint("Forgot password error: $e\n$st");
-      SweetAlertHelper.showError(Get.context, "Error", "Failed to process request: ${e.toString()}");
+      _showRequestFailure("Error", e.toString(), error: e);
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Logout
+  // Logout — clear prefs, leave Home, THEN delete controllers (avoids Get.find crashes).
   Future<void> logout() async {
     try {
       await NotificationService.onLogout().timeout(
@@ -287,11 +441,13 @@ class AuthController extends GetxController {
     } catch (e, st) {
       debugPrint('[Auth] logout FCM cleanup error: $e\n$st');
     }
-    await PrefService.clearSession();
+    await PrefService.clearProfileSession();
     await AppNavigation.offAll(
       () => const LoginBootstrapView(),
       prepare: AppBootstrap.prepareLogin,
       loadingMessage: 'Preparing login...',
     );
+    // Home is gone — safe to drop GetX home controllers.
+    await AppBootstrap.clearHomeControllers();
   }
 }

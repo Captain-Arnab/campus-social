@@ -6,7 +6,7 @@ class EventBannerTheme extends StatelessWidget {
   final String venue;
   final Color accentColor;
 
-  const EventBannerTheme({
+  const EventBannerTheme({super.key, 
     required this.title, required this.date, 
     required this.venue, this.accentColor = Colors.orange,
   });
@@ -24,7 +24,7 @@ class EventBannerTheme extends StatelessWidget {
           // Background Design Elements
           Positioned(
             right: -20, top: -20,
-            child: CircleAvatar(radius: 60, backgroundColor: accentColor.withOpacity(0.3)),
+            child: CircleAvatar(radius: 60, backgroundColor: accentColor.withValues(alpha: 0.3)),
           ),
           Padding(
             padding: const EdgeInsets.all(20.0),
@@ -32,7 +32,7 @@ class EventBannerTheme extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Text(title.toUpperCase(), style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                Text(title.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 Row(
                   children: [

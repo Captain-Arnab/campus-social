@@ -78,7 +78,7 @@ class CreateEventController extends GetxController {
       }, imagesToUpload);
 
       if (response.data['status'] == 'success') {
-        final msg = Constant.notifyAdminsBySmsOnEventSubmit
+        const msg = Constant.notifyAdminsBySmsOnEventSubmit
             ? "Event submitted for admin approval. Administrators are notified by SMS."
             : "Event submitted for admin approval.";
         SweetAlertHelper.showSuccess(

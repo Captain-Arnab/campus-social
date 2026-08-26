@@ -60,9 +60,9 @@ class _OtpVerificationViewState extends State<OtpVerificationView> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFFF5F15),
         foregroundColor: Colors.white,
-        title: AppBarTitleWithBrandLogo(
+        title: const AppBarTitleWithBrandLogo(
           onPrimaryBackground: true,
-          title: const Text('Verify OTP', style: TextStyle(fontWeight: FontWeight.w600)),
+          title: Text('Verify OTP', style: TextStyle(fontWeight: FontWeight.w600)),
         ),
       ),
       body: Padding(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../base/constant.dart';
+import '../widgets/app_logo_lockup.dart';
 import '../widgets/app_network_image.dart';
 import 'api_service.dart';
 
@@ -56,35 +56,28 @@ class AppBranding {
     return (logicalSize * dpr * scale).round().clamp(72, 512);
   }
 
-  /// MiCampus + admin for the orange Explore header (equal cell size).
-  static Widget exploreHeaderLogos() {
-    final w = 88.w;
-    final h = 72.h;
-    return logoBox(
-      width: w,
-      height: h,
-      fit: BoxFit.contain,
-      interLogoGap: 12.w,
-      borderRadius: BorderRadius.circular(12),
+  /// Explore / home header lockup (shared [AppLogoLockup]).
+  static Widget exploreHeaderLogos({bool onPrimaryBackground = false}) {
+    return AppLogoLockup.header(onPrimaryBackground: onPrimaryBackground);
+  }
+
+  /// App bar / profile compact lockup (shared [AppLogoLockup]).
+  static Widget compactDualLogos({
+    double size = 34,
+    double gap = 10,
+    BorderRadius? borderRadius,
+    bool onPrimaryBackground = false,
+  }) {
+    // [size] kept for API compatibility; height is the visual constraint.
+    final h = size.clamp(28.0, 40.0);
+    return AppLogoLockup(
+      size: h,
+      gap: gap,
+      borderRadius: borderRadius?.topLeft.x ?? 8,
+      onPrimaryBackground: onPrimaryBackground,
     );
   }
 
-  /// App bar / profile compact row (default + admin).
-  static Widget compactDualLogos({
-    double size = 52,
-    double gap = 12,
-    BorderRadius? borderRadius,
-  }) {
-    final s = size.w;
-    final br = borderRadius ?? BorderRadius.circular(8);
-    return logoBox(
-      width: s,
-      height: s,
-      fit: BoxFit.contain,
-      interLogoGap: gap.w,
-      borderRadius: br,
-    );
-  }
   /// Bundled MiCampus mark only (no network).
   static Widget defaultLogoBox({
     double? width,
@@ -104,9 +97,6 @@ class AppBranding {
   }
 
   /// Admin mark when [logoUrlNotifier] has a URL; otherwise nothing.
-  ///
-  /// Defaults to [BoxFit.contain] with [adminLogoVisualScale] so wide marks with
-  /// padding in the bitmap still read at a similar size to the default logo.
   static Widget adminLogoSlot({
     required double width,
     required double height,
@@ -146,7 +136,7 @@ class AppBranding {
     );
   }
 
-  /// Toolbar / actions variant of [adminLogoSlot] (no filled chip — mark sits on the bar background).
+  /// Toolbar / actions variant of [adminLogoSlot].
   static Widget adminLogoChipSlot({
     required double width,
     required double height,
@@ -167,52 +157,25 @@ class AppBranding {
     );
   }
 
-  /// Default + optional admin side by side, each [width]×[height] (plus [interLogoGap] when admin is set).
+  /// Default + optional admin via shared [AppLogoLockup].
   static Widget logoBox({
     double? width,
     double? height,
     BoxFit fit = BoxFit.contain,
     BorderRadius? borderRadius,
-    double interLogoGap = 12,
+    double interLogoGap = 10,
     EdgeInsets defaultImagePadding = EdgeInsets.zero,
     EdgeInsets adminImagePadding = EdgeInsets.zero,
   }) {
-    final w = width;
-    final h = height;
-    if (w == null || h == null) {
-      return defaultLogoBox(width: w, height: h, fit: fit, borderRadius: borderRadius);
-    }
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        ClipRRect(
-          borderRadius: borderRadius ?? BorderRadius.circular(12),
-          child: SizedBox(
-            width: w,
-            height: h,
-            child: Padding(
-              padding: defaultImagePadding,
-              child: _assetLogo(fit: fit),
-            ),
-          ),
-        ),
-        adminLogoSlot(
-          width: w,
-          height: h,
-          leadingGap: interLogoGap,
-          fit: BoxFit.contain,
-          borderRadius: borderRadius,
-          imagePadding: adminImagePadding,
-        ),
-      ],
+    final h = height ?? width ?? 34;
+    return AppLogoLockup(
+      size: h,
+      gap: interLogoGap,
+      borderRadius: borderRadius?.topLeft.x ?? 8,
     );
   }
 
-  /// Fits inside [outerWidth]×[outerHeight]: full default when no admin URL; split row when admin exists.
-  ///
-  /// Uses [Expanded] so the row never overflows; [BoxFit.contain] avoids cropping wide marks
-  /// (cover previously made two "halves" look like overlapping duplicate text).
+  /// Fits inside [outerWidth]×[outerHeight] using [AppLogoLockup].
   static Widget boundedDualLogos({
     required double outerWidth,
     required double outerHeight,
@@ -222,74 +185,25 @@ class AppBranding {
     BoxFit fit = BoxFit.contain,
     BorderRadius? borderRadius,
   }) {
-    final br = borderRadius ?? BorderRadius.circular(12);
-    return ValueListenableBuilder<String?>(
-      valueListenable: logoUrlNotifier,
-      builder: (context, u, _) {
-        final hasAdmin = u != null && u.isNotEmpty;
-        if (!hasAdmin) {
-          return ClipRRect(
-            borderRadius: br,
-            child: SizedBox(
-              width: outerWidth,
-              height: outerHeight,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalInset, vertical: verticalInset),
-                child: Center(child: _assetLogo(fit: fit)),
-              ),
-            ),
-          );
-        }
-        return SizedBox(
-          width: outerWidth,
-          height: outerHeight,
-          child: ClipRRect(
-            borderRadius: br,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalInset, vertical: verticalInset),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Center(child: _assetLogo(fit: fit)),
-                    ),
-                  ),
-                  SizedBox(width: gap),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) => _adminLogoContent(
-                          context,
-                          u,
-                          width: constraints.maxWidth,
-                          height: constraints.maxHeight,
-                          fit: fit,
-                          visualScale: adminLogoVisualScale,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+    return SizedBox(
+      width: outerWidth,
+      height: outerHeight,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalInset, vertical: verticalInset),
+        child: Center(
+          child: AppLogoLockup(
+            size: (outerHeight - verticalInset * 2).clamp(24.0, 48.0),
+            gap: gap,
+            borderRadius: borderRadius?.topLeft.x ?? 8,
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  /// Login / signup / forgot — consistent size, white circular plate, contained logos.
+  /// Login / signup / forgot — compact horizontal lockup (not dual circles).
   static Widget authScreenMarks() {
-    return dualAuthCircleMarks(
-      diameter: 96.w,
-      insetPadding: 4.w,
-      innerLogoSize: 88.w,
-      gap: 16,
-      adminVisualScale: 1.2,
-    );
+    return const AppLogoLockup.auth();
   }
 
   /// Login / signup / forgot: default + optional admin on white circles over the gradient.

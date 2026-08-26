@@ -10,7 +10,10 @@ import '../widgets/app_loading_screen.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 
 class NotificationsView extends StatelessWidget {
-  const NotificationsView({super.key});
+  /// When true, shown as a Home bottom-nav tab (no back button).
+  final bool asTab;
+
+  const NotificationsView({super.key, this.asTab = false});
 
   @override
   Widget build(BuildContext context) {
@@ -21,11 +24,11 @@ class NotificationsView extends StatelessWidget {
     });
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF7F4EF),
       appBar: AppBar(
         title: AppBarTitleWithBrandLogo(
           onPrimaryBackground: true,
-          logoUnit: 44,
+          logoUnit: 34,
           titleMaxLines: 1,
           title: Text(
             'Notifications',
@@ -38,9 +41,16 @@ class NotificationsView extends StatelessWidget {
         backgroundColor: const Color(0xFFFF5F15),
         elevation: 0,
         centerTitle: false,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Get.back(),
+        automaticallyImplyLeading: !asTab,
+        leadingWidth: asTab ? 0 : null,
+        leading: asTab
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Get.back(),
+              ),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
         ),
         actions: [
           Obx(() {
@@ -229,15 +239,15 @@ class _NotificationTile extends StatelessWidget {
       child: Container(
         margin: EdgeInsets.only(bottom: 8.h),
         decoration: BoxDecoration(
-          color: isUnread ? color.withOpacity(0.06) : Colors.white,
+          color: isUnread ? color.withValues(alpha: 0.06) : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isUnread ? color.withOpacity(0.2) : Colors.grey.shade200,
+            color: isUnread ? color.withValues(alpha: 0.2) : Colors.grey.shade200,
             width: isUnread ? 1.2 : 0.8,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -251,7 +261,7 @@ class _NotificationTile extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(10.w),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

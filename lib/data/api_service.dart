@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../../base/constant.dart';
+import '../utils/network_error_helper.dart';
 import 'pref_service.dart';
 
 class ApiService {
@@ -28,6 +29,13 @@ class ApiService {
       return Options();
     }
     return Options(headers: {"Authorization": "Bearer $token"});
+  }
+
+  static Map<String, dynamic> _networkErrorBody(DioException e) {
+    return {
+      'status': 'error',
+      'message': NetworkErrorHelper.apiErrorMessage(e, apiMessage: e.message),
+    };
   }
 
   static Map<String, dynamic>? responseDataMap(dynamic data) {
@@ -89,7 +97,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'users.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -128,7 +136,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'users.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -179,7 +187,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'users.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -195,7 +203,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'forgot_password.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -211,7 +219,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'forgot_password.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -247,7 +255,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'users.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -269,7 +277,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -282,7 +290,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -298,7 +306,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -321,7 +329,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -338,7 +346,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'users.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -354,7 +362,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'users.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -374,7 +382,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'users.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -388,7 +396,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'favorites.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -401,7 +409,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'favorites.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -414,7 +422,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'attend.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -440,7 +448,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -466,7 +474,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -493,7 +501,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -533,7 +541,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'events.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -586,7 +594,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'events.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -615,7 +623,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'events.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -632,7 +640,7 @@ class ApiService {
         return Response(
           requestOptions: RequestOptions(path: 'volunteers.php'),
           statusCode: 0,
-          data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+          data: _networkErrorBody(e),
         );
       } catch (e2) {
         return Response(
@@ -663,7 +671,7 @@ class ApiService {
       return Response(
         requestOptions: RequestOptions(path: 'event_staff_switch.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -680,7 +688,7 @@ class ApiService {
         return Response(
           requestOptions: RequestOptions(path: 'participant.php'),
           statusCode: 0,
-          data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+          data: _networkErrorBody(e),
         );
       } catch (e2) {
         return Response(
@@ -719,7 +727,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -744,7 +752,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -757,7 +765,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'event_winners.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -774,7 +782,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'certificates.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -790,7 +798,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'certificates.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -818,7 +826,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'certificates.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -835,7 +843,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'event_editors.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -851,7 +859,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'event_editors.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -872,7 +880,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'register_fcm_token.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -898,7 +906,7 @@ class ApiService {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'notification_dates.php'),
         statusCode: 0,
-        data: {'status': 'error', 'message': 'Network error: ${e.message}'}
+        data: _networkErrorBody(e),
       );
     }
   }
@@ -947,7 +955,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'send_organizer_notification.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -967,7 +975,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'app_settings.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -987,7 +995,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'ad_posts.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -1010,7 +1018,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'user_notifications.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -1035,7 +1043,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'user_notifications.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -1060,7 +1068,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'user_notifications.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -1099,7 +1107,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'event_organizer.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }
@@ -1146,7 +1154,7 @@ class ApiService {
           Response(
             requestOptions: RequestOptions(path: 'event_organizer.php'),
             statusCode: 0,
-            data: {'status': 'error', 'message': 'Network error: ${e.message}'},
+            data: _networkErrorBody(e),
           );
     }
   }

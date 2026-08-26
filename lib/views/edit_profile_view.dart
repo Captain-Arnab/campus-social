@@ -104,9 +104,9 @@ class _EditProfileViewState extends State<EditProfileView> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
       appBar: AppBar(
-        title: AppBarTitleWithBrandLogo(
+        title: const AppBarTitleWithBrandLogo(
           onPrimaryBackground: true,
-          title: const Text(
+          title: Text(
             "Edit Profile",
             style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           ),
@@ -149,7 +149,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                             border: Border.all(color: Colors.white, width: 4),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
+                                color: Colors.black.withValues(alpha: 0.2),
                                 blurRadius: 20,
                                 offset: const Offset(0, 8)
                               )
@@ -163,7 +163,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                                 : (controller.userData.value.image != null && 
                                    controller.userData.value.image!.isNotEmpty
                                     ? appNetworkImageProvider("https://micampus.co.in/admin/uploads/profiles/${controller.userData.value.image}")
-                                    : null) as ImageProvider?,
+                                    : null),
                             child: selectedImage == null &&
                                     (controller.userData.value.image == null || 
                                      controller.userData.value.image!.isEmpty)
@@ -185,7 +185,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                               border: Border.all(color: Colors.white, width: 3),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
+                                  color: Colors.black.withValues(alpha: 0.2),
                                   blurRadius: 8
                                 )
                               ],
@@ -200,7 +200,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                   Text(
                     "Tap to update photo",
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 13.sp,
                       fontWeight: FontWeight.w500
                     ),
@@ -302,7 +302,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
+                                  color: Colors.black.withValues(alpha: 0.03),
                                   blurRadius: 10,
                                   offset: const Offset(0, 2)
                                 )
@@ -363,7 +363,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                                 constraints: BoxConstraints(maxHeight: 200.h),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  border: Border.all(color: const Color(0xFFFF5F15).withOpacity(0.3), width: 2),
+                                  border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.3), width: 2),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: ListView.separated(
@@ -417,7 +417,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                               padding: EdgeInsets.all(16.w),
                               decoration: BoxDecoration(
                                 color: Colors.orange[50],
-                                border: Border.all(color: const Color(0xFFFF5F15).withOpacity(0.3)),
+                                border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.3)),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -470,7 +470,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                         border: Border.all(color: Colors.grey[200]!),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
+                            color: Colors.black.withValues(alpha: 0.03),
                             blurRadius: 10,
                             offset: const Offset(0, 2)
                           )
@@ -484,7 +484,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                             label: Text(interest),
                             deleteIcon: const Icon(Icons.close, size: 18),
                             onDeleted: () => _removeInterest(interest),
-                            backgroundColor: const Color(0xFFFF5F15).withOpacity(0.1),
+                            backgroundColor: const Color(0xFFFF5F15).withValues(alpha: 0.1),
                             labelStyle: TextStyle(
                               color: const Color(0xFFFF5F15),
                               fontSize: 12.sp,
@@ -512,7 +512,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFFF5F15).withOpacity(0.4),
+                                color: const Color(0xFFFF5F15).withValues(alpha: 0.4),
                                 blurRadius: 15,
                                 offset: const Offset(0, 6)
                               )
@@ -597,7 +597,7 @@ class _EditProfileViewState extends State<EditProfileView> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 2)
           )
@@ -646,9 +646,11 @@ class _EditProfileViewState extends State<EditProfileView> {
         maxHeight: 1024,
       );
       if (img != null) {
+        if (!mounted) return;
         setState(() => selectedImage = File(img.path));
       }
     } catch (e) {
+      if (!mounted) return;
       SweetAlertHelper.showError(context, "Error", "Failed to pick image");
     }
   }

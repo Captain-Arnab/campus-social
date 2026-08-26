@@ -34,10 +34,10 @@ class LoginBootstrapView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ScreenLoadGate(
+    return const ScreenLoadGate(
       prepare: AppBootstrap.prepareLogin,
       loadingMessage: 'Preparing login...',
-      child: const LoginView(),
+      child: LoginView(),
     );
   }
 }
@@ -47,10 +47,10 @@ class OnboardingBootstrapView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ScreenLoadGate(
+    return const ScreenLoadGate(
       prepare: AppBootstrap.prepareOnboarding,
       loadingMessage: 'Loading...',
-      child: const OnboardingView(),
+      child: OnboardingView(),
     );
   }
 }

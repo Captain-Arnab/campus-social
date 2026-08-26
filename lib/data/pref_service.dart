@@ -22,14 +22,19 @@ class PrefService {
     await prefs.setBool(_isStudentKey, isStudent); 
   }
 
-  /// Clears login session only. Preserves onboarding and other non-session prefs.
-  static Future<void> clearSession() async {
+  /// Clears all login/session keys (user id, name, token, role). Preserves onboarding.
+  static Future<void> clearProfileSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userIdKey);
     await prefs.remove(_userNameKey);
     await prefs.remove(_isLoggedInKey);
     await prefs.remove(_isStudentKey);
+  }
+
+  /// Clears login session only. Preserves onboarding and other non-session prefs.
+  static Future<void> clearSession() async {
+    await clearProfileSession();
   }
 
   static Future<String?> getToken() async {

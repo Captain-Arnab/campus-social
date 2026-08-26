@@ -228,9 +228,9 @@ class _EditEventViewState extends State<EditEventView> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: AppBarTitleWithBrandLogo(
+        title: const AppBarTitleWithBrandLogo(
           onPrimaryBackground: true,
-          title: const Text("Edit Event", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+          title: Text("Edit Event", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         ),
         backgroundColor: const Color(0xFFFF5F15),
         elevation: 0,
@@ -282,7 +282,7 @@ class _EditEventViewState extends State<EditEventView> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(15),
                 color: Colors.grey[200],
-                border: Border.all(color: const Color(0xFFFF5F15).withOpacity(0.3), width: 2.5),
+                border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.3), width: 2.5),
               ),
               child: Stack(
                 children: [

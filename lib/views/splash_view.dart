@@ -81,7 +81,7 @@ class _OnboardingViewState extends State<OnboardingView> {
             end: Alignment.bottomRight,
             colors: [
               _pages[_currentPage].color,
-              _pages[_currentPage].color.withOpacity(0.8),
+              _pages[_currentPage].color.withValues(alpha: 0.8),
             ],
           ),
         ),
@@ -191,7 +191,7 @@ class _OnboardingViewState extends State<OnboardingView> {
       width: _currentPage == index ? 24.w : 8.w,
       height: 8.h,
       decoration: BoxDecoration(
-        color: _currentPage == index ? Colors.white : Colors.white.withOpacity(0.4),
+        color: _currentPage == index ? Colors.white : Colors.white.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(4),
       ),
     );
@@ -218,7 +218,7 @@ class _OnboardingPage extends StatelessWidget {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(25),
-                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 20, offset: const Offset(0, 10))],
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 10))],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(25),
@@ -226,8 +226,8 @@ class _OnboardingPage extends StatelessWidget {
                     data.imagePath,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
-                      color: data.color.withOpacity(0.3),
-                      child: Icon(Icons.image_not_supported, size: 64, color: Colors.white70),
+                      color: data.color.withValues(alpha: 0.3),
+                      child: const Icon(Icons.image_not_supported, size: 64, color: Colors.white70),
                     ),
                   ),
                 ),
@@ -259,7 +259,7 @@ class _OnboardingPage extends StatelessWidget {
                       Text(
                         data.description,
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 15.sp, color: Colors.white.withOpacity(0.85), height: 1.5),
+                        style: TextStyle(fontSize: 15.sp, color: Colors.white.withValues(alpha: 0.85), height: 1.5),
                       ),
                     ],
                   ),
