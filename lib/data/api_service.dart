@@ -89,10 +89,8 @@ class ApiService {
           "is_student": isStudent ? 1 : 0,
         },
       );
-      debugPrint("🟢 send_login_otp: ${response.data}");
       return response;
     } on DioException catch (e) {
-      debugPrint("🔴 send_login_otp DioException: ${e.message}");
       return e.response ??
           Response(
             requestOptions: RequestOptions(path: 'users.php'),

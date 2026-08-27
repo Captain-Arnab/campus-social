@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 class Constant {
   /// Public marketing / help site (opens in browser from the app).
-  static const String websiteUrl = 'https://micampus.co.in/';
+  static const String websiteUrl = 'https://www.micampus.co.in/';
 
   // --- API Configuration ---
-  static const String baseUrl = "https://micampus.co.in/admin/api/";
+  static const String baseUrl = "https://www.micampus.co.in/admin/api/";
 
   /// When false, [ApiService.createEvent] sends `notify_admin_sms=0` so new/pending
   /// events should not trigger administrator SMS. The PHP API must honor this field.
@@ -13,7 +13,7 @@ class Constant {
   static const bool notifyAdminsBySmsOnEventSubmit = false;
   
   // Upload base URLs (for building certificate/banner URLs)
-  static const String uploadsBaseUrl = "https://micampus.co.in/admin/uploads/";
+  static const String uploadsBaseUrl = "https://www.micampus.co.in/admin/uploads/";
   static const String certificatesPath = "certificates/";
 
   /// Absolute URL for a certificate [filePath] from the API.

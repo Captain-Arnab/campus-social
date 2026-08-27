@@ -159,7 +159,6 @@ class AuthController extends GetxController {
       _showRequestFailure("OTP", err, onRetry: _retrySendLoginOtp);
       return false;
     } catch (e, st) {
-      debugPrint("sendLoginOtp error: $e\n$st");
       _showRequestFailure("Error", e.toString(), error: e, onRetry: _retrySendLoginOtp);
       return false;
     } finally {
