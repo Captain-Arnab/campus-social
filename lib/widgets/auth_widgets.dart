@@ -227,6 +227,7 @@ class AuthTextField extends StatefulWidget {
   final FocusNode? focusNode;
   final ValueChanged<String>? onSubmitted;
   final ValueChanged<String>? onChanged;
+  final String? errorText;
 
   const AuthTextField({
     super.key,
@@ -244,6 +245,7 @@ class AuthTextField extends StatefulWidget {
     this.focusNode,
     this.onSubmitted,
     this.onChanged,
+    this.errorText,
   });
 
   @override
@@ -275,11 +277,17 @@ class _AuthTextFieldState extends State<AuthTextField> {
   @override
   Widget build(BuildContext context) {
     final focused = _focus.hasFocus;
+    final hasError =
+        widget.errorText != null && widget.errorText!.trim().isNotEmpty;
+    final borderColor = hasError
+        ? Colors.red.shade400
+        : (focused ? AppColors.accent : AppColors.border);
+    final borderWidth = (hasError || focused) ? 2.0 : 1.0;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.button),
-        boxShadow: focused
+        boxShadow: focused && !hasError
             ? [
                 BoxShadow(
                   color: AppColors.accent.withValues(alpha: 0.22),
@@ -304,22 +312,34 @@ class _AuthTextFieldState extends State<AuthTextField> {
           labelText: widget.label,
           hintText: widget.hint,
           counterText: '',
-          prefixIcon: Icon(widget.prefixIcon, color: AppColors.accent),
+          errorText: hasError ? widget.errorText : null,
+          prefixIcon: Icon(
+            widget.prefixIcon,
+            color: hasError ? Colors.red.shade400 : AppColors.accent,
+          ),
           suffixIcon: widget.suffixIcon,
           filled: true,
           fillColor: AppColors.surface,
           contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
-            borderSide: const BorderSide(color: AppColors.border),
+            borderSide: BorderSide(color: borderColor),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
-            borderSide: const BorderSide(color: AppColors.border),
+            borderSide: BorderSide(color: borderColor, width: borderWidth),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
-            borderSide: const BorderSide(color: AppColors.accent, width: 2),
+            borderSide: BorderSide(color: borderColor, width: 2),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.button),
+            borderSide: BorderSide(color: Colors.red.shade400, width: 2),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.button),
+            borderSide: BorderSide(color: Colors.red.shade400, width: 2),
           ),
         ),
       ),

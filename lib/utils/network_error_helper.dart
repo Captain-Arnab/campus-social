@@ -33,10 +33,16 @@ class NetworkErrorHelper {
   }
 
   static String userMessage(Object? error, {String? apiMessage}) {
-    if (apiMessage != null && apiMessage.isNotEmpty) {
-      if (_looksLikeTimeout(apiMessage)) return timeoutMessage;
-      if (apiMessage.toLowerCase().startsWith('network error:')) {
-        return _messageFromNetworkPrefix(apiMessage);
+    final trimmedApi = apiMessage?.trim();
+    if (trimmedApi != null && trimmedApi.isNotEmpty) {
+      if (_looksLikeTimeout(trimmedApi)) return timeoutMessage;
+      if (trimmedApi.toLowerCase().startsWith('network error:')) {
+        return _messageFromNetworkPrefix(trimmedApi);
+      }
+      // Prefer explicit API business messages when this is not a caught exception path
+      // (callers pass error: e together with e.toString() as apiMessage).
+      if (error == null) {
+        return trimmedApi;
       }
     }
 
@@ -58,7 +64,10 @@ class NetworkErrorHelper {
     }
 
     if (_looksLikeTimeout(error?.toString())) return timeoutMessage;
-    if (error != null || (apiMessage != null && apiMessage.isNotEmpty)) {
+    if (trimmedApi != null && trimmedApi.isNotEmpty) {
+      return trimmedApi;
+    }
+    if (error != null) {
       return genericMessage;
     }
     return genericMessage;

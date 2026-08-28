@@ -13,6 +13,7 @@ import '../utils/auth_input_validators.dart';
 import '../utils/network_error_helper.dart';
 import '../utils/sweetalert_helper.dart';
 import '../views/bootstrap_views.dart';
+import 'profile_controller.dart';
 
 class _PendingLoginOtp {
   final String identifier;
@@ -75,6 +76,13 @@ class AuthController extends GetxController {
   var isSendingLoginOtp = false.obs;
   var sentOtp = ''.obs;
   var otpSentTime = DateTime.now().obs;
+
+  /// API `field` from the last failed register call
+  /// (`email`, `mobile_number`, `roll_number`, `employee_id`).
+  final registerErrorField = RxnString();
+
+  /// Bumped on logout so a pending post-login "Welcome back" alert cannot fire late.
+  int _authSessionEpoch = 0;
 
   _PendingLoginOtp? _pendingLoginOtp;
   _PendingLogin? _pendingLogin;
@@ -161,7 +169,7 @@ class AuthController extends GetxController {
       );
       _showRequestFailure("OTP", err, onRetry: _retrySendLoginOtp);
       return false;
-    } catch (e, st) {
+    } catch (e) {
       _showRequestFailure("Error", e.toString(), error: e, onRetry: _retrySendLoginOtp);
       return false;
     } finally {
@@ -255,6 +263,7 @@ class AuthController extends GetxController {
       }
       
       if (data['status'] == 'success') {
+        registerErrorField.value = null;
         // Clear loading before any dialogs/navigation so the shared AuthController
         // is not left with isLoading=true under a stacked login route.
         isLoading.value = false;
@@ -278,30 +287,24 @@ class AuthController extends GetxController {
           },
         );
       } else {
-        final rawMsg = data['message']?.toString() ?? "Registration failed";
-        String errorMsg = rawMsg;
-        final lower = rawMsg.toLowerCase();
-        if (lower.contains('already') ||
+        // Prefer exact server message (field-specific duplicates, validation, etc.).
+        final errorMsg =
+            data['message']?.toString().trim().isNotEmpty == true
+                ? data['message'].toString().trim()
+                : "Registration failed";
+        final field = data['field']?.toString().trim();
+        registerErrorField.value =
+            (field != null && field.isNotEmpty) ? field : null;
+        final lower = errorMsg.toLowerCase();
+        final isConflict = lower.contains('already') ||
             lower.contains('exist') ||
-            (lower.contains('email') && lower.contains('phone'))) {
-          // Disambiguate email vs phone when API returns a combined message.
-          try {
-            final check = await ApiService.checkRegistrationAvailability(
-              email: email,
-              phone: phone,
-            );
-            errorMsg = ApiService.friendlyRegisterConflictMessage(
-              rawMsg,
-              emailTaken: check.emailTaken,
-              // Combined API message + email free ⇒ phone is the conflict.
-              phoneTaken: check.phoneTaken ??
-                  (check.emailTaken == false ? true : null),
-            );
-          } catch (_) {
-            errorMsg = ApiService.friendlyRegisterConflictMessage(rawMsg);
-          }
-        }
-        _showRequestFailure("Registration Failed", errorMsg, onRetry: _retryRegister);
+            (field != null && field.isNotEmpty);
+        // Duplicates need a different input — retrying the same payload is useless.
+        _showRequestFailure(
+          "Registration Failed",
+          errorMsg,
+          onRetry: isConflict ? null : _retryRegister,
+        );
       }
     } catch (e, st) {
       debugPrint("Registration error: $e\n$st");
@@ -404,19 +407,23 @@ class AuthController extends GetxController {
         // the token is then cached / init finished).
         _registerFcmInBackground(reason: 'post-login');
 
+        final sessionEpoch = ++_authSessionEpoch;
         debugPrint('[Auth] navigating to home');
         await AppNavigation.offAll(
           () => const HomeBootstrapView(),
           prepare: (ctx) => AppBootstrap.prepareHome(ctx, sessionUserId: userId, sessionName: name),
           loadingMessage: 'Loading MiCampus...',
         );
-        // Drop any leftover prior-user controllers only after Home is up with fresh ones.
-        // prepareHome already replaced ProfileController; EventController was re-put.
+        // Skip if logout (or another login) already invalidated this session.
+        if (sessionEpoch != _authSessionEpoch) return;
+        if (!(await PrefService.isLoggedIn())) return;
         SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
       } else {
-        String errorMsg = AuthInputValidators.friendlyLoginError(
-          parsed['message']?.toString(),
-        );
+        // Show the server message as-is (e.g. wrong credentials).
+        final apiMsg = parsed['message']?.toString().trim();
+        final errorMsg = (apiMsg != null && apiMsg.isNotEmpty)
+            ? apiMsg
+            : AuthInputValidators.loginCredentialsHint;
         _showRequestFailure("Login Failed", errorMsg, onRetry: _retryLogin);
       }
     } catch (e, st) {
@@ -473,25 +480,52 @@ class AuthController extends GetxController {
     }
   }
 
-  // Logout — clear prefs, leave Home, THEN delete controllers (avoids Get.find crashes).
+  // Logout — clear session first, show loader, leave Home, THEN delete controllers.
   Future<void> logout() async {
+    // Invalidate any pending post-login "Welcome back" before navigation.
+    _authSessionEpoch++;
+    isLoading.value = true;
+
+    // Drop leftover snackbars / dialogs from the previous session.
     try {
-      await NotificationService.onLogout().timeout(
-        const Duration(seconds: 8),
-        onTimeout: () {
-          debugPrint('[Auth] NotificationService.onLogout timed out');
-        },
-      );
-    } catch (e, st) {
-      debugPrint('[Auth] logout FCM cleanup error: $e\n$st');
+      Get.closeAllSnackbars();
+      while (Get.isDialogOpen == true) {
+        Get.back();
+      }
+    } catch (e) {
+      debugPrint('[Auth] logout overlay cleanup: $e');
+    }
+
+    // Wipe in-memory + persisted session BEFORE navigating to login.
+    if (Get.isRegistered<ProfileController>()) {
+      Get.find<ProfileController>().resetProfileState();
     }
     await PrefService.clearProfileSession();
-    await AppNavigation.offAll(
-      () => const LoginBootstrapView(),
-      prepare: AppBootstrap.prepareLogin,
-      loadingMessage: 'Preparing login...',
-    );
-    // Home is gone — safe to drop GetX home controllers.
-    await AppBootstrap.clearHomeControllers();
+
+    // FCM token delete / topic unsubscribe can hang — never block logout UI on it.
+    unawaited(() async {
+      try {
+        await NotificationService.onLogout().timeout(
+          const Duration(seconds: 8),
+          onTimeout: () {
+            debugPrint('[Auth] NotificationService.onLogout timed out');
+          },
+        );
+      } catch (e, st) {
+        debugPrint('[Auth] logout FCM cleanup error: $e\n$st');
+      }
+    }());
+
+    try {
+      await AppNavigation.offAll(
+        () => const LoginBootstrapView(),
+        prepare: AppBootstrap.prepareLogin,
+        loadingMessage: 'Logging out...',
+      );
+      // Home is gone — safe to drop GetX home controllers.
+      await AppBootstrap.clearHomeControllers();
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

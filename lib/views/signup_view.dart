@@ -83,10 +83,81 @@ class _SignupViewState extends State<SignupView> {
   List<String> _filteredInterests = [];
   bool _showSuggestions = false;
   final FocusNode _interestFocusNode = FocusNode();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _phoneFocusNode = FocusNode();
+  final FocusNode _rollEmpFocusNode = FocusNode();
   Timer? _interestFilterDebounce;
+  Worker? _registerFieldWorker;
+  String? _serverEmailError;
+  String? _serverPhoneError;
+  String? _serverRollEmpError;
 
   void _onFieldChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _clearServerFieldErrors() {
+    if (_serverEmailError == null &&
+        _serverPhoneError == null &&
+        _serverRollEmpError == null) {
+      return;
+    }
+    setState(() {
+      _serverEmailError = null;
+      _serverPhoneError = null;
+      _serverRollEmpError = null;
+    });
+  }
+
+  /// Jump to the right step and focus the input named by the register API `field`.
+  /// API uses `mobile_number` / `employee_id`; request body uses `phone` / `emp_number`.
+  void _applyRegisterFieldError(String field) {
+    final key = field.toLowerCase().replaceAll('-', '_');
+    final isEmail = key == 'email' || key.contains('email');
+    final isPhone =
+        key == 'mobile_number' ||
+        key == 'phone' ||
+        key.contains('mobile') ||
+        key.contains('phone');
+    final isRoll =
+        key == 'roll_number' || key == 'roll' || key.contains('roll_number');
+    final isEmp = key == 'employee_id' ||
+        key == 'emp_number' ||
+        key == 'employee_number' ||
+        key.contains('employee');
+
+    if (!isEmail && !isPhone && !isRoll && !isEmp) return;
+
+    // Identity conflicts live on step 0; contact conflicts on step 1.
+    final targetStep = (isRoll || isEmp) ? 0 : 1;
+    if (_currentStep != targetStep) {
+      _goToStep(targetStep);
+    }
+
+    // Align Student/Faculty toggle with the conflicting identity field.
+    if (isRoll && !_isStudent) {
+      setState(() => _isStudent = true);
+    } else if (isEmp && _isStudent) {
+      setState(() => _isStudent = false);
+    }
+
+    setState(() {
+      _serverEmailError = isEmail ? 'Already registered' : null;
+      _serverPhoneError = isPhone ? 'Already registered' : null;
+      _serverRollEmpError =
+          (isRoll || isEmp) ? 'Already registered' : null;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (isEmail) {
+        _emailFocusNode.requestFocus();
+      } else if (isPhone) {
+        _phoneFocusNode.requestFocus();
+      } else {
+        _rollEmpFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
@@ -95,17 +166,42 @@ class _SignupViewState extends State<SignupView> {
     _filteredInterests = List.from(_interestOptions);
 
     for (final c in [
-      rollNumberCtrl,
-      empNumberCtrl,
       departmentClassCtrl,
       nameCtrl,
-      emailCtrl,
-      phoneCtrl,
       passCtrl,
       confirmPassCtrl,
     ]) {
       c.addListener(_onFieldChanged);
     }
+    rollNumberCtrl.addListener(() {
+      _onFieldChanged();
+      if (_serverRollEmpError != null) {
+        setState(() => _serverRollEmpError = null);
+      }
+    });
+    empNumberCtrl.addListener(() {
+      _onFieldChanged();
+      if (_serverRollEmpError != null) {
+        setState(() => _serverRollEmpError = null);
+      }
+    });
+    emailCtrl.addListener(() {
+      _onFieldChanged();
+      if (_serverEmailError != null) {
+        setState(() => _serverEmailError = null);
+      }
+    });
+    phoneCtrl.addListener(() {
+      _onFieldChanged();
+      if (_serverPhoneError != null) {
+        setState(() => _serverPhoneError = null);
+      }
+    });
+
+    _registerFieldWorker = ever<String?>(controller.registerErrorField, (field) {
+      if (field == null || field.isEmpty) return;
+      _applyRegisterFieldError(field);
+    });
 
     interestSearchCtrl.addListener(() {
       _interestFilterDebounce?.cancel();
@@ -233,6 +329,8 @@ class _SignupViewState extends State<SignupView> {
 
   Future<void> _submit() async {
     if (!_validateStep4()) return;
+    _clearServerFieldErrors();
+    controller.registerErrorField.value = null;
 
     debugPrint('=== Registration Data ===');
     debugPrint('Name: ${nameCtrl.text.trim()}');
@@ -688,6 +786,7 @@ class _SignupViewState extends State<SignupView> {
         selected: _isStudent,
         onChanged: (val) => setState(() {
           _isStudent = val;
+          _serverRollEmpError = null;
           if (val) {
             empNumberCtrl.clear();
           } else {
@@ -702,8 +801,10 @@ class _SignupViewState extends State<SignupView> {
       SizedBox(height: 18.h),
       AuthTextField(
         controller: _isStudent ? rollNumberCtrl : empNumberCtrl,
+        focusNode: _rollEmpFocusNode,
         label: _isStudent ? 'Roll Number' : 'Employee Number',
         prefixIcon: _isStudent ? Icons.badge_outlined : Icons.badge_outlined,
+        errorText: _serverRollEmpError,
       ),
       SizedBox(height: 16.h),
       AuthTextField(
@@ -727,20 +828,24 @@ class _SignupViewState extends State<SignupView> {
       SizedBox(height: 16.h),
       AuthTextField(
         controller: emailCtrl,
+        focusNode: _emailFocusNode,
         label: 'Email Address',
         hint: 'name@example.com',
         prefixIcon: Icons.email_outlined,
         keyboardType: TextInputType.emailAddress,
+        errorText: _serverEmailError,
       ),
       SizedBox(height: 16.h),
       AuthTextField(
         controller: phoneCtrl,
+        focusNode: _phoneFocusNode,
         label: 'Phone Number',
         hint: '10-digit mobile number',
         prefixIcon: Icons.phone_outlined,
         keyboardType: TextInputType.number,
         maxLength: 10,
         inputFormatters: AuthInputValidators.phone10Digits,
+        errorText: _serverPhoneError,
       ),
     ]);
   }
@@ -1150,15 +1255,12 @@ class _SignupViewState extends State<SignupView> {
 
   @override
   void dispose() {
+    _registerFieldWorker?.dispose();
     _interestFilterDebounce?.cancel();
     _pageController.dispose();
     for (final c in [
-      rollNumberCtrl,
-      empNumberCtrl,
       departmentClassCtrl,
       nameCtrl,
-      emailCtrl,
-      phoneCtrl,
       passCtrl,
       confirmPassCtrl,
     ]) {
@@ -1175,6 +1277,9 @@ class _SignupViewState extends State<SignupView> {
     departmentClassCtrl.dispose();
     interestSearchCtrl.dispose();
     _interestFocusNode.dispose();
+    _emailFocusNode.dispose();
+    _phoneFocusNode.dispose();
+    _rollEmpFocusNode.dispose();
     super.dispose();
   }
 }

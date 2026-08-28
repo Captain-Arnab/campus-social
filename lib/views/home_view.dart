@@ -2025,7 +2025,8 @@ class _ProfileTab extends StatelessWidget {
                         ArtAlertButton(
                           onPressed: () {
                             Navigator.pop(context);
-                            authController.logout();
+                            // Fire-and-forget; AuthController shows "Logging out..." loader.
+                            unawaited(authController.logout());
                           },
                           backgroundColor: AppColors.accent,
                           child: const Text("Yes"),
