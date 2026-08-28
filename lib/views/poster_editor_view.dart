@@ -7,6 +7,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import '../controllers/poster_controller.dart';
 import '../utils/sweetalert_helper.dart';
+import '../utils/upload_file_validators.dart';
 import '../widgets/poster_themes.dart';
 
 /// Character caps for poster fields (large type on fixed layouts — long text clips or overlaps).
@@ -623,10 +624,39 @@ class _PosterEditorViewState extends State<PosterEditorView> {
       
       // --- BOTTOM BAR ---
       bottomNavigationBar: Container(
-        padding: EdgeInsets.all(15.w),
+        padding: EdgeInsets.fromLTRB(15.w, 10.h, 15.w, 15.w),
         decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))]),
         child: SafeArea(
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                margin: EdgeInsets.only(bottom: 10.h),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF5F15).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 18.sp, color: const Color(0xFFFF5F15)),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: Text(
+                        'Keep posters within 3 MB. The app auto-compresses when you tap USE THIS POSTER or JPG.',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          color: Colors.black87,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
             children: [
               _buildMiniButton(Icons.picture_as_pdf, "PDF", () {
                 _clampAllPosterInputsToLimits(syncToRx: true);
@@ -650,6 +680,12 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                     setState(() => _isProcessing = false);
 
                     if (posterFile != null) {
+                      final sizeErr = await UploadFileValidators.posterSizeError(posterFile);
+                      if (sizeErr != null) {
+                        if (!scaffoldContext.mounted) return;
+                        SweetAlertHelper.showError(scaffoldContext, 'Poster too large', sizeErr);
+                        return;
+                      }
                       if (controller.posterStartDate.value == null) {
                         SweetAlertHelper.showError(scaffoldContext, "Required", "Please choose a start date.");
                         setState(() => _isProcessing = false);
@@ -721,6 +757,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
               ),
             ],
           ),
+            ],
+          ),
         ),
       ),
     );
@@ -774,6 +812,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
           'about ${_PosterCopyLimits.title} characters for titles and ${_PosterCopyLimits.description} for descriptions — '
           'so nothing runs past the design or overlaps other lines.';
     }
+    final sizeNote =
+        ' Upload size must stay within 3 MB; the app auto-compresses when you save.';
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(12.w),
@@ -789,7 +829,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              msg,
+              '$msg$sizeNote',
               style: TextStyle(fontSize: 12.sp, color: Colors.orange.shade900, height: 1.35),
             ),
           ),

@@ -243,14 +243,29 @@ class EventController extends GetxController {
         return;
       }
       final response = await ApiService.getEditingEvents();
-      if (response.data['status'] == 'success') {
-        final data = response.data['data'] as List?;
-        if (data != null) {
-          editingList.value = data;
-          debugPrint("✓ Loaded ${data.length} events you can edit");
-        } else {
+      final body = ApiService.parseResponseBody(response.data);
+      if (body != null && body['status']?.toString() == 'success') {
+        final data = body['data'];
+        if (data is! List) {
           editingList.value = [];
+          return;
         }
+        // Backend `type=editing` currently falls through to live feed (no editor_ids).
+        // Only keep rows where this user is explicitly marked as an editor.
+        final filtered = data.where((e) {
+          if (e is! Map) return false;
+          final editors = e['editor_ids'];
+          if (editors is List &&
+              editors.any((id) => id.toString() == userId.toString())) {
+            return true;
+          }
+          final flag = e['is_editor'] ?? e['can_edit'];
+          return flag == 1 || flag == true || flag == '1';
+        }).toList();
+        editingList.value = filtered;
+        debugPrint(
+          "✓ Editing events: API=${data.length}, editable_for_user=$userId → ${filtered.length}",
+        );
       } else {
         editingList.value = [];
       }
@@ -405,9 +420,16 @@ class EventController extends GetxController {
         isLoading.value = false;
         return;
       }
-      
-      final status = response.data['status'] ?? 'error';
-      final message = response.data['message'] ?? 'Unknown error occurred';
+
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
+        SweetAlertHelper.showError(Get.context, "Error", "Invalid response from server. Please try again.");
+        isLoading.value = false;
+        return;
+      }
+
+      final status = data['status']?.toString() ?? 'error';
+      final message = data['message']?.toString() ?? 'Unknown error occurred';
       
       if (status == 'success') {
         fetchParticipatingEvents();
@@ -737,9 +759,13 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       }
       final createResp = await ApiService.createEvent(createFields, bannerToUpload != null ? [bannerToUpload] : []);
 
-      final createData = createResp.data;
-      if (createData is! Map || createData['status'] != 'success') {
-        SweetAlertHelper.showError(Get.context, "Error", (createData is Map ? createData['message'] : null)?.toString() ?? "Failed to update event");
+      final createData = ApiService.parseResponseBody(createResp.data);
+      if (createData == null || createData['status']?.toString() != 'success') {
+        SweetAlertHelper.showError(
+          Get.context,
+          "Error",
+          ApiService.formatFieldError(createData, fallback: "Failed to update event"),
+        );
         return false;
       }
 
@@ -792,18 +818,27 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
 
       debugPrint("Create event response: ${response.data}");
 
-      if (response.data['status'] == 'success') {
+      final data = ApiService.parseResponseBody(response.data);
+      if (data != null && data['status']?.toString() == 'success') {
         // Success UI and navigation are handled by CreateEventView (avoids duplicate dialogs).
         await fetchEvents();
         await fetchHostedEvents();
         return true;
       } else {
-        SweetAlertHelper.showError(Get.context, "Error", response.data['message'] ?? "Failed to create event");
+        SweetAlertHelper.showError(
+          Get.context,
+          "Error",
+          ApiService.formatFieldError(data, fallback: "Failed to create event"),
+        );
         return false;
       }
     } catch (e) {
       debugPrint("Create event error: $e");
-      SweetAlertHelper.showError(Get.context, "Error", "Failed to create event. Please try again.");
+      SweetAlertHelper.showError(
+        Get.context,
+        "Error",
+        ApiService.formatFieldError(null, fallback: "Failed to create event. Please try again."),
+      );
       return false;
     } finally {
       isLoading.value = false;
@@ -917,12 +952,21 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         isLoading.value = false;
         return;
       }
-      
-      final status = response.data['status'] ?? 'error';
-      final message = response.data['message'] ?? 'Unknown error occurred';
+
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
+        SweetAlertHelper.showError(Get.context, "Error", "Invalid response from server. Please try again.");
+        isLoading.value = false;
+        return;
+      }
+
+      final status = data['status']?.toString() ?? 'error';
+      final message = data['message']?.toString() ?? 'Unknown error occurred';
       
       if (status == 'success') {
-        Get.back();
+        if (Get.context != null) {
+          Navigator.of(Get.context!, rootNavigator: true).maybePop();
+        }
         fetchVolunteeringEvents();
         // Attendee → volunteer clears the attendee row on the backend; refresh so
         // the local attending state (and the "Viewer" button) updates immediately.
@@ -973,21 +1017,26 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         );
         return false;
       }
-      final data = response.data;
-      if (data is! Map) {
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
         SweetAlertHelper.showError(Get.context, 'Error', 'Invalid response from server.');
         return false;
       }
-      if (data['status'] == 'success') {
+      if (data['status']?.toString() == 'success') {
         await fetchVolunteeringEvents();
         await fetchParticipatingEvents();
+        await fetchAttendingEvents();
         if (Get.isRegistered<ProfileController>()) {
           await Get.find<ProfileController>().loadProfile();
         }
+        final serverMsg = data['message']?.toString().trim() ?? '';
+        final fallback = toRole == 'volunteer'
+            ? 'You have successfully switched to volunteer for this event.'
+            : 'You have successfully switched to participant for this event.';
         SweetAlertHelper.showSuccess(
           Get.context,
           'Success',
-          data['message']?.toString() ?? 'Role updated.',
+          serverMsg.isNotEmpty ? serverMsg : fallback,
         );
         return true;
       }

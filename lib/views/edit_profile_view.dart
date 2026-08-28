@@ -101,8 +101,10 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   @override
   Widget build(BuildContext context) {
+    const radius = 16.0;
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const AppBarTitleWithBrandLogo(
           onPrimaryBackground: true,
@@ -119,62 +121,83 @@ class _EditProfileViewState extends State<EditProfileView> {
         ),
       ),
       body: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           children: [
-            // Profile Picture Section with Gradient Background
+            // Soft gradient header → rounded bottom + shadow into content
             Container(
               width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: 40.h),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+              padding: EdgeInsets.fromLTRB(20.w, 28.h, 20.w, 36.h),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFFFF5F15),
+                    Color(0xFFFF7A3D),
+                    Color(0xFFFFA07A),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: [0.0, 0.55, 1.0],
                 ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(36),
+                  bottomRight: Radius.circular(36),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF5F15).withValues(alpha: 0.28),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
               child: Column(
                 children: [
                   GestureDetector(
                     onTap: _pickImage,
                     child: Stack(
+                      clipBehavior: Clip.none,
                       children: [
-                        // Avatar with border
                         Container(
+                          padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 4),
+                            color: Colors.white,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8)
-                              )
+                                color: Colors.black.withValues(alpha: 0.22),
+                                blurRadius: 18,
+                                offset: const Offset(0, 8),
+                              ),
                             ],
                           ),
-                          child: CircleAvatar(
-                            radius: 60.w,
-                            backgroundColor: Colors.white,
-                            backgroundImage: selectedImage != null
-                                ? FileImage(selectedImage!)
-                                : (controller.userData.value.image != null && 
-                                   controller.userData.value.image!.isNotEmpty
-                                    ? appNetworkImageProvider("https://micampus.co.in/admin/uploads/profiles/${controller.userData.value.image}")
-                                    : null),
-                            child: selectedImage == null &&
-                                    (controller.userData.value.image == null || 
-                                     controller.userData.value.image!.isEmpty)
-                                ? Icon(Icons.person, size: 60.w, color: const Color(0xFFFF5F15))
-                                : null,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                            ),
+                            child: CircleAvatar(
+                              radius: 58.w,
+                              backgroundColor: Colors.white,
+                              backgroundImage: selectedImage != null
+                                  ? FileImage(selectedImage!)
+                                  : (controller.userData.value.image != null &&
+                                          controller.userData.value.image!.isNotEmpty
+                                      ? appNetworkImageProvider(
+                                          "https://micampus.co.in/admin/uploads/profiles/${controller.userData.value.image}",
+                                        )
+                                      : null),
+                              child: selectedImage == null &&
+                                      (controller.userData.value.image == null ||
+                                          controller.userData.value.image!.isEmpty)
+                                  ? Icon(Icons.person, size: 58.w, color: const Color(0xFFFF5F15))
+                                  : null,
+                            ),
                           ),
                         ),
-                        // Camera icon
                         Positioned(
-                          bottom: 0,
-                          right: 0,
+                          bottom: 2,
+                          right: 2,
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
@@ -185,9 +208,10 @@ class _EditProfileViewState extends State<EditProfileView> {
                               border: Border.all(color: Colors.white, width: 3),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.2),
-                                  blurRadius: 8
-                                )
+                                  color: Colors.black.withValues(alpha: 0.35),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
                               ],
                             ),
                             child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
@@ -196,30 +220,28 @@ class _EditProfileViewState extends State<EditProfileView> {
                       ],
                     ),
                   ),
-                  SizedBox(height: 16.h),
+                  SizedBox(height: 14.h),
                   Text(
                     "Tap to update photo",
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: Colors.white.withValues(alpha: 0.95),
                       fontSize: 13.sp,
-                      fontWeight: FontWeight.w500
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
             ),
-            
+
             SizedBox(height: 24.h),
-            
-            // Form Section
+
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.w),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Full Name Field
                   _buildSectionHeader("Personal Information", Icons.person_outline),
-                  SizedBox(height: 16.h),
+                  SizedBox(height: 14.h),
                   _buildTextField(
                     controller: nameCtrl,
                     label: "Full Name",
@@ -227,55 +249,74 @@ class _EditProfileViewState extends State<EditProfileView> {
                     icon: Icons.badge_outlined,
                     inputType: TextInputType.name,
                   ),
-                  
-                  SizedBox(height: 20.h),
-                  
+                  SizedBox(height: 16.h),
                   _buildTextField(
                     controller: deptClassCtrl,
                     label: "Department / Class",
                     hint: "e.g. CSE 3rd Year, Section A",
                     icon: Icons.school_outlined,
-                    helperText: "Shown on your profile and used when you register as a participant",
+                    helperText:
+                        "Shown on your profile and used when you register as a participant",
                   ),
 
                   SizedBox(height: 20.h),
+
                   Obx(() {
                     final isSt = controller.userData.value.isStudent ?? true;
                     return Container(
                       width: double.infinity,
                       padding: EdgeInsets.all(16.w),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.orange.shade200),
+                        color: const Color(0xFFFFF4EC),
+                        borderRadius: BorderRadius.circular(radius),
+                        border: Border.all(color: const Color(0xFFFFD0B5)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            "Account type",
-                            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
+                          Row(
+                            children: [
+                              Icon(Icons.info_outline, size: 18.sp, color: const Color(0xFF9A3412)),
+                              SizedBox(width: 8.w),
+                              Text(
+                                "Account type",
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF7C2D12),
+                                ),
+                              ),
+                            ],
                           ),
-                          SizedBox(height: 6.h),
+                          SizedBox(height: 10.h),
                           Text(
-                            isSt ? "You are registered as a student (login uses roll number)." : "You are registered as faculty (login uses employee ID).",
-                            style: TextStyle(fontSize: 12.sp, color: Colors.orange.shade900),
+                            isSt
+                                ? "You are registered as a student (login uses roll number)."
+                                : "You are registered as faculty (login uses employee ID).",
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              height: 1.35,
+                              color: const Color(0xFF9A3412),
+                            ),
                           ),
                           SizedBox(height: 8.h),
                           Text(
                             "Account type cannot be changed in the app. Contact support if you need help.",
-                            style: TextStyle(fontSize: 11.sp, color: Colors.orange.shade800),
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              height: 1.35,
+                              color: const Color(0xFF9A3412).withValues(alpha: 0.85),
+                            ),
                           ),
                         ],
                       ),
                     );
                   }),
-                  
-                  SizedBox(height: 32.h),
-                  
-                  // Bio Field
+
+                  SizedBox(height: 28.h),
+
                   _buildSectionHeader("About You", Icons.description_outlined),
-                  SizedBox(height: 16.h),
+                  SizedBox(height: 14.h),
                   _buildTextField(
                     controller: bioCtrl,
                     label: "Bio",
@@ -284,14 +325,12 @@ class _EditProfileViewState extends State<EditProfileView> {
                     maxLines: 4,
                     inputType: TextInputType.multiline,
                   ),
-                  
-                  SizedBox(height: 32.h),
-                  
-                  // Interests Section with Dropdown
+
+                  SizedBox(height: 28.h),
+
                   _buildSectionHeader("Your Interests", Icons.interests_outlined),
-                  SizedBox(height: 16.h),
-                  
-                  // Interests Search Field with Autocomplete Dropdown
+                  SizedBox(height: 14.h),
+
                   Stack(
                     children: [
                       Column(
@@ -299,13 +338,13 @@ class _EditProfileViewState extends State<EditProfileView> {
                           Container(
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(radius),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.03),
+                                  color: Colors.black.withValues(alpha: 0.04),
                                   blurRadius: 10,
-                                  offset: const Offset(0, 2)
-                                )
+                                  offset: const Offset(0, 2),
+                                ),
                               ],
                             ),
                             child: TextField(
@@ -316,7 +355,12 @@ class _EditProfileViewState extends State<EditProfileView> {
                                 labelText: "Search Interests",
                                 hintText: "Search or type your interests...",
                                 helperText: "Tap suggestions or press Enter to add",
-                                helperStyle: TextStyle(fontSize: 11.sp, color: Colors.grey[500]),
+                                helperMaxLines: 2,
+                                helperStyle: TextStyle(
+                                  fontSize: 11.sp,
+                                  color: Colors.grey[600],
+                                  height: 1.3,
+                                ),
                                 prefixIcon: const Icon(Icons.search, color: Color(0xFFFF5F15), size: 22),
                                 suffixIcon: interestSearchCtrl.text.isNotEmpty
                                     ? IconButton(
@@ -330,20 +374,20 @@ class _EditProfileViewState extends State<EditProfileView> {
                                       )
                                     : null,
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(radius),
                                   borderSide: BorderSide.none,
                                 ),
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(radius),
                                   borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(radius),
                                   borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 2),
                                 ),
                                 filled: true,
                                 fillColor: Colors.white,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
                               ),
                               onSubmitted: (value) {
                                 if (value.trim().isNotEmpty) {
@@ -352,8 +396,6 @@ class _EditProfileViewState extends State<EditProfileView> {
                               },
                             ),
                           ),
-                          
-                          // Suggestions Dropdown
                           if (_showSuggestions && _filteredInterests.isNotEmpty)
                             Material(
                               elevation: 4,
@@ -363,18 +405,21 @@ class _EditProfileViewState extends State<EditProfileView> {
                                 constraints: BoxConstraints(maxHeight: 200.h),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.3), width: 2),
+                                  border: Border.all(
+                                    color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
+                                    width: 2,
+                                  ),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: ListView.separated(
                                   shrinkWrap: true,
                                   padding: EdgeInsets.symmetric(vertical: 4.h),
                                   itemCount: _filteredInterests.length,
-                                  separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey[200]),
+                                  separatorBuilder: (context, index) =>
+                                      Divider(height: 1, color: Colors.grey[200]),
                                   itemBuilder: (context, index) {
                                     final interest = _filteredInterests[index];
                                     final isSelected = _selectedInterests.contains(interest);
-                                    
                                     return InkWell(
                                       onTap: () {
                                         _addInterest(interest);
@@ -391,7 +436,8 @@ class _EditProfileViewState extends State<EditProfileView> {
                                                 style: TextStyle(
                                                   fontSize: 14.sp,
                                                   color: isSelected ? Colors.grey[600] : Colors.black87,
-                                                  fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                                                  fontWeight:
+                                                      isSelected ? FontWeight.w500 : FontWeight.normal,
                                                 ),
                                               ),
                                             ),
@@ -409,15 +455,17 @@ class _EditProfileViewState extends State<EditProfileView> {
                                 ),
                               ),
                             ),
-                          
-                          // "Add custom interest" button when no match
-                          if (_showSuggestions && _filteredInterests.isEmpty && interestSearchCtrl.text.isNotEmpty)
+                          if (_showSuggestions &&
+                              _filteredInterests.isEmpty &&
+                              interestSearchCtrl.text.isNotEmpty)
                             Container(
                               margin: EdgeInsets.only(top: 8.h),
                               padding: EdgeInsets.all(16.w),
                               decoration: BoxDecoration(
-                                color: Colors.orange[50],
-                                border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.3)),
+                                color: const Color(0xFFFFF4EC),
+                                border: Border.all(
+                                  color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
+                                ),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -426,7 +474,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                                     'No matching interests found',
                                     style: TextStyle(
                                       fontSize: 13.sp,
-                                      color: Colors.grey[700],
+                                      color: const Color(0xFF7C2D12),
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -457,23 +505,22 @@ class _EditProfileViewState extends State<EditProfileView> {
                       ),
                     ],
                   ),
-                  
+
                   SizedBox(height: 16.h),
-                  
-                  // Selected Interests Chips (with X delete button)
+
                   if (_selectedInterests.isNotEmpty)
                     Container(
                       padding: EdgeInsets.all(12.w),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(radius),
                         border: Border.all(color: Colors.grey[200]!),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 10,
-                            offset: const Offset(0, 2)
-                          )
+                            offset: const Offset(0, 2),
+                          ),
                         ],
                       ),
                       child: Wrap(
@@ -496,56 +543,57 @@ class _EditProfileViewState extends State<EditProfileView> {
                         }).toList(),
                       ),
                     ),
-                  
-                  SizedBox(height: 48.h),
-                  
-                  // Save Button
-                  Obx(() => controller.isLoading.value
-                      ? const Center(
-                          child: CircularProgressIndicator(color: Color(0xFFFF5F15))
-                        )
-                      : Container(
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFFF5F15).withValues(alpha: 0.4),
-                                blurRadius: 15,
-                                offset: const Offset(0, 6)
-                              )
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: _saveProfile,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              padding: EdgeInsets.symmetric(vertical: 18.h),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)
+
+                  SizedBox(height: 36.h),
+
+                  Obx(
+                    () => controller.isLoading.value
+                        ? const Center(
+                            child: CircularProgressIndicator(color: Color(0xFFFF5F15)),
+                          )
+                        : Container(
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
                               ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.check_circle_outline, color: Colors.white),
-                                SizedBox(width: 10.w),
-                                Text(
-                                  "Save Changes",
-                                  style: TextStyle(
-                                    fontSize: 16.sp,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white
-                                  ),
+                              borderRadius: BorderRadius.circular(radius),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFF5F15).withValues(alpha: 0.4),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 6),
                                 ),
                               ],
                             ),
+                            child: ElevatedButton(
+                              onPressed: _saveProfile,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.symmetric(vertical: 18.h),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(radius),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.check_circle_outline, color: Colors.white),
+                                  SizedBox(width: 10.w),
+                                  Text(
+                                    "Save Changes",
+                                    style: TextStyle(
+                                      fontSize: 16.sp,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        )),
-                  
+                  ),
+
                   SizedBox(height: 40.h),
                 ],
               ),
@@ -557,27 +605,36 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Widget _buildSectionHeader(String title, IconData icon) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: Colors.white, size: 18),
             ),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: Colors.white, size: 18),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ],
         ),
-        SizedBox(width: 12.w),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16.sp,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
+        SizedBox(height: 10.h),
+        Divider(height: 1, thickness: 1, color: Colors.grey.shade200),
       ],
     );
   }
@@ -591,49 +648,68 @@ class _EditProfileViewState extends State<EditProfileView> {
     TextInputType inputType = TextInputType.text,
     String? helperText,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 2)
-          )
-        ],
-      ),
-      child: TextField(
-        controller: controller,
-        keyboardType: inputType,
-        maxLines: maxLines,
-        style: TextStyle(fontSize: 15.sp, color: Colors.black87),
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          helperText: helperText,
-          helperStyle: TextStyle(fontSize: 11.sp, color: Colors.grey[500]),
-          prefixIcon: Icon(icon, color: const Color(0xFFFF5F15), size: 22),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
+    const radius = 16.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(radius),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 2),
-          ),
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: 16.w,
-            vertical: maxLines > 1 ? 16.h : 14.h
+          child: TextField(
+            controller: controller,
+            keyboardType: inputType,
+            maxLines: maxLines,
+            style: TextStyle(fontSize: 15.sp, color: Colors.black87, height: 1.35),
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: hint,
+              hintStyle: TextStyle(fontSize: 14.sp, color: Colors.grey[500]),
+              prefixIcon: Icon(icon, color: const Color(0xFFFF5F15), size: 22),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(radius),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(radius),
+                borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(radius),
+                borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 16.w,
+                vertical: maxLines > 1 ? 16.h : 16.h,
+              ),
+            ),
           ),
         ),
-      ),
+        if (helperText != null) ...[
+          SizedBox(height: 8.h),
+          Padding(
+            padding: EdgeInsets.only(left: 4.w, right: 4.w),
+            child: Text(
+              helperText,
+              style: TextStyle(
+                fontSize: 12.sp,
+                height: 1.35,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 

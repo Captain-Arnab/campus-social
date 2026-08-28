@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
 import '../data/app_bootstrap.dart';
 import '../theme/app_theme.dart';
+import '../utils/auth_input_validators.dart';
 import '../utils/app_navigation.dart';
 import '../utils/sweetalert_helper.dart';
 import '../widgets/auth_widgets.dart';
@@ -33,7 +33,9 @@ class _LoginViewState extends State<LoginView> {
   Future<void> _onLogin() async {
     if (!_validateLogin()) return;
     final id = identifierCtrl.text.trim();
-    final contact = emailPhoneCtrl.text.trim();
+    final contact = _loginByMobile
+        ? AuthInputValidators.phoneDigits(emailPhoneCtrl.text)
+        : emailPhoneCtrl.text.trim();
     final otp = otpCtrl.text.trim();
     if (_loginByMobile && otp.length == 6) {
       await controller.loginWithIdentifier(
@@ -120,8 +122,12 @@ class _LoginViewState extends State<LoginView> {
               prefixIcon:
                   _loginByMobile ? Icons.phone_outlined : Icons.email_outlined,
               keyboardType: _loginByMobile
-                  ? TextInputType.phone
+                  ? TextInputType.number
                   : TextInputType.emailAddress,
+              maxLength: _loginByMobile ? 10 : null,
+              inputFormatters:
+                  _loginByMobile ? AuthInputValidators.phone10Digits : null,
+              hint: _loginByMobile ? '10-digit mobile number' : null,
             ),
             if (_loginByMobile) ...[
               SizedBox(height: 14.h),
@@ -141,7 +147,7 @@ class _LoginViewState extends State<LoginView> {
                 prefixIcon: Icons.pin_outlined,
                 keyboardType: TextInputType.number,
                 maxLength: 6,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                inputFormatters: AuthInputValidators.otp6Digits,
               ),
               SizedBox(height: 8.h),
               Text(
@@ -204,32 +210,22 @@ class _LoginViewState extends State<LoginView> {
   }
 
   bool _validateLogin() {
-    if (identifierCtrl.text.trim().isEmpty) {
+    if (identifierCtrl.text.trim().isEmpty ||
+        emailPhoneCtrl.text.trim().isEmpty) {
       SweetAlertHelper.showError(
         context,
-        'Required',
-        _isStudent
-            ? 'Please enter your roll number'
-            : 'Please enter your employee ID',
+        'Invalid',
+        AuthInputValidators.loginCredentialsHint,
       );
       return false;
     }
-    if (emailPhoneCtrl.text.trim().isEmpty) {
-      SweetAlertHelper.showError(
-        context,
-        'Required',
-        _loginByMobile
-            ? 'Please enter your mobile number'
-            : 'Please enter your email',
-      );
-      return false;
-    }
+
     if (_loginByMobile) {
-      if (!GetUtils.isPhoneNumber(emailPhoneCtrl.text.trim())) {
+      if (!AuthInputValidators.isValidPhone10(emailPhoneCtrl.text)) {
         SweetAlertHelper.showError(
           context,
           'Invalid',
-          'Please enter a valid mobile number',
+          AuthInputValidators.loginCredentialsHint,
         );
         return false;
       }
@@ -238,32 +234,32 @@ class _LoginViewState extends State<LoginView> {
         SweetAlertHelper.showError(
           context,
           'Invalid',
-          'Enter the 6-digit OTP or leave it blank to use password',
+          AuthInputValidators.loginCredentialsHint,
         );
         return false;
       }
       if (otp.length != 6 && passCtrl.text.isEmpty) {
         SweetAlertHelper.showError(
           context,
-          'Required',
-          'Enter the OTP from SMS, or your password',
+          'Invalid',
+          AuthInputValidators.loginCredentialsHint,
         );
         return false;
       }
     } else {
-      if (!GetUtils.isEmail(emailPhoneCtrl.text.trim())) {
+      if (!AuthInputValidators.isValidEmail(emailPhoneCtrl.text)) {
         SweetAlertHelper.showError(
           context,
           'Invalid',
-          'Please enter a valid email address',
+          AuthInputValidators.loginCredentialsHint,
         );
         return false;
       }
       if (passCtrl.text.isEmpty) {
         SweetAlertHelper.showError(
           context,
-          'Required',
-          'Please enter your password',
+          'Invalid',
+          AuthInputValidators.loginCredentialsHint,
         );
         return false;
       }
@@ -272,29 +268,13 @@ class _LoginViewState extends State<LoginView> {
   }
 
   bool _validateSendOtp() {
-    if (identifierCtrl.text.trim().isEmpty) {
-      SweetAlertHelper.showError(
-        context,
-        'Required',
-        _isStudent
-            ? 'Please enter your roll number'
-            : 'Please enter your employee ID',
-      );
-      return false;
-    }
-    if (emailPhoneCtrl.text.trim().isEmpty) {
-      SweetAlertHelper.showError(
-        context,
-        'Required',
-        'Please enter your mobile number',
-      );
-      return false;
-    }
-    if (!GetUtils.isPhoneNumber(emailPhoneCtrl.text.trim())) {
+    if (identifierCtrl.text.trim().isEmpty ||
+        emailPhoneCtrl.text.trim().isEmpty ||
+        !AuthInputValidators.isValidPhone10(emailPhoneCtrl.text)) {
       SweetAlertHelper.showError(
         context,
         'Invalid',
-        'Please enter a valid mobile number',
+        AuthInputValidators.loginCredentialsHint,
       );
       return false;
     }
@@ -305,7 +285,7 @@ class _LoginViewState extends State<LoginView> {
     if (!_validateSendOtp()) return false;
     return controller.sendLoginOtp(
       identifierCtrl.text.trim(),
-      emailPhoneCtrl.text.trim(),
+      AuthInputValidators.phoneDigits(emailPhoneCtrl.text),
       _isStudent,
     );
   }

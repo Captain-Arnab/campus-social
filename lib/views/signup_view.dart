@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
+import '../data/api_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/auth_input_validators.dart';
 import '../utils/sweetalert_helper.dart';
 import '../data/app_bootstrap.dart';
 import '../utils/app_navigation.dart';
@@ -157,12 +159,65 @@ class _SignupViewState extends State<SignupView> {
     );
   }
 
-  void _next() {
+  Future<void> _next() async {
     if (_currentStep == 0 && !_validateStep1()) return;
-    if (_currentStep == 1 && !_validateStep2()) return;
+    if (_currentStep == 1) {
+      if (!_validateStep2()) return;
+      final ok = await _ensureContactAvailable();
+      if (!ok) return;
+    }
     // Step 3 is optional — always allow next
     if (_currentStep < 3) {
       _goToStep(_currentStep + 1);
+    }
+  }
+
+  /// Blocks proceed when email/phone is already registered (checked before leaving Contact step).
+  Future<bool> _ensureContactAvailable() async {
+    final email = emailCtrl.text.trim();
+    final phone = phoneCtrl.text.trim();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFFFF5F15)),
+      ),
+    );
+
+    try {
+      final result = await ApiService.checkRegistrationAvailability(
+        email: email,
+        phone: phone,
+      );
+
+      if (!mounted) return false;
+
+      if (result.emailTaken == true) {
+        SweetAlertHelper.showError(
+          context,
+          'Already registered',
+          'Email ID already registered',
+        );
+        return false;
+      }
+      if (result.phoneTaken == true) {
+        SweetAlertHelper.showError(
+          context,
+          'Already registered',
+          'Mobile number already registered',
+        );
+        return false;
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Contact availability check failed: $e');
+      // Network failure — allow proceed; final register will still catch duplicates.
+      return true;
+    } finally {
+      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
     }
   }
 
@@ -197,7 +252,7 @@ class _SignupViewState extends State<SignupView> {
     controller.register(
       nameCtrl.text.trim(),
       emailCtrl.text.trim(),
-      phoneCtrl.text.trim(),
+      AuthInputValidators.phoneDigits(phoneCtrl.text),
       passCtrl.text,
       bioCtrl.text.trim().isEmpty ? 'No bio provided' : bioCtrl.text.trim(),
       _selectedInterests.isEmpty ? 'General' : _selectedInterests.join(', '),
@@ -554,8 +609,8 @@ class _SignupViewState extends State<SignupView> {
       case 1:
         return nameCtrl.text.trim().isNotEmpty &&
             emailCtrl.text.trim().isNotEmpty &&
-            GetUtils.isEmail(emailCtrl.text.trim()) &&
-            phoneCtrl.text.trim().isNotEmpty;
+            AuthInputValidators.isValidEmail(emailCtrl.text) &&
+            AuthInputValidators.isValidPhone10(phoneCtrl.text);
       case 2:
         return true; // optional step
       case 3:
@@ -673,6 +728,7 @@ class _SignupViewState extends State<SignupView> {
       AuthTextField(
         controller: emailCtrl,
         label: 'Email Address',
+        hint: 'name@example.com',
         prefixIcon: Icons.email_outlined,
         keyboardType: TextInputType.emailAddress,
       ),
@@ -680,8 +736,11 @@ class _SignupViewState extends State<SignupView> {
       AuthTextField(
         controller: phoneCtrl,
         label: 'Phone Number',
+        hint: '10-digit mobile number',
         prefixIcon: Icons.phone_outlined,
-        keyboardType: TextInputType.phone,
+        keyboardType: TextInputType.number,
+        maxLength: 10,
+        inputFormatters: AuthInputValidators.phone10Digits,
       ),
     ]);
   }
@@ -1025,11 +1084,12 @@ class _SignupViewState extends State<SignupView> {
       );
       return false;
     }
-    if (!GetUtils.isEmail(emailCtrl.text.trim())) {
+    if (!emailCtrl.text.trim().contains('@') ||
+        !AuthInputValidators.isValidEmail(emailCtrl.text)) {
       SweetAlertHelper.showError(
         context,
         'Invalid',
-        'Please enter a valid email address',
+        'Please enter a valid email address (must include @)',
       );
       return false;
     }
@@ -1038,6 +1098,14 @@ class _SignupViewState extends State<SignupView> {
         context,
         'Required',
         'Please enter your phone number',
+      );
+      return false;
+    }
+    if (!AuthInputValidators.isValidPhone10(phoneCtrl.text)) {
+      SweetAlertHelper.showError(
+        context,
+        'Invalid',
+        'Please enter a valid 10-digit mobile number',
       );
       return false;
     }

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
 import '../data/app_bootstrap.dart';
 import '../utils/sweetalert_helper.dart';
+import '../utils/upload_file_validators.dart';
 import 'template_gallery_view.dart';
 import '../utils/app_navigation.dart';
 import 'bootstrap_views.dart';
@@ -104,14 +105,27 @@ class CreateEventViewState extends State<CreateEventView> {
     });
   }
 
+  Future<bool> _acceptPosterIfAllowed(File file) async {
+    final err = await UploadFileValidators.posterSizeError(file);
+    if (err != null) {
+      if (mounted) {
+        SweetAlertHelper.showError(context, 'Poster too large', err);
+      }
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _pickFromGallery() async {
     final XFile? img = await ImagePicker().pickImage(
       source: ImageSource.gallery,
       imageQuality: 80,
     );
-    if (img != null) {
-      setState(() => selectedImage = File(img.path));
-    }
+    if (img == null) return;
+    final file = File(img.path);
+    if (!await _acceptPosterIfAllowed(file)) return;
+    if (!mounted) return;
+    setState(() => selectedImage = file);
   }
 
   Future<void> _openPosterDesigner() async {
@@ -121,14 +135,21 @@ class CreateEventViewState extends State<CreateEventView> {
 
     // result can be a Map (new flow with prefill data) or a File (legacy)
     if (result is Map<String, dynamic>) {
-      setState(() {
-        if (result['file'] is File) {
-          selectedImage = result['file'] as File;
-        }
-        _prefillFromPosterData(result);
-      });
-      SweetAlertHelper.showSuccess(context, "Success", "Poster & event details applied!");
+      final file = result['file'];
+      if (file is File) {
+        if (!await _acceptPosterIfAllowed(file)) return;
+        if (!mounted) return;
+        setState(() {
+          selectedImage = file;
+          _prefillFromPosterData(result);
+        });
+        SweetAlertHelper.showSuccess(context, "Success", "Poster & event details applied!");
+      } else {
+        setState(() => _prefillFromPosterData(result));
+      }
     } else if (result is File) {
+      if (!await _acceptPosterIfAllowed(result)) return;
+      if (!mounted) return;
       setState(() => selectedImage = result);
       SweetAlertHelper.showSuccess(context, "Success", "Poster added successfully!");
     }
@@ -237,6 +258,15 @@ class CreateEventViewState extends State<CreateEventView> {
   void _publishEvent() async {
     if (!_validateForm()) return;
 
+    if (selectedImage != null) {
+      final sizeErr = await UploadFileValidators.posterSizeError(selectedImage!);
+      if (sizeErr != null) {
+        if (!mounted) return;
+        SweetAlertHelper.showError(context, 'Poster too large', sizeErr);
+        return;
+      }
+    }
+
     final isEdit = widget.existingEvent != null;
     final endDateStr = _buildEndDateString();
     final success = isEdit
@@ -294,9 +324,8 @@ class CreateEventViewState extends State<CreateEventView> {
           }
         },
       );
-    } else {
-      SweetAlertHelper.showError(context, "Error", isEdit ? "Failed to update event. Please try again." : "Failed to create event. Please try again.");
     }
+    // Errors are shown by EventController.createEvent with server message/field.
   }
 
   bool _validateForm() {
@@ -316,11 +345,92 @@ class CreateEventViewState extends State<CreateEventView> {
     return true;
   }
 
+  static const double _fieldRadius = 14;
+
+  TextStyle get _fieldTextStyle => TextStyle(
+        fontSize: 15.sp,
+        color: Colors.black87,
+        height: 1.35,
+      );
+
+  TextStyle get _labelStyle => TextStyle(
+        fontSize: 14.sp,
+        fontWeight: FontWeight.w600,
+        color: Colors.black87,
+      );
+
+  InputDecoration _inputDecoration({
+    required String hint,
+    required IconData icon,
+    bool alignLabelTop = false,
+  }) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(_fieldRadius),
+      borderSide: BorderSide(color: Colors.grey.shade300),
+    );
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(fontSize: 14.sp, color: Colors.grey[500]),
+      prefixIcon: alignLabelTop
+          ? Padding(
+              padding: EdgeInsets.only(bottom: 48.h),
+              child: Icon(icon, color: const Color(0xFFFF5F15)),
+            )
+          : Icon(icon, color: const Color(0xFFFF5F15)),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+      border: border,
+      enabledBorder: border,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_fieldRadius),
+        borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 1.8),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          padding: EdgeInsets.all(8.w),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18.sp, color: const Color(0xFFFF5F15)),
+        ),
+        SizedBox(width: 10.w),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 17.sp,
+            fontWeight: FontWeight.w700,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLabeledField({required String label, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: _labelStyle),
+        SizedBox(height: 10.h),
+        child,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existingEvent != null;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
       backgroundColor: AppColors.cream,
+      resizeToAvoidBottomInset: true,
       appBar: CampusAppBar(
         titleText: isEdit ? 'Edit Pending Event' : 'Host an Event',
         leading: IconButton(
@@ -328,182 +438,238 @@ class CreateEventViewState extends State<CreateEventView> {
           onPressed: () => Get.back(),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(20.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Event Banner",
-              style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-            ),
-            SizedBox(height: 12.h),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _openPosterDesigner, // FIXED: Now properly handles result
-                    icon: const Icon(Icons.palette_outlined),
-                    label: const Text("Design Poster"),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFFF5F15),
-                      side: const BorderSide(color: Color(0xFFFF5F15)),
-                      padding: EdgeInsets.symmetric(vertical: 12.h),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _pickFromGallery,
-                    icon: const Icon(Icons.upload_file),
-                    label: const Text("Upload Own"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey[200],
-                      foregroundColor: Colors.black87,
-                      elevation: 0,
-                      padding: EdgeInsets.symmetric(vertical: 12.h),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 15.h),
-            
-            Container(
-              height: 350.h,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(15),
-                color: Colors.grey[200],
-                border: Border.all(
-                  color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
-                  width: 2.5,
-                ),
-              ),
-              child: Stack(
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.opaque,
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 28.h + bottomInset),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionHeader('Event Banner', Icons.image_outlined),
+              SizedBox(height: 12.h),
+              Row(
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: selectedImage != null
-                        ? Image.file(
-                            selectedImage!,
-                            fit: BoxFit.contain,
-                            width: double.infinity,
-                            height: double.infinity,
-                          )
-                        : (_existingBannerName != null && !_removeExistingBanner)
-                            ? AppNetworkImage(
-                                url: "https://micampus.co.in/admin/uploads/events/$_existingBannerName",
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                                errorWidget: (_, __, ___) => _buildEmptyBanner(),
-                              )
-                            : _buildEmptyBanner(),
-                  ),
-                  if (selectedImage != null ||
-                      (_existingBannerName != null && !_removeExistingBanner))
-                    Positioned(
-                      top: 10,
-                      right: 5,
-                      child: GestureDetector(
-                        onTap: () => setState(() {
-                          if (selectedImage != null) {
-                            selectedImage = null;
-                          } else {
-                            _removeExistingBanner = true;
-                          }
-                        }),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child:
-                              const Icon(Icons.close, color: Colors.white, size: 18),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _openPosterDesigner,
+                      icon: const Icon(Icons.palette_outlined),
+                      label: const Text('Design Poster'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFFF5F15),
+                        side: const BorderSide(color: Color(0xFFFF5F15)),
+                        padding: EdgeInsets.symmetric(vertical: 14.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_fieldRadius),
                         ),
                       ),
                     ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _pickFromGallery,
+                      icon: const Icon(Icons.upload_file),
+                      label: const Text('Upload Own'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey[200],
+                        foregroundColor: Colors.black87,
+                        elevation: 0,
+                        padding: EdgeInsets.symmetric(vertical: 14.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_fieldRadius),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
-            ),
-
-            SizedBox(height: 25.h),
-
-            _buildSection("Event Title", "What's the name of your event?", titleCtrl, Icons.event_outlined, TextInputType.text),
-            SizedBox(height: 20.h),
-
-            Text("Category", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
-            SizedBox(height: 8.h),
-            DropdownButtonFormField<String>(
-              value: selectedCategory,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.category_outlined, color: Color(0xFFFF5F15)),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              items: categories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat))).toList(),
-              onChanged: (val) => setState(() => selectedCategory = val!),
-            ),
-
-            SizedBox(height: 20.h),
-            _buildDateTimeSection(),
-            SizedBox(height: 20.h),
-            _buildSection("Venue/Location", "Where will the event be held?", venueCtrl, Icons.location_on_outlined, TextInputType.text),
-            SizedBox(height: 20.h),
-
-            Text("Description", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
-            SizedBox(height: 8.h),
-            TextField(
-              controller: descCtrl,
-              maxLines: 4,
-              decoration: InputDecoration(
-                hintText: "Tell students about your event...",
-                prefixIcon: const Icon(Icons.description_outlined, color: Color(0xFFFF5F15)),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-
-            SizedBox(height: 20.h),
-            Text("Event rules", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
-            SizedBox(height: 8.h),
-            TextField(
-              controller: rulesCtrl,
-              maxLines: 5,
-              decoration: InputDecoration(
-                hintText: "Rules, eligibility, dress code, judging criteria...",
-                prefixIcon: const Icon(Icons.gavel_outlined, color: Color(0xFFFF5F15)),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-
-            SizedBox(height: 40.h),
-
-            Obx(() => controller.isLoading.value
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF5F15)))
-                : ElevatedButton(
-                    onPressed: _publishEvent,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF5F15),
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(vertical: 16.h),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              SizedBox(height: 16.h),
+              Container(
+                height: 300.h,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(_fieldRadius),
+                  color: Colors.grey[200],
+                  border: Border.all(
+                    color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
+                    width: 2,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(_fieldRadius - 1),
+                      child: selectedImage != null
+                          ? Image.file(
+                              selectedImage!,
+                              fit: BoxFit.contain,
+                              width: double.infinity,
+                              height: double.infinity,
+                            )
+                          : (_existingBannerName != null && !_removeExistingBanner)
+                              ? AppNetworkImage(
+                                  url:
+                                      'https://micampus.co.in/admin/uploads/events/$_existingBannerName',
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  errorWidget: (_, __, ___) => _buildEmptyBanner(),
+                                )
+                              : _buildEmptyBanner(),
                     ),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Center(
-                        child: Text(
-                          isEdit ? "Save Changes" : "Publish Event",
-                          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                    if (selectedImage != null ||
+                        (_existingBannerName != null && !_removeExistingBanner))
+                      Positioned(
+                        top: 10,
+                        right: 8,
+                        child: GestureDetector(
+                          onTap: () => setState(() {
+                            if (selectedImage != null) {
+                              selectedImage = null;
+                            } else {
+                              _removeExistingBanner = true;
+                            }
+                          }),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close, color: Colors.white, size: 18),
+                          ),
                         ),
                       ),
-                    ),
-                  )),
-            SizedBox(height: 20.h),
-          ],
+                  ],
+                ),
+              ),
+
+              SizedBox(height: 28.h),
+
+              _sectionHeader('Details', Icons.edit_note_outlined),
+              SizedBox(height: 16.h),
+              _buildLabeledField(
+                label: 'Event Title',
+                child: TextField(
+                  controller: titleCtrl,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: _fieldTextStyle,
+                  decoration: _inputDecoration(
+                    hint: "What's the name of your event?",
+                    icon: Icons.event_outlined,
+                  ),
+                ),
+              ),
+              SizedBox(height: 20.h),
+              _buildLabeledField(
+                label: 'Category',
+                child: DropdownButtonFormField<String>(
+                  value: selectedCategory,
+                  isExpanded: true,
+                  decoration: _inputDecoration(
+                    hint: 'Select category',
+                    icon: Icons.category_outlined,
+                  ),
+                  items: categories
+                      .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) setState(() => selectedCategory = val);
+                  },
+                ),
+              ),
+              SizedBox(height: 20.h),
+              _buildLabeledField(
+                label: 'Description',
+                child: TextField(
+                  controller: descCtrl,
+                  maxLines: 5,
+                  minLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: _fieldTextStyle,
+                  decoration: _inputDecoration(
+                    hint: 'Tell students about your event...',
+                    icon: Icons.description_outlined,
+                    alignLabelTop: true,
+                  ),
+                ),
+              ),
+              SizedBox(height: 20.h),
+              _buildLabeledField(
+                label: 'Event rules / dress code',
+                child: TextField(
+                  controller: rulesCtrl,
+                  maxLines: 5,
+                  minLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: _fieldTextStyle,
+                  decoration: _inputDecoration(
+                    hint: 'Rules, eligibility, dress code, judging criteria...',
+                    icon: Icons.gavel_outlined,
+                    alignLabelTop: true,
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 28.h),
+
+              _sectionHeader('When', Icons.schedule_outlined),
+              SizedBox(height: 16.h),
+              _buildDateTimeSection(),
+
+              SizedBox(height: 28.h),
+
+              _sectionHeader('Where', Icons.place_outlined),
+              SizedBox(height: 16.h),
+              _buildLabeledField(
+                label: 'Venue / Location',
+                child: TextField(
+                  controller: venueCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  style: _fieldTextStyle,
+                  decoration: _inputDecoration(
+                    hint: 'Where will the event be held?',
+                    icon: Icons.location_on_outlined,
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 36.h),
+
+              Obx(
+                () => controller.isLoading.value
+                    ? const Center(
+                        child: CircularProgressIndicator(color: Color(0xFFFF5F15)),
+                      )
+                    : ElevatedButton(
+                        onPressed: _publishEvent,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF5F15),
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: 16.h),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(_fieldRadius),
+                          ),
+                        ),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Center(
+                            child: Text(
+                              isEdit ? 'Save Changes' : 'Publish Event',
+                              style: TextStyle(
+                                fontSize: 16.sp,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+              SizedBox(height: 12.h),
+            ],
+          ),
         ),
       ),
     );
@@ -515,123 +681,137 @@ class CreateEventViewState extends State<CreateEventView> {
           Icon(Icons.image_outlined, size: 40, color: Colors.grey[400]),
           SizedBox(height: 8.h),
           Text(
-            "No banner selected",
+            'No banner selected',
             style: TextStyle(color: Colors.grey[500], fontSize: 14.sp),
           ),
         ],
       );
 
+  Widget _dateTimeChip({
+    required VoidCallback? onTap,
+    required IconData icon,
+    required String text,
+    required bool active,
+  }) {
+    return Material(
+      color: active ? Colors.white : Colors.grey[50],
+      borderRadius: BorderRadius.circular(_fieldRadius),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(_fieldRadius),
+        child: Container(
+          constraints: BoxConstraints(minHeight: 56.h),
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(_fieldRadius),
+            border: Border.all(
+              color: active ? Colors.grey.shade300 : Colors.grey.shade200,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: active ? const Color(0xFFFF5F15) : Colors.grey[400],
+                size: 20,
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: active ? Colors.black87 : Colors.grey[500],
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDateTimeSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("From (Start)", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
-        SizedBox(height: 8.h),
+        Text('From (Start)', style: _labelStyle),
+        SizedBox(height: 10.h),
         Row(
           children: [
             Expanded(
-              child: GestureDetector(
+              child: _dateTimeChip(
                 onTap: _selectDate,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
-                  decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(12)),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today, color: Color(0xFFFF5F15), size: 20),
-                      SizedBox(width: 12.w),
-                      Expanded(child: Text(selectedDate != null ? DateFormat('dd MMM yyyy').format(selectedDate!) : "Start Date", overflow: TextOverflow.ellipsis)),
-                    ],
-                  ),
-                ),
+                icon: Icons.calendar_today,
+                text: selectedDate != null
+                    ? DateFormat('dd MMM yyyy').format(selectedDate!)
+                    : 'Start Date',
+                active: selectedDate != null,
               ),
             ),
             SizedBox(width: 12.w),
             Expanded(
-              child: GestureDetector(
+              child: _dateTimeChip(
                 onTap: _selectTime,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
-                  decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(12)),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.access_time, color: Color(0xFFFF5F15), size: 20),
-                      SizedBox(width: 12.w),
-                      Expanded(child: Text(selectedTime != null ? selectedTime!.format(context) : "Start Time", overflow: TextOverflow.ellipsis)),
-                    ],
-                  ),
-                ),
+                icon: Icons.access_time,
+                text: selectedTime != null
+                    ? selectedTime!.format(context)
+                    : 'Start Time',
+                active: selectedTime != null,
               ),
             ),
           ],
         ),
-        SizedBox(height: 16.h),
+        SizedBox(height: 20.h),
         Row(
           children: [
-            Expanded(child: Text("To (End) — Optional", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87))),
+            Expanded(
+              child: Text('To (End) — Optional', style: _labelStyle),
+            ),
             if (selectedEndDate != null)
               GestureDetector(
-                onTap: () => setState(() { selectedEndDate = null; selectedEndTime = null; }),
+                onTap: () => setState(() {
+                  selectedEndDate = null;
+                  selectedEndTime = null;
+                }),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.close, size: 16, color: Colors.red[400]),
                     SizedBox(width: 4.w),
-                    Text("Clear", style: TextStyle(fontSize: 12.sp, color: Colors.red[400])),
+                    Text(
+                      'Clear',
+                      style: TextStyle(fontSize: 12.sp, color: Colors.red[400]),
+                    ),
                   ],
                 ),
               ),
           ],
         ),
-        SizedBox(height: 8.h),
+        SizedBox(height: 10.h),
         Row(
           children: [
             Expanded(
-              child: GestureDetector(
+              child: _dateTimeChip(
                 onTap: _selectEndDate,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: selectedEndDate != null ? Colors.grey[300]! : Colors.grey[200]!),
-                    borderRadius: BorderRadius.circular(12),
-                    color: selectedEndDate != null ? null : Colors.grey[50],
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.calendar_today, color: selectedEndDate != null ? const Color(0xFFFF5F15) : Colors.grey[400], size: 20),
-                      SizedBox(width: 12.w),
-                      Expanded(child: Text(
-                        selectedEndDate != null ? DateFormat('dd MMM yyyy').format(selectedEndDate!) : "End Date",
-                        style: TextStyle(color: selectedEndDate != null ? Colors.black87 : Colors.grey[500]),
-                        overflow: TextOverflow.ellipsis,
-                      )),
-                    ],
-                  ),
-                ),
+                icon: Icons.calendar_today,
+                text: selectedEndDate != null
+                    ? DateFormat('dd MMM yyyy').format(selectedEndDate!)
+                    : 'End Date',
+                active: selectedEndDate != null,
               ),
             ),
             SizedBox(width: 12.w),
             Expanded(
-              child: GestureDetector(
+              child: _dateTimeChip(
                 onTap: selectedEndDate != null ? _selectEndTime : null,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: selectedEndDate != null ? Colors.grey[300]! : Colors.grey[200]!),
-                    borderRadius: BorderRadius.circular(12),
-                    color: selectedEndDate != null ? null : Colors.grey[50],
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.access_time, color: selectedEndDate != null ? const Color(0xFFFF5F15) : Colors.grey[400], size: 20),
-                      SizedBox(width: 12.w),
-                      Expanded(child: Text(
-                        selectedEndTime != null ? selectedEndTime!.format(context) : "End Time",
-                        style: TextStyle(color: selectedEndTime != null ? Colors.black87 : Colors.grey[500]),
-                        overflow: TextOverflow.ellipsis,
-                      )),
-                    ],
-                  ),
-                ),
+                icon: Icons.access_time,
+                text: selectedEndTime != null
+                    ? selectedEndTime!.format(context)
+                    : 'End Time',
+                active: selectedEndTime != null,
               ),
             ),
           ],
@@ -648,12 +828,25 @@ class CreateEventViewState extends State<CreateEventView> {
       lastDate: DateTime(2100),
       builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
     );
-    if (picked != null) setState(() { selectedDate = picked; _updateDateTimeController(); });
+    if (picked != null) {
+      setState(() {
+        selectedDate = picked;
+        _updateDateTimeController();
+      });
+    }
   }
 
   Future<void> _selectTime() async {
-    final TimeOfDay? picked = await showTimePicker(context: context, initialTime: selectedTime ?? TimeOfDay.now());
-    if (picked != null) setState(() { selectedTime = picked; _updateDateTimeController(); });
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: selectedTime ?? TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedTime = picked;
+        _updateDateTimeController();
+      });
+    }
   }
 
   Future<void> _selectEndDate() async {
@@ -665,37 +858,27 @@ class CreateEventViewState extends State<CreateEventView> {
       lastDate: DateTime(2100),
       builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
     );
-    if (picked != null) setState(() { selectedEndDate = picked; });
+    if (picked != null) setState(() => selectedEndDate = picked);
   }
 
   Future<void> _selectEndTime() async {
-    final TimeOfDay? picked = await showTimePicker(context: context, initialTime: selectedEndTime ?? TimeOfDay.now());
-    if (picked != null) setState(() { selectedEndTime = picked; });
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: selectedEndTime ?? TimeOfDay.now(),
+    );
+    if (picked != null) setState(() => selectedEndTime = picked);
   }
 
   void _updateDateTimeController() {
     if (selectedDate != null && selectedTime != null) {
-      final DateTime fullDateTime = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, selectedTime!.hour, selectedTime!.minute);
+      final DateTime fullDateTime = DateTime(
+        selectedDate!.year,
+        selectedDate!.month,
+        selectedDate!.day,
+        selectedTime!.hour,
+        selectedTime!.minute,
+      );
       dateCtrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(fullDateTime);
     }
-  }
-
-  Widget _buildSection(String label, String hint, TextEditingController ctrl, IconData icon, TextInputType inputType) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
-        SizedBox(height: 8.h),
-        TextField(
-          controller: ctrl,
-          keyboardType: inputType,
-          decoration: InputDecoration(
-            hintText: hint,
-            prefixIcon: Icon(icon, color: const Color(0xFFFF5F15)),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      ],
-    );
   }
 }

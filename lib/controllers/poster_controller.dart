@@ -11,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:saver_gallery/saver_gallery.dart';
 import '../utils/sweetalert_helper.dart';
+import '../utils/poster_export_helper.dart';
+import '../utils/upload_file_validators.dart';
 import '../widgets/app_calendar_theme.dart';
 
 class PosterController extends GetxController {
@@ -636,43 +638,41 @@ class PosterController extends GetxController {
     }
   }
 
-  // --- SAVE FOR EVENT ---
+  // --- SAVE FOR EVENT (JPEG kept under 3 MB for upload) ---
   Future<File?> saveForEvent(GlobalKey key) async {
     try {
-      RenderRepaintBoundary? boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-
-      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      Uint8List pngBytes = byteData!.buffer.asUint8List();
-
-      final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/event_poster_${DateTime.now().millisecondsSinceEpoch}.png');
-      await file.writeAsBytes(pngBytes);
-      return file; 
+      return await PosterExportHelper.saveJpegUnderMaxSize(
+        key,
+        maxBytes: UploadFileValidators.maxPosterBytes,
+        filePrefix: 'event_poster',
+      );
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("saveForEvent Error: $e");
       return null;
     }
   }
 
-  // --- DOWNLOAD IMAGE ---
+  // --- DOWNLOAD IMAGE (also capped at 3 MB) ---
   Future<void> downloadImage(GlobalKey key) async {
      try {
-       RenderRepaintBoundary? boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-       if (boundary == null) return;
-       
-       ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-       Uint8List? bytes = byteData?.buffer.asUint8List();
+       final bytes = await PosterExportHelper.encodeJpegBytesUnderMaxSize(
+         key,
+         maxBytes: UploadFileValidators.maxPosterBytes,
+       );
        
        if (bytes != null) {
          await SaverGallery.saveImage(
            bytes,
-           name: "gnu_poster_${DateTime.now().millisecondsSinceEpoch}.png",
+           name: "gnu_poster_${DateTime.now().millisecondsSinceEpoch}.jpg",
            androidExistNotSave: false,
          );
-         SweetAlertHelper.showSuccess(Get.context, "Success", "Poster saved to Gallery!");
+         SweetAlertHelper.showSuccess(
+           Get.context,
+           "Success",
+           "Poster saved to Gallery (within ${UploadFileValidators.formatMb(UploadFileValidators.maxPosterBytes)})!",
+         );
+       } else {
+         SweetAlertHelper.showError(Get.context, "Error", "Could not save image");
        }
      } catch(e) { 
        SweetAlertHelper.showError(Get.context, "Error", "Could not save image"); 

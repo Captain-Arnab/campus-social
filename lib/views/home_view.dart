@@ -123,7 +123,7 @@ class HomeView extends StatefulWidget {
 class _HomeViewState extends State<HomeView> {
   /// Visual bottom-nav index: 0 Explore, 1 My Events, 3 Notifications, 4 Profile (2 = Host action).
   late int _navIndex;
-  late final List<Widget> _tabs;
+  late List<Widget> _tabs;
 
   final AuthController authController = Get.put(AuthController());
   late final EventController eventController;
@@ -145,6 +145,21 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
+  /// Opens My Activity (bottom nav) on a specific sub-tab.
+  /// 0 Viewing, 1 Hosting, 2 I can edit, 3 Volunteering, 4 Participating, 5 Favorites, 6 Certificates.
+  void openMyActivityTab(int myEventsTabIndex) {
+    final idx = myEventsTabIndex.clamp(0, 6);
+    setState(() {
+      _navIndex = 1;
+      _tabs = [
+        const _ExploreTab(),
+        _MyEventsTab(key: ValueKey('my_events_$idx'), initialIndex: idx),
+        const NotificationsView(asTab: true),
+        const _ProfileTab(),
+      ];
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -152,9 +167,10 @@ class _HomeViewState extends State<HomeView> {
     // Legacy initialBottomTabIndex: 0 Explore, 1 My Events, 2 Profile.
     final initial = widget.initialBottomTabIndex.clamp(0, 2);
     _navIndex = initial == 2 ? 4 : initial;
+    final myIdx = widget.initialMyEventsTabIndex.clamp(0, 6);
     _tabs = [
       const _ExploreTab(),
-      _MyEventsTab(initialIndex: widget.initialMyEventsTabIndex),
+      _MyEventsTab(key: ValueKey('my_events_$myIdx'), initialIndex: myIdx),
       const NotificationsView(asTab: true),
       const _ProfileTab(),
     ];
@@ -1513,7 +1529,7 @@ class _CertificatesTabState extends State<_CertificatesTab> {
 // --- MY EVENTS TAB ---
 class _MyEventsTab extends StatelessWidget {
   final int initialIndex;
-  const _MyEventsTab({this.initialIndex = 0});
+  const _MyEventsTab({super.key, this.initialIndex = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -2170,27 +2186,31 @@ class _ProfileTab extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
                           _buildStatItem(
-                            Icons.event_rounded, 
-                            eventController.hostedList.length.toString(), 
-                            "Hosted"
+                            Icons.event_rounded,
+                            eventController.hostedList.length.toString(),
+                            "Hosted",
+                            onTap: () => _openMyActivityFromProfile(context, 1),
                           ),
                           _buildDivider(),
                           _buildStatItem(
-                            Icons.people_rounded, 
-                            eventController.attendingList.length.toString(), 
-                            "Viewing"
+                            Icons.people_rounded,
+                            eventController.attendingList.length.toString(),
+                            "Viewing",
+                            onTap: () => _openMyActivityFromProfile(context, 0),
                           ),
                           _buildDivider(),
                           _buildStatItem(
-                            Icons.volunteer_activism, // Changed icon
-                            eventController.volunteeringList.length.toString(), 
-                            "Volunteer" // Changed label
+                            Icons.volunteer_activism,
+                            eventController.volunteeringList.length.toString(),
+                            "Volunteer",
+                            onTap: () => _openMyActivityFromProfile(context, 3),
                           ),
                           _buildDivider(),
                           _buildStatItem(
-                            Icons.groups, // New stat
-                            eventController.participatingList.length.toString(), 
-                            "Participate" // New label
+                            Icons.groups,
+                            eventController.participatingList.length.toString(),
+                            "Participate",
+                            onTap: () => _openMyActivityFromProfile(context, 4),
                           ),
                         ],
                       ),
@@ -2347,31 +2367,67 @@ class _ProfileTab extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
+  void _openMyActivityFromProfile(BuildContext context, int myEventsTabIndex) {
+    context.findAncestorStateOfType<_HomeViewState>()?.openMyActivityTab(myEventsTabIndex);
+  }
+
+  Widget _buildStatItem(
+    IconData icon,
+    String value,
+    String label, {
+    VoidCallback? onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 4.h),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 24),
+                ),
+                SizedBox(height: 10.h),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 20.sp,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFFFF5F15),
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11.sp,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4)
-              )
-            ]
           ),
-          child: Icon(icon, color: Colors.white, size: 24),
         ),
-        SizedBox(height: 10.h),
-        Text(value, style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: const Color(0xFFFF5F15))),
-        SizedBox(height: 4.h),
-        Text(label, style: TextStyle(fontSize: 11.sp, color: Colors.grey[600], fontWeight: FontWeight.w500)),
-      ],
+      ),
     );
   }
 

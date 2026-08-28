@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../controllers/event_controller.dart';
 import '../utils/sweetalert_helper.dart';
+import '../utils/upload_file_validators.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import 'template_gallery_view.dart';
 import '../widgets/app_calendar_theme.dart';
@@ -95,19 +96,39 @@ class _EditEventViewState extends State<EditEventView> {
     super.dispose();
   }
 
+  Future<bool> _acceptPosterIfAllowed(File file) async {
+    final err = await UploadFileValidators.posterSizeError(file);
+    if (err != null) {
+      if (mounted) {
+        SweetAlertHelper.showError(context, 'Poster too large', err);
+      }
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _pickFromGallery() async {
     final XFile? img = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (img != null) setState(() => selectedImage = File(img.path));
+    if (img == null) return;
+    final file = File(img.path);
+    if (!await _acceptPosterIfAllowed(file)) return;
+    if (!mounted) return;
+    setState(() => selectedImage = file);
   }
 
   Future<void> _openPosterDesigner() async {
     final result = await Get.to(() => const TemplateGalleryView());
-    if (result == null) return;
+    if (result == null || !mounted) return;
     if (result is Map<String, dynamic>) {
-      setState(() {
-        if (result['file'] is File) selectedImage = result['file'] as File;
-      });
+      final file = result['file'];
+      if (file is File) {
+        if (!await _acceptPosterIfAllowed(file)) return;
+        if (!mounted) return;
+        setState(() => selectedImage = file);
+      }
     } else if (result is File) {
+      if (!await _acceptPosterIfAllowed(result)) return;
+      if (!mounted) return;
       setState(() => selectedImage = result);
     }
   }
@@ -198,6 +219,12 @@ class _EditEventViewState extends State<EditEventView> {
     }
     List<File>? bannerFiles;
     if (selectedImage != null) {
+      final sizeErr = await UploadFileValidators.posterSizeError(selectedImage!);
+      if (sizeErr != null) {
+        if (!mounted) return;
+        SweetAlertHelper.showError(context, 'Poster too large', sizeErr);
+        return;
+      }
       bannerFiles = [selectedImage!];
     }
     final success = await controller.updateApprovedEventWithFormData(

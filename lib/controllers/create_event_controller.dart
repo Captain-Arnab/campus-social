@@ -6,6 +6,7 @@ import '../base/constant.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../utils/sweetalert_helper.dart';
+import '../utils/upload_file_validators.dart';
 import 'event_controller.dart';
 
 class CreateEventController extends GetxController {
@@ -32,7 +33,13 @@ class CreateEventController extends GetxController {
       );
       
       if (image != null) {
-        selectedImages[index] = File(image.path);
+        final file = File(image.path);
+        final sizeErr = await UploadFileValidators.posterSizeError(file);
+        if (sizeErr != null) {
+          SweetAlertHelper.showError(Get.context, 'Poster too large', sizeErr);
+          return;
+        }
+        selectedImages[index] = file;
         update();
       }
     } catch (e) {
@@ -77,7 +84,8 @@ class CreateEventController extends GetxController {
         "rules": "",
       }, imagesToUpload);
 
-      if (response.data['status'] == 'success') {
+      final data = ApiService.parseResponseBody(response.data);
+      if (data != null && data['status']?.toString() == 'success') {
         const msg = Constant.notifyAdminsBySmsOnEventSubmit
             ? "Event submitted for admin approval. Administrators are notified by SMS."
             : "Event submitted for admin approval.";
@@ -96,7 +104,11 @@ class CreateEventController extends GetxController {
         
         return true;
       } else {
-        SweetAlertHelper.showError(Get.context, "Error", response.data['message'] ?? "Failed to create event");
+        SweetAlertHelper.showError(
+          Get.context,
+          "Error",
+          ApiService.formatFieldError(data, fallback: "Failed to create event"),
+        );
         return false;
       }
     } catch (e) {

@@ -38,6 +38,10 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
   ];
   String? selectedRole;
 
+  void _closeDialog() {
+    Navigator.of(context, rootNavigator: true).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -51,41 +55,50 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header with close button
+              // Header with close button — title must flex so it doesn't overflow the X.
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.switchFromParticipant ? "Switch to volunteer" : "Volunteer Signup",
-                        style: TextStyle(
-                          fontSize: 24.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.switchFromParticipant
+                              ? "Switch to volunteer"
+                              : "Volunteer Signup",
+                          style: TextStyle(
+                            fontSize: 20.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        widget.switchFromParticipant
-                            ? "Choose your volunteer role for this event"
-                            : "Help make this event amazing!",
-                        style: TextStyle(
-                          fontSize: 13.sp,
-                          color: Colors.grey[600],
+                        SizedBox(height: 4.h),
+                        Text(
+                          widget.switchFromParticipant
+                              ? "Choose your volunteer role for this event"
+                              : "Help make this event amazing!",
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            color: Colors.grey[600],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      shape: BoxShape.circle,
+                      ],
                     ),
-                    child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.black87),
-                      onPressed: () => Get.back(),
+                  ),
+                  SizedBox(width: 8.w),
+                  Material(
+                    color: Colors.grey[100],
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _closeDialog,
+                      child: Padding(
+                        padding: EdgeInsets.all(8.w),
+                        child: Icon(Icons.close, color: Colors.black87, size: 22.sp),
+                      ),
                     ),
                   ),
                 ],
@@ -145,7 +158,7 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
 
               SizedBox(height: 24.h),
 
-              // Role Selection Section
+              // Role Selection Section — chips stay inside the dialog (no Material dropdown overlay).
               Text(
                 "Select Your Role",
                 style: TextStyle(
@@ -155,42 +168,52 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                 ),
               ),
 
-              SizedBox(height: 10.h),
+              SizedBox(height: 12.h),
 
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey[300]!),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: selectedRole,
-                  decoration: InputDecoration(
-                    labelText: "Choose a role",
-                    prefixIcon: const Icon(Icons.work_outline, color: Color(0xFFFF5F15)),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                  ),
-                  items: roles
-                      .map((role) => DropdownMenuItem(
-                            value: role,
-                            child: Text(role),
-                          ))
-                      .toList(),
-                  onChanged: (value) {
-                    setState(() => selectedRole = value);
-                    if (value != "Other") {
-                      roleCtrl.text = value ?? "";
-                    }
-                  },
-                ),
+              Wrap(
+                spacing: 8.w,
+                runSpacing: 8.h,
+                children: roles.map((role) {
+                  final selected = selectedRole == role;
+                  return ChoiceChip(
+                    label: Text(
+                      role,
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                        color: selected ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    selected: selected,
+                    onSelected: (_) {
+                      setState(() {
+                        selectedRole = role;
+                        if (role != "Other") {
+                          roleCtrl.clear();
+                        }
+                      });
+                    },
+                    selectedColor: const Color(0xFFFF5F15),
+                    backgroundColor: Colors.grey[100],
+                    checkmarkColor: Colors.white,
+                    side: BorderSide(
+                      color: selected ? const Color(0xFFFF5F15) : Colors.grey[300]!,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                  );
+                }).toList(),
               ),
 
-              SizedBox(height: 16.h),
-
-              // Custom Role (if Other is selected)
-              if (selectedRole == "Other")
+              if (selectedRole == "Other") ...[
+                SizedBox(height: 14.h),
                 TextField(
                   controller: roleCtrl,
+                  textCapitalization: TextCapitalization.words,
                   decoration: InputDecoration(
                     labelText: "Specify Your Role",
                     hintText: "Enter your preferred role",
@@ -209,8 +232,7 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                     ),
                   ),
                 ),
-
-              if (selectedRole == "Other") SizedBox(height: 16.h),
+              ],
 
               SizedBox(height: 24.h),
 
@@ -219,7 +241,7 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => Get.back(),
+                      onPressed: _closeDialog,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey[700],
                         side: BorderSide(color: Colors.grey[300]!),
@@ -295,6 +317,8 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
     }
 
     if (widget.switchFromParticipant) {
+      // Close first so the success alert is not dismissed by this pop.
+      _closeDialog();
       controller
           .switchStaffRole(
             eventId: widget.event['id'].toString(),
@@ -302,10 +326,7 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
             volunteerRole: role,
           )
           .then((ok) {
-        if (ok) {
-          Get.back();
-          widget.onSwitchSuccess?.call();
-        }
+        if (ok) widget.onSwitchSuccess?.call();
       });
       return;
     }

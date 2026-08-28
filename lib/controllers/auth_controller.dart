@@ -9,6 +9,7 @@ import '../data/otp_service.dart';
 import '../data/pref_service.dart';
 import '../services/notification_service.dart';
 import '../utils/app_navigation.dart';
+import '../utils/auth_input_validators.dart';
 import '../utils/network_error_helper.dart';
 import '../utils/sweetalert_helper.dart';
 import '../views/bootstrap_views.dart';
@@ -155,7 +156,9 @@ class AuthController extends GetxController {
         SweetAlertHelper.showSuccess(Get.context, "OTP", msg);
         return true;
       }
-      final err = data['message']?.toString() ?? "Could not send OTP";
+      final err = AuthInputValidators.friendlyLoginError(
+        data['message']?.toString() ?? "Could not send OTP",
+      );
       _showRequestFailure("OTP", err, onRetry: _retrySendLoginOtp);
       return false;
     } catch (e, st) {
@@ -190,7 +193,11 @@ class AuthController extends GetxController {
     if (OtpService.verifyOtp(enteredOtp, sentOtp.value)) {
       return true;
     } else {
-      SweetAlertHelper.showError(Get.context, "Invalid OTP", "The OTP you entered is incorrect.");
+      SweetAlertHelper.showError(
+        Get.context,
+        "Invalid OTP",
+        AuthInputValidators.loginCredentialsHint,
+      );
       return false;
     }
   }
@@ -271,7 +278,29 @@ class AuthController extends GetxController {
           },
         );
       } else {
-        String errorMsg = data['message']?.toString() ?? "Registration failed";
+        final rawMsg = data['message']?.toString() ?? "Registration failed";
+        String errorMsg = rawMsg;
+        final lower = rawMsg.toLowerCase();
+        if (lower.contains('already') ||
+            lower.contains('exist') ||
+            (lower.contains('email') && lower.contains('phone'))) {
+          // Disambiguate email vs phone when API returns a combined message.
+          try {
+            final check = await ApiService.checkRegistrationAvailability(
+              email: email,
+              phone: phone,
+            );
+            errorMsg = ApiService.friendlyRegisterConflictMessage(
+              rawMsg,
+              emailTaken: check.emailTaken,
+              // Combined API message + email free ⇒ phone is the conflict.
+              phoneTaken: check.phoneTaken ??
+                  (check.emailTaken == false ? true : null),
+            );
+          } catch (_) {
+            errorMsg = ApiService.friendlyRegisterConflictMessage(rawMsg);
+          }
+        }
         _showRequestFailure("Registration Failed", errorMsg, onRetry: _retryRegister);
       }
     } catch (e, st) {
@@ -338,20 +367,34 @@ class AuthController extends GetxController {
         return;
       }
 
-      if (data is! Map) {
+      final parsed = ApiService.parseResponseBody(data);
+      if (parsed == null) {
         _showRequestFailure("Error", "Invalid response format", onRetry: _retryLogin);
         return;
       }
 
-      if (data['status'] == 'success') {
-        String userId = data['user_id'].toString();
-        String name = data['user_name']?.toString() ?? "User";
-        String token = data['token']?.toString() ?? "";
+      if (parsed['status']?.toString() == 'success') {
+        final userIdRaw = parsed['user_id'];
+        String userId = userIdRaw?.toString() ?? '';
+        if (userId.isEmpty) {
+          _showRequestFailure("Error", "Login response missing user_id", onRetry: _retryLogin);
+          return;
+        }
+        String name = parsed['user_name']?.toString() ?? "User";
+        String token = parsed['token']?.toString() ?? "";
+        final isStudRaw = parsed['is_student'];
+        final isStudentFromApi =
+            isStudRaw == 1 || isStudRaw == true || isStudRaw == '1';
 
         // Fresh session prefs, then navigate; prepareHome registers controllers.
         await PrefService.clearProfileSession();
-        await PrefService.saveUserSession(userId, name, token, isStudent: isStudent);
-        debugPrint('[Auth] session saved userId=$userId tokenLen=${token.length}');
+        await PrefService.saveUserSession(
+          userId,
+          name,
+          token,
+          isStudent: isStudentFromApi,
+        );
+        debugPrint('[Auth] session saved userId=$userId tokenLen=${token.length} isStudent=$isStudentFromApi');
 
         // Clear spinner before FCM / home prep — those must not block UI forever.
         isLoading.value = false;
@@ -371,7 +414,9 @@ class AuthController extends GetxController {
         // prepareHome already replaced ProfileController; EventController was re-put.
         SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
       } else {
-        String errorMsg = data['message']?.toString() ?? "Unknown error";
+        String errorMsg = AuthInputValidators.friendlyLoginError(
+          parsed['message']?.toString(),
+        );
         _showRequestFailure("Login Failed", errorMsg, onRetry: _retryLogin);
       }
     } catch (e, st) {

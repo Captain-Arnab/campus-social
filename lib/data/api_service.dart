@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -42,6 +43,33 @@ class ApiService {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
     return null;
+  }
+
+  /// Parses API JSON whether Dio decoded it to a [Map] or left it as a [String].
+  static Map<String, dynamic>? parseResponseBody(dynamic data) {
+    final direct = responseDataMap(data);
+    if (direct != null) return direct;
+    if (data is String && data.trim().isNotEmpty) {
+      try {
+        return responseDataMap(jsonDecode(data));
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Builds a user-facing error string from flat API error payloads (`message`, optional `field`).
+  static String formatFieldError(
+    Map<String, dynamic>? data, {
+    String fallback = 'Request failed',
+  }) {
+    if (data == null) return fallback;
+    final msg = data['message']?.toString().trim();
+    final field = data['field']?.toString().trim();
+    if (msg != null && msg.isNotEmpty) {
+      if (field != null && field.isNotEmpty) return '$msg (field: $field)';
+      return msg;
+    }
+    return fallback;
   }
 
   static String responseErrorHint(Response r) {
@@ -190,6 +218,128 @@ class ApiService {
     }
   }
 
+  /// Result of pre-registration uniqueness checks.
+  /// [emailTaken] / [phoneTaken] are null when that check could not be determined.
+  static Future<({bool? emailTaken, bool? phoneTaken, String? message})>
+      checkRegistrationAvailability({
+    required String email,
+    required String phone,
+  }) async {
+    bool? emailTaken;
+    bool? phoneTaken;
+    String? message;
+
+    final normalizedEmail = email.trim().toLowerCase();
+    final normalizedPhone = phone.trim();
+
+    // Email: reuse forgot_password check_email
+    // success → email exists; error "Email not registered" → available
+    try {
+      final emailRes = await forgotPassword(normalizedEmail);
+      final emailData = parseResponseBody(emailRes.data);
+      if (emailData != null) {
+        final status = emailData['status']?.toString();
+        final msg = emailData['message']?.toString().toLowerCase() ?? '';
+        if (status == 'success' || msg.contains('email found')) {
+          emailTaken = true;
+        } else if (msg.contains('not registered') || msg.contains('not found')) {
+          emailTaken = false;
+        }
+      }
+    } catch (_) {}
+
+    // Phone (+ optional combined): users.php?action=check_availability
+    // Expected (when backend supports it):
+    // { status, email_exists, phone_exists } or message / field
+    try {
+      final availRes = await _dio.post(
+        'users.php',
+        queryParameters: const {'action': 'check_availability'},
+        data: {
+          'email': normalizedEmail,
+          'phone': normalizedPhone,
+        },
+      );
+      final avail = parseResponseBody(availRes.data);
+      if (avail != null && avail.isNotEmpty) {
+        if (avail.containsKey('email_exists') || avail.containsKey('email_taken')) {
+          final v = avail['email_exists'] ?? avail['email_taken'];
+          emailTaken = v == 1 || v == true || v == '1';
+        }
+        if (avail.containsKey('phone_exists') || avail.containsKey('phone_taken')) {
+          final v = avail['phone_exists'] ?? avail['phone_taken'];
+          phoneTaken = v == 1 || v == true || v == '1';
+        }
+        final field = avail['field']?.toString();
+        final msg = avail['message']?.toString() ?? '';
+        if (phoneTaken == null && field == 'phone') phoneTaken = true;
+        if (emailTaken == null && field == 'email') emailTaken = true;
+        if (msg.isNotEmpty) message = msg;
+      }
+    } on DioException catch (_) {
+      // Endpoint may not exist yet — ignore
+    } catch (_) {}
+
+    // Dedicated phone check (optional backend)
+    if (phoneTaken == null) {
+      try {
+        final phoneRes = await _dio.post(
+          'users.php',
+          queryParameters: const {'action': 'check_phone'},
+          data: {'phone': normalizedPhone},
+        );
+        final phoneData = parseResponseBody(phoneRes.data);
+        if (phoneData != null && phoneData.isNotEmpty) {
+          final status = phoneData['status']?.toString();
+          final msg = phoneData['message']?.toString().toLowerCase() ?? '';
+          final exists = phoneData['exists'] ?? phoneData['phone_exists'] ?? phoneData['phone_taken'];
+          if (exists == 1 || exists == true || exists == '1') {
+            phoneTaken = true;
+          } else if (status == 'success' &&
+              (msg.contains('available') || msg.contains('not registered') || msg.contains('not found'))) {
+            phoneTaken = false;
+          } else if (status == 'error' &&
+              (msg.contains('already') || msg.contains('registered') || msg.contains('exists'))) {
+            phoneTaken = true;
+          } else if (status == 'success' && msg.contains('found')) {
+            phoneTaken = true;
+          }
+        }
+      } on DioException catch (_) {
+      } catch (_) {}
+    }
+
+    return (emailTaken: emailTaken, phoneTaken: phoneTaken, message: message);
+  }
+
+  /// Maps register API errors to a clear email vs phone message when possible.
+  static String friendlyRegisterConflictMessage(
+    String? apiMessage, {
+    bool? emailTaken,
+    bool? phoneTaken,
+  }) {
+    if (emailTaken == true && phoneTaken != true) {
+      return 'Email ID already registered';
+    }
+    if (phoneTaken == true && emailTaken != true) {
+      return 'Mobile number already registered';
+    }
+    if (emailTaken == true && phoneTaken == true) {
+      return 'Email ID and mobile number are already registered';
+    }
+    final msg = (apiMessage ?? '').toLowerCase();
+    if (msg.contains('email') && msg.contains('phone')) {
+      return 'Email ID or mobile number already registered';
+    }
+    if (msg.contains('email')) return 'Email ID already registered';
+    if (msg.contains('phone') || msg.contains('mobile')) {
+      return 'Mobile number already registered';
+    }
+    return apiMessage?.trim().isNotEmpty == true
+        ? apiMessage!.trim()
+        : 'Email ID or mobile number already registered';
+  }
+
   static Future<Response> forgotPassword(String email) async {
     try {
       final normalized = email.trim().toLowerCase();
@@ -322,7 +472,15 @@ class ApiService {
           await MultipartFile.fromFile(file.path),
         ));
       }
-      return await _dio.post("events.php", data: formData, options: await _getAuthOptions());
+      final authOpts = await _getAuthOptions();
+      return await _dio.post(
+        "events.php",
+        data: formData,
+        options: Options(
+          headers: authOpts.headers,
+          contentType: Headers.multipartFormDataContentType,
+        ),
+      );
     } on DioException catch (e) {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
