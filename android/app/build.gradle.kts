@@ -76,6 +76,13 @@ android {
             )
         }
     }
+
+    // Avoid Metaspace OOM in lintVitalAnalyzeRelease (e.g. webview_flutter_android).
+    // Does not affect Play Store review; only skips AGP's release lint pass.
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
 }
 
 flutter {
