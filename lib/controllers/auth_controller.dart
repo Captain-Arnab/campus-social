@@ -484,7 +484,11 @@ class AuthController extends GetxController {
   Future<void> logout() async {
     // Invalidate any pending post-login "Welcome back" before navigation.
     _authSessionEpoch++;
-    isLoading.value = true;
+    // Never leave isLoading=true across logout → login. LoginView reuses this
+    // AuthController and binds the submit button to the same flag; AppNavigation
+    // already shows the "Logging out..." overlay.
+    isLoading.value = false;
+    isSendingLoginOtp.value = false;
 
     // Drop leftover snackbars / dialogs from the previous session.
     try {
@@ -526,6 +530,7 @@ class AuthController extends GetxController {
       await AppBootstrap.clearHomeControllers();
     } finally {
       isLoading.value = false;
+      isSendingLoginOtp.value = false;
     }
   }
 }

@@ -30,6 +30,15 @@ class _LoginViewState extends State<LoginView> {
   bool _isStudent = true;
   bool _loginByMobile = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Shared AuthController may still have loading=true from logout/register.
+    // Reset so the Login button never mounts stuck in a spinner.
+    controller.isLoading.value = false;
+    controller.isSendingLoginOtp.value = false;
+  }
+
   Future<void> _onLogin() async {
     if (!_validateLogin()) return;
     final id = identifierCtrl.text.trim();

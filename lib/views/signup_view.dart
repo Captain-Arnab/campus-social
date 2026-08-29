@@ -91,9 +91,15 @@ class _SignupViewState extends State<SignupView> {
   String? _serverEmailError;
   String? _serverPhoneError;
   String? _serverRollEmpError;
+  String? _confirmPasswordError;
 
   void _onFieldChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (_confirmPasswordError != null &&
+        passCtrl.text == confirmPassCtrl.text) {
+      _confirmPasswordError = null;
+    }
+    setState(() {});
   }
 
   void _clearServerFieldErrors() {
@@ -273,48 +279,60 @@ class _SignupViewState extends State<SignupView> {
     final email = emailCtrl.text.trim();
     final phone = phoneCtrl.text.trim();
 
+    // Capture dialog context so we can dismiss the spinner without popping
+    // a SweetAlert that may be shown after the check (same navigator stack).
+    BuildContext? loadingDialogContext;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: Color(0xFFFF5F15)),
-      ),
+      builder: (ctx) {
+        loadingDialogContext = ctx;
+        return const Center(
+          child: CircularProgressIndicator(color: Color(0xFFFF5F15)),
+        );
+      },
     );
 
+    ({bool? emailTaken, bool? phoneTaken, String? message})? result;
+    Object? error;
+
     try {
-      final result = await ApiService.checkRegistrationAvailability(
+      result = await ApiService.checkRegistrationAvailability(
         email: email,
         phone: phone,
       );
-
-      if (!mounted) return false;
-
-      if (result.emailTaken == true) {
-        SweetAlertHelper.showError(
-          context,
-          'Already registered',
-          'Email ID already registered',
-        );
-        return false;
-      }
-      if (result.phoneTaken == true) {
-        SweetAlertHelper.showError(
-          context,
-          'Already registered',
-          'Mobile number already registered',
-        );
-        return false;
-      }
-      return true;
     } catch (e) {
+      error = e;
       debugPrint('Contact availability check failed: $e');
-      // Network failure — allow proceed; final register will still catch duplicates.
-      return true;
     } finally {
-      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
-        Navigator.of(context, rootNavigator: true).pop();
+      final dialogCtx = loadingDialogContext;
+      if (dialogCtx != null && dialogCtx.mounted) {
+        Navigator.of(dialogCtx).pop();
       }
     }
+
+    if (!mounted) return false;
+
+    // Network failure — allow proceed; final register will still catch duplicates.
+    if (error != null || result == null) return true;
+
+    if (result.emailTaken == true) {
+      SweetAlertHelper.showError(
+        context,
+        'Already registered',
+        'Email ID already registered',
+      );
+      return false;
+    }
+    if (result.phoneTaken == true) {
+      SweetAlertHelper.showError(
+        context,
+        'Already registered',
+        'Mobile number already registered',
+      );
+      return false;
+    }
+    return true;
   }
 
   void _back() {
@@ -1089,6 +1107,7 @@ class _SignupViewState extends State<SignupView> {
         label: 'Confirm Password',
         prefixIcon: Icons.lock_outline,
         obscureText: _obscureConfirm,
+        errorText: _confirmPasswordError,
         suffixIcon: IconButton(
           icon: Icon(
             _obscureConfirm ? Icons.visibility_off : Icons.visibility,
@@ -1219,6 +1238,7 @@ class _SignupViewState extends State<SignupView> {
 
   bool _validateStep4() {
     if (passCtrl.text.isEmpty) {
+      setState(() => _confirmPasswordError = null);
       SweetAlertHelper.showError(
         context,
         'Required',
@@ -1227,6 +1247,7 @@ class _SignupViewState extends State<SignupView> {
       return false;
     }
     if (passCtrl.text.length < 6) {
+      setState(() => _confirmPasswordError = null);
       SweetAlertHelper.showError(
         context,
         'Weak',
@@ -1235,12 +1256,11 @@ class _SignupViewState extends State<SignupView> {
       return false;
     }
     if (passCtrl.text != confirmPassCtrl.text) {
-      SweetAlertHelper.showError(
-        context,
-        'Mismatch',
-        'Passwords do not match',
-      );
+      setState(() => _confirmPasswordError = 'Passwords do not match');
       return false;
+    }
+    if (_confirmPasswordError != null) {
+      setState(() => _confirmPasswordError = null);
     }
     if (!_agreeTerms) {
       SweetAlertHelper.showError(
