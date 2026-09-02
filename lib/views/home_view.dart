@@ -14,6 +14,8 @@ import '../services/deep_link_service.dart';
 import '../controllers/inbox_notification_controller.dart';
 import '../controllers/profile_controller.dart';
 import '../utils/certificate_helper.dart';
+import '../utils/registration_deadline_helper.dart';
+import '../utils/winner_feed_helper.dart';
 import 'create_event_view.dart';
 import 'event_detail_view.dart';
 import 'favorites_view.dart';
@@ -40,7 +42,6 @@ import '../widgets/app_calendar_theme.dart';
 import '../widgets/campus_app_bar.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../utils/event_participation_rules.dart';
-import '../utils/registration_deadline_helper.dart';
 
 /// Decode network posters at a capped pixel width for smoother lists/carousel (same on-screen layout).
 int _eventPosterCacheWidth(BuildContext context, double widthFraction) {
@@ -282,34 +283,11 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
 
   Future<void> _loadWinnerPhotos() async {
     try {
-      final r = await ApiService.getWinnerPhotos(limit: 20);
-      final m = ApiService.parseResponseBody(r.data) ??
-          ApiService.responseDataMap(r.data);
-      debugPrint(
-        '[Explore] winner_photos status=${m?['status']} '
-        'count=${m?['count']} dataType=${m?['data']?.runtimeType}',
-      );
-      if (m == null || m['status']?.toString() != 'success') {
-        if (mounted) setState(() => _winnerPhotos = []);
-        return;
-      }
-      // Accept common envelope shapes: data | photos | winners
-      final list = m['data'] ?? m['photos'] ?? m['winners'];
-      if (list is! List) {
-        if (mounted) setState(() => _winnerPhotos = []);
-        return;
-      }
-      final next = <Map<String, dynamic>>[];
-      for (final e in list) {
-        if (e is Map<String, dynamic>) {
-          next.add(e);
-        } else if (e is Map) {
-          next.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
-        }
-      }
+      final next = await WinnerFeedHelper.loadCarouselPhotos(limit: 20);
+      debugPrint('[Explore] winner carousel items=${next.length}');
       if (mounted) setState(() => _winnerPhotos = next);
     } catch (e, st) {
-      debugPrint('[Explore] winner_photos load failed: $e\n$st');
+      debugPrint('[Explore] winner carousel load failed: $e\n$st');
       if (mounted) setState(() => _winnerPhotos = []);
     }
   }
@@ -846,18 +824,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
             }(),
           ),
 
-          // Ads + winner photos — high on Explore (near top of feed)
-          if (_adPosts.isNotEmpty)
-            SliverToBoxAdapter(
-              child: ColoredBox(
-                color: AppColors.cream,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 8.h),
-                  child: HomeAdCarousel(posts: _adPosts),
-                ),
-              ),
-            ),
-
+          // Recent winners under Featured; announcements stay at bottom of Explore.
           SliverToBoxAdapter(
             child: ColoredBox(
               color: AppColors.cream,
@@ -1073,6 +1040,18 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 20.w),
                 child: SizedBox(height: 260.h, child: _buildEmptyState()),
+              ),
+            ),
+
+          // Announcements last (previous Explore order).
+          if (_adPosts.isNotEmpty)
+            SliverToBoxAdapter(
+              child: ColoredBox(
+                color: AppColors.cream,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
+                  child: HomeAdCarousel(posts: _adPosts),
+                ),
               ),
             ),
 
@@ -1672,49 +1651,91 @@ class _CertificatesTabState extends State<_CertificatesTab> {
 }
 
 // --- MY EVENTS TAB ---
-class _MyEventsTab extends StatelessWidget {
+class _MyEventsTab extends StatefulWidget {
   final int initialIndex;
   const _MyEventsTab({super.key, this.initialIndex = 0});
 
   @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
+  State<_MyEventsTab> createState() => _MyEventsTabState();
+}
+
+class _MyEventsTabState extends State<_MyEventsTab>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(
       length: 7,
-      initialIndex: initialIndex.clamp(0, 6),
-      child: const Scaffold(
-        backgroundColor: AppColors.cream,
-        appBar: CampusAppBar(
-          titleText: 'My Activity',
-          automaticallyImplyLeading: false,
-          bottom: TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.white,
-            indicatorWeight: 3,
-            labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-            isScrollable: true,
-            tabs: [
-              Tab(text: "Viewing"),
-              Tab(text: "Hosting"),
-              Tab(text: "I can edit"),
-              Tab(text: "Volunteering"),
-              Tab(text: "Participating"),
-              Tab(text: "Favorites"),
-              Tab(text: "Certificates"),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            _EventListWidget(type: 'attending'),
-            _EventListWidget(type: 'hosted'),
-            _EventListWidget(type: 'editing'),
-            _EventListWidget(type: 'volunteering'),
-            _EventListWidget(type: 'participating'),
-            FavoritesView(),
-            _CertificatesTab(),
+      vsync: this,
+      initialIndex: widget.initialIndex.clamp(0, 6),
+    );
+    // Prefetch all activity lists when opening My Activity (session is ready).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = AppBootstrap.ensureEventController();
+      unawaited(c.fetchAttendingEvents());
+      unawaited(c.fetchHostedEvents());
+      unawaited(c.fetchEditingEvents());
+      unawaited(c.fetchVolunteeringEvents());
+      unawaited(c.fetchParticipatingEvents());
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _MyEventsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialIndex != widget.initialIndex) {
+      final next = widget.initialIndex.clamp(0, 6);
+      if (_tabController.index != next) {
+        _tabController.animateTo(next);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.cream,
+      appBar: CampusAppBar(
+        titleText: 'My Activity',
+        automaticallyImplyLeading: false,
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: Colors.white,
+          indicatorWeight: 3,
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          isScrollable: true,
+          tabs: const [
+            Tab(text: "Viewing"),
+            Tab(text: "Hosting"),
+            Tab(text: "I can edit"),
+            Tab(text: "Volunteering"),
+            Tab(text: "Participating"),
+            Tab(text: "Favorites"),
+            Tab(text: "Certificates"),
           ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          _EventListWidget(type: 'attending'),
+          _EventListWidget(type: 'hosted'),
+          _EventListWidget(type: 'editing'),
+          _EventListWidget(type: 'volunteering'),
+          _EventListWidget(type: 'participating'),
+          FavoritesView(),
+          _CertificatesTab(),
+        ],
       ),
     );
   }

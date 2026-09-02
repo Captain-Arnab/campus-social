@@ -45,6 +45,11 @@ class AppBootstrap {
     String? sessionUserId,
     String? sessionName,
   }) async {
+    // Fresh EventController per session — avoids empty My Activity lists from a
+    // pre-login onInit (no user_id) or a previous account's cached RxLists.
+    if (Get.isRegistered<EventController>()) {
+      await Get.delete<EventController>(force: true);
+    }
     ensureEventController();
     // Always a fresh ProfileController — never reuse in-memory data across users.
     if (Get.isRegistered<ProfileController>()) {

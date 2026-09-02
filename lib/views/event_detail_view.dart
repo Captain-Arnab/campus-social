@@ -24,6 +24,8 @@ import '../widgets/app_loading_screen.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../utils/event_participation_rules.dart';
 import '../utils/registration_deadline_helper.dart';
+import '../utils/winner_display_helper.dart';
+import '../utils/winner_feed_helper.dart';
 import '../theme/app_theme.dart';
 
 List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
@@ -115,11 +117,20 @@ class _EventDetailViewState extends State<EventDetailView> {
         winners = List<dynamic>.from(full['winners'] as List);
       }
       final winRes = await ApiService.getWinnersByEventId(id);
-      if (mounted && winRes.data is Map && winRes.data['status'] == 'success') {
-        final data = winRes.data['data'];
+      final winBody = ApiService.parseResponseBody(winRes.data);
+      if (mounted &&
+          winBody != null &&
+          winBody['status']?.toString() == 'success') {
+        final data = winBody['data'];
         if (data is List && data.isNotEmpty) {
           winners = List<dynamic>.from(data);
         }
+      }
+      // Attach profile photos for winner avatars
+      if (winners.isNotEmpty) {
+        try {
+          winners = await WinnerFeedHelper.enrichWinnersWithProfiles(winners);
+        } catch (_) {}
       }
       if (mounted) setState(() => _winnersList = winners);
     }
@@ -1205,7 +1216,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                       final pos = posRaw is int
                           ? posRaw
                           : int.tryParse(posRaw?.toString() ?? '') ?? 0;
-                      final name = (w is Map ? w['full_name'] : null)?.toString() ?? '—';
+                      final name = winnerDisplayName(w);
                       return Padding(
                         padding: EdgeInsets.only(bottom: 8.h),
                         child: Container(
@@ -1217,7 +1228,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                           ),
                           child: Row(
                             children: [
-                              _DetailRankBadge(position: pos),
+                              WinnerAvatar(winner: w, position: pos, size: 48),
                               SizedBox(width: 12.w),
                               Expanded(
                                 child: Text(
@@ -1231,6 +1242,23 @@ class _EventDetailViewState extends State<EventDetailView> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              if (pos > 0)
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                                  decoration: BoxDecoration(
+                                    color: (pos == 1 ? AppColors.gold : AppColors.surfaceMuted)
+                                        .withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '#$pos',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12.sp,
+                                      color: pos == 1 ? AppColors.gold : AppColors.navyMuted,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -2001,105 +2029,6 @@ class _EventDetailViewState extends State<EventDetailView> {
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailRankBadge extends StatelessWidget {
-  final int position;
-
-  const _DetailRankBadge({required this.position});
-
-  static const _gold = Color(0xFFFFD700);
-  static const _silver = Color(0xFFC0C0C0);
-  static const _bronze = Color(0xFFCD7F32);
-
-  @override
-  Widget build(BuildContext context) {
-    final Color bg;
-    final Color fg;
-    final bool isMedal;
-    switch (position) {
-      case 1:
-        bg = _gold;
-        fg = Colors.white;
-        isMedal = true;
-        break;
-      case 2:
-        bg = _silver;
-        fg = const Color(0xFF2F2F2F);
-        isMedal = true;
-        break;
-      case 3:
-        bg = _bronze;
-        fg = Colors.white;
-        isMedal = true;
-        break;
-      default:
-        bg = AppColors.surfaceMuted;
-        fg = AppColors.navyMuted;
-        isMedal = false;
-    }
-
-    return Container(
-      width: 30.w,
-      height: 30.w,
-      decoration: BoxDecoration(
-        gradient: isMedal
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color.lerp(bg, Colors.white, 0.28)!,
-                  bg,
-                  Color.lerp(bg, Colors.black, 0.12)!,
-                ],
-              )
-            : null,
-        color: isMedal ? null : bg,
-        shape: BoxShape.circle,
-        boxShadow: isMedal
-            ? [
-                BoxShadow(
-                  color: bg.withValues(alpha: 0.4),
-                  blurRadius: 5,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-        border: Border.all(
-          color: isMedal
-              ? Colors.white.withValues(alpha: 0.65)
-              : AppColors.border,
-          width: isMedal ? 1.5 : 1,
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (position == 1)
-            Positioned(
-              top: 2.h,
-              child: Icon(
-                Icons.star_rounded,
-                size: 8.w,
-                color: Colors.white.withValues(alpha: 0.95),
-              ),
-            ),
-          Padding(
-            padding: EdgeInsets.only(top: position == 1 ? 4.h : 0),
-            child: Text(
-              '$position',
-              style: TextStyle(
-                fontSize: position == 1 ? 11.sp : 12.sp,
-                fontWeight: FontWeight.w800,
-                color: fg,
-                height: 1,
-              ),
             ),
           ),
         ],

@@ -163,19 +163,15 @@ class EventController extends GetxController {
         debugPrint("✗ User ID not found for attending events");
         return;
       }
-      
+
       final response = await ApiService.getAttendingEvents();
-      if (response.data['status'] == 'success') {
-        final data = response.data['data'] as List?;
-        if (data != null) {
-          attendingList.value = data;
-          debugPrint("✓ Loaded ${data.length} attending events for user $userId");
-        } else {
-          attendingList.value = [];
-          debugPrint("✓ No attending events found");
-        }
+      final body = ApiService.parseResponseBody(response.data);
+      if (body != null && body['status']?.toString() == 'success') {
+        final data = body['data'];
+        attendingList.value = data is List ? List<dynamic>.from(data) : [];
+        debugPrint("✓ Loaded ${attendingList.length} attending events for user $userId");
       } else {
-        debugPrint("✗ API returned error: ${response.data['message']}");
+        debugPrint("✗ Attending API error: ${body?['message']}");
       }
     } catch (e) {
       debugPrint("✗ Attending fetch error: $e");
@@ -190,25 +186,22 @@ class EventController extends GetxController {
         debugPrint("✗ User ID not found for volunteering events");
         return;
       }
-      
+
       final response = await ApiService.getVolunteeringEvents();
-      if (response.data['status'] == 'success') {
-        final data = response.data['data'] as List?;
-        if (data != null) {
-          volunteeringList.value = data;
-          debugPrint("✓ Loaded ${data.length} volunteering events for user $userId");
-        } else {
-          volunteeringList.value = [];
-          debugPrint("✓ No volunteering events found");
-        }
+      final body = ApiService.parseResponseBody(response.data);
+      if (body != null && body['status']?.toString() == 'success') {
+        final data = body['data'];
+        volunteeringList.value = data is List ? List<dynamic>.from(data) : [];
+        debugPrint("✓ Loaded ${volunteeringList.length} volunteering events for user $userId");
       } else {
-        debugPrint("✗ API returned error: ${response.data['message']}");
+        debugPrint("✗ Volunteering API error: ${body?['message']}");
       }
     } catch (e) {
       debugPrint("✗ Volunteering fetch error: $e");
       volunteeringList.value = [];
     }
   }
+
   Future<void> fetchParticipatingEvents() async {
     try {
       String? userId = await PrefService.getUserId();
@@ -216,19 +209,15 @@ class EventController extends GetxController {
         debugPrint("✗ User ID not found for participating events");
         return;
       }
-      
+
       final response = await ApiService.getParticipatingEvents();
-      if (response.data['status'] == 'success') {
-        final data = response.data['data'] as List?;
-        if (data != null) {
-          participatingList.value = data;
-          debugPrint("✓ Loaded ${data.length} participating events for user $userId");
-        } else {
-          participatingList.value = [];
-          debugPrint("✓ No participating events found");
-        }
+      final body = ApiService.parseResponseBody(response.data);
+      if (body != null && body['status']?.toString() == 'success') {
+        final data = body['data'];
+        participatingList.value = data is List ? List<dynamic>.from(data) : [];
+        debugPrint("✓ Loaded ${participatingList.length} participating events for user $userId");
       } else {
-        debugPrint("✗ API returned error: ${response.data['message']}");
+        debugPrint("✗ Participating API error: ${body?['message']}");
       }
     } catch (e) {
       debugPrint("✗ Participating fetch error: $e");
@@ -460,20 +449,15 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       debugPrint("✗ User ID not found for hosted events");
       return;
     }
-    
+
     final response = await ApiService.getHostedEvents();
-    if (response.data['status'] == 'success') {
-      final data = response.data['data'] as List?;
-      if (data != null) {
-        hostedList.value = data;
-        debugPrint("✓ Loaded ${data.length} hosted events for user $userId");
-        debugPrint("✓ FULL DATA: $data");
-      } else {
-        hostedList.value = [];
-        debugPrint("✓ No hosted events found");
-      }
+    final body = ApiService.parseResponseBody(response.data);
+    if (body != null && body['status']?.toString() == 'success') {
+      final data = body['data'];
+      hostedList.value = data is List ? List<dynamic>.from(data) : [];
+      debugPrint("✓ Loaded ${hostedList.length} hosted events for user $userId");
     } else {
-      debugPrint("✗ API returned error: ${response.data['message']}");
+      debugPrint("✗ Hosted API error: ${body?['message']}");
     }
   } catch (e) {
     debugPrint("✗ Hosted fetch error: $e");

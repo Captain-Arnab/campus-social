@@ -509,6 +509,27 @@ class ApiService {
     }
   }
 
+  /// Closed events (`status=closed`) for winners carousel / winners list.
+  static Future<Response> getClosedEvents() async {
+    try {
+      final response = await _dio.get(
+        'events.php',
+        queryParameters: const {'type': 'closed'},
+      );
+      _rememberServerTime(response);
+      return response;
+    } on DioException catch (e) {
+      final fallback = e.response;
+      if (fallback != null) _rememberServerTime(fallback);
+      return fallback ??
+          Response(
+            requestOptions: RequestOptions(path: 'events.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
   static Future<Response> createEvent(Map<String, dynamic> data, List<File> images) async {
     try {
       final payload = Map<String, dynamic>.from(data);
@@ -725,6 +746,7 @@ class ApiService {
         "user_id": userId, 
         "type": "attending"
       }, options: await _getAuthOptions());
+      _rememberServerTime(response);
       debugPrint("🔵 getAttendingEvents response: ${response.data}");
       return response;
     } on DioException catch (e) {
@@ -751,6 +773,7 @@ class ApiService {
         "user_id": userId, 
         "type": "volunteering"
       }, options: await _getAuthOptions());
+      _rememberServerTime(response);
       debugPrint("🔵 getVolunteeringEvents response: ${response.data}");
       return response;
     } on DioException catch (e) {
@@ -1004,6 +1027,7 @@ class ApiService {
         "user_id": userId, 
         "type": "participating"
       }, options: await _getAuthOptions());
+      _rememberServerTime(response);
       debugPrint("🔵 getParticipatingEvents response: ${response.data}");
       return response;
     } on DioException catch (e) {

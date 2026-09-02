@@ -742,16 +742,20 @@ class CreateEventViewState extends State<CreateEventView> {
     );
   }
 
-  Widget _buildEmptyBanner() => Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.image_outlined, size: 40, color: Colors.grey[400]),
-          SizedBox(height: 8.h),
-          Text(
-            'No banner selected',
-            style: TextStyle(color: Colors.grey[500], fontSize: 14.sp),
+  Widget _buildEmptyBanner() => SizedBox.expand(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.image_outlined, size: 40, color: Colors.grey[400]),
+              SizedBox(height: 8.h),
+              Text(
+                'No banner selected',
+                style: TextStyle(color: Colors.grey[500], fontSize: 14.sp),
+              ),
+            ],
           ),
-        ],
+        ),
       );
 
   Widget _dateTimeChip({
