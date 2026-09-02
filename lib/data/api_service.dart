@@ -24,6 +24,23 @@ class ApiService {
     ),
   );
 
+  /// Last server clock from API `server_time` (ISO 8601 with offset).
+  static DateTime? lastServerTime;
+
+  /// Reads top-level `server_time` from a response body and stores [lastServerTime].
+  static void rememberServerTimeFromBody(dynamic data) {
+    final map = parseResponseBody(data);
+    if (map == null) return;
+    final raw = map['server_time']?.toString().trim() ?? '';
+    if (raw.isEmpty || raw == 'null') return;
+    final t = DateTime.tryParse(raw);
+    if (t != null) lastServerTime = t;
+  }
+
+  static void _rememberServerTime(Response r) {
+    rememberServerTimeFromBody(r.data);
+  }
+
   static Future<Options> _getAuthOptions() async {
     final token = await PrefService.getToken();
     if (token == null || token.isEmpty) {
@@ -232,23 +249,7 @@ class ApiService {
     final normalizedEmail = email.trim().toLowerCase();
     final normalizedPhone = phone.trim();
 
-    // Email: reuse forgot_password check_email
-    // success → email exists; error "Email not registered" → available
-    try {
-      final emailRes = await forgotPassword(normalizedEmail);
-      final emailData = parseResponseBody(emailRes.data);
-      if (emailData != null) {
-        final status = emailData['status']?.toString();
-        final msg = emailData['message']?.toString().toLowerCase() ?? '';
-        if (status == 'success' || msg.contains('email found')) {
-          emailTaken = true;
-        } else if (msg.contains('not registered') || msg.contains('not found')) {
-          emailTaken = false;
-        }
-      }
-    } catch (_) {}
-
-    // Phone (+ optional combined): users.php?action=check_availability
+    // Email + phone: users.php?action=check_availability
     // Expected (when backend supports it):
     // { status, email_exists, phone_exists } or message / field
     try {
@@ -340,35 +341,72 @@ class ApiService {
         : 'Email ID or mobile number already registered';
   }
 
-  static Future<Response> forgotPassword(String email) async {
+  /// Step 1 — request OTP for password reset via identifier
+  /// (roll number / employee ID / email / mobile).
+  static Future<Response> requestForgotPasswordOtp(String identifier) async {
     try {
-      final normalized = email.trim().toLowerCase();
-      return await _dio.post("forgot_password.php", 
-        queryParameters: {"action": "check_email"},
-        data: {"email": normalized}
+      return await _dio.post(
+        Constant.forgotPasswordEndpoint,
+        queryParameters: const {'action': 'request_otp'},
+        data: {'identifier': identifier.trim()},
       );
     } on DioException catch (e) {
-      return e.response ?? Response(
-        requestOptions: RequestOptions(path: 'forgot_password.php'),
-        statusCode: 0,
-        data: _networkErrorBody(e),
-      );
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: Constant.forgotPasswordEndpoint),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
     }
   }
 
-  static Future<Response> resetPassword(String email, String newPassword) async {
+  /// Step 2 — verify OTP; returns `reset_token` on success.
+  static Future<Response> verifyForgotPasswordOtp({
+    required String identifier,
+    required String otp,
+  }) async {
     try {
-      final normalized = email.trim().toLowerCase();
-      return await _dio.post("forgot_password.php",
-        queryParameters: {"action": "reset"},
-        data: {"email": normalized, "password": newPassword}
+      return await _dio.post(
+        Constant.forgotPasswordEndpoint,
+        queryParameters: const {'action': 'verify_otp'},
+        data: {
+          'identifier': identifier.trim(),
+          'otp': otp.trim(),
+        },
       );
     } on DioException catch (e) {
-      return e.response ?? Response(
-        requestOptions: RequestOptions(path: 'forgot_password.php'),
-        statusCode: 0,
-        data: _networkErrorBody(e),
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: Constant.forgotPasswordEndpoint),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Step 3 — set new password with reset token from verify_otp.
+  static Future<Response> resetPasswordWithToken({
+    required String resetToken,
+    required String password,
+    required String passwordConfirm,
+  }) async {
+    try {
+      return await _dio.post(
+        Constant.forgotPasswordEndpoint,
+        queryParameters: const {'action': 'reset'},
+        data: {
+          'reset_token': resetToken,
+          'password': password,
+          'password_confirm': passwordConfirm,
+        },
       );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: Constant.forgotPasswordEndpoint),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
     }
   }
 
@@ -414,15 +452,19 @@ class ApiService {
       Map<String, dynamic> queryParams = {"type": "live"};
       if (search != null) queryParams['search'] = search;
       if (category != null) queryParams['category'] = category;
-      return await _dio.get(
+      final response = await _dio.get(
         "events.php",
         queryParameters: queryParams,
         cancelToken: cancelToken,
         options: Options(receiveTimeout: const Duration(seconds: 20), sendTimeout: const Duration(seconds: 15)),
       );
+      _rememberServerTime(response);
+      return response;
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) rethrow;
-      return e.response ?? Response(
+      final fallback = e.response;
+      if (fallback != null) _rememberServerTime(fallback);
+      return fallback ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
         data: _networkErrorBody(e),
@@ -433,9 +475,13 @@ class ApiService {
   /// GET single event by id (includes editor_ids, pending_edit, winners, volunteer_list, participant_list)
   static Future<Response> getEventById(int eventId) async {
     try {
-      return await _dio.get("events.php", queryParameters: {"id": eventId});
+      final response = await _dio.get("events.php", queryParameters: {"id": eventId});
+      _rememberServerTime(response);
+      return response;
     } on DioException catch (e) {
-      return e.response ?? Response(
+      final fallback = e.response;
+      if (fallback != null) _rememberServerTime(fallback);
+      return fallback ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
         data: _networkErrorBody(e),
@@ -449,9 +495,13 @@ class ApiService {
       Map<String, dynamic> queryParams = {"type": "past"};
       if (search != null) queryParams['search'] = search;
       if (category != null) queryParams['category'] = category;
-      return await _dio.get("events.php", queryParameters: queryParams);
+      final response = await _dio.get("events.php", queryParameters: queryParams);
+      _rememberServerTime(response);
+      return response;
     } on DioException catch (e) {
-      return e.response ?? Response(
+      final fallback = e.response;
+      if (fallback != null) _rememberServerTime(fallback);
+      return fallback ?? Response(
         requestOptions: RequestOptions(path: 'events.php'),
         statusCode: 0,
         data: _networkErrorBody(e),
@@ -573,13 +623,91 @@ class ApiService {
   static Future<Response> joinEvent(String eventId) async {
     try {
       String? userId = await PrefService.getUserId();
-      return await _dio.post("attend.php", data: {"user_id": userId, "event_id": eventId}, options: await _getAuthOptions());
+      final response = await _dio.post(
+        "attend.php",
+        data: {"user_id": userId, "event_id": eventId},
+        options: await _getAuthOptions(),
+      );
+      _rememberServerTime(response);
+      return response;
     } on DioException catch (e) {
       return e.response ?? Response(
         requestOptions: RequestOptions(path: 'attend.php'),
         statusCode: 0,
         data: _networkErrorBody(e),
       );
+    }
+  }
+
+  /// Leave attendee / viewer role for an event.
+  static Future<Response> leaveEvent(String eventId) async {
+    try {
+      String? userId = await PrefService.getUserId();
+      final response = await _dio.post(
+        Constant.attendEndpoint,
+        queryParameters: const {'action': 'leave'},
+        data: {'event_id': eventId, 'user_id': userId},
+        options: await _getAuthOptions(),
+      );
+      _rememberServerTime(response);
+      return response;
+    } on DioException catch (e) {
+      final fallback = e.response;
+      if (fallback != null) _rememberServerTime(fallback);
+      return fallback ??
+          Response(
+            requestOptions: RequestOptions(path: Constant.attendEndpoint),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Leave volunteer role for an event.
+  static Future<Response> leaveVolunteer(String eventId) async {
+    try {
+      String? userId = await PrefService.getUserId();
+      final response = await _dio.post(
+        Constant.volunteersEndpoint,
+        queryParameters: const {'action': 'leave'},
+        data: {'event_id': eventId, 'user_id': userId},
+        options: await _getAuthOptions(),
+      );
+      _rememberServerTime(response);
+      return response;
+    } on DioException catch (e) {
+      final fallback = e.response;
+      if (fallback != null) _rememberServerTime(fallback);
+      return fallback ??
+          Response(
+            requestOptions: RequestOptions(path: Constant.volunteersEndpoint),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Leave participant role for an event.
+  static Future<Response> leaveParticipant(String eventId) async {
+    try {
+      String? userId = await PrefService.getUserId();
+      final response = await _dio.post(
+        'participant.php',
+        queryParameters: const {'action': 'leave'},
+        data: {'event_id': eventId, 'user_id': userId},
+        options: await _getAuthOptions(),
+      );
+      _rememberServerTime(response);
+      return response;
+    } on DioException catch (e) {
+      final fallback = e.response;
+      if (fallback != null) _rememberServerTime(fallback);
+      return fallback ??
+          Response(
+            requestOptions: RequestOptions(path: 'participant.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
     }
   }
 
@@ -1309,6 +1437,110 @@ class ApiService {
       return e.response ??
           Response(
             requestOptions: RequestOptions(path: 'event_organizer.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Meeting minutes — submit text + optional attachment.
+  static Future<Response> submitMeetingMinutes({
+    required int eventId,
+    required String content,
+    File? attachment,
+  }) async {
+    try {
+      final auth = await _getAuthOptions();
+      final opts = Options(
+        headers: auth.headers,
+        validateStatus: (s) => s != null && s < 600,
+      );
+      final map = <String, dynamic>{
+        'action': 'submit',
+        'event_id': eventId.toString(),
+        'content': content,
+      };
+      final form = FormData.fromMap(map);
+      if (attachment != null && await attachment.exists()) {
+        form.files.add(
+          MapEntry(
+            'attachment',
+            await MultipartFile.fromFile(
+              attachment.path,
+              filename: p.basename(attachment.path),
+            ),
+          ),
+        );
+      }
+      return await _dio.post(
+        'meeting_minutes.php',
+        data: form,
+        options: opts,
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'meeting_minutes.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Meeting minutes — fetch current minutes + status for an event.
+  static Future<Response> getMeetingMinutes(int eventId) async {
+    try {
+      final auth = await _getAuthOptions();
+      return await _dio.get(
+        'meeting_minutes.php',
+        queryParameters: {
+          'action': 'get',
+          'event_id': eventId.toString(),
+        },
+        options: auth,
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'meeting_minutes.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Organizer closes a past event.
+  static Future<Response> closeEvent({
+    required int eventId,
+    required int organizerId,
+  }) async {
+    try {
+      return await eventOrganiserAction({
+        'action': 'close',
+        'event_id': eventId,
+        'organizer_id': organizerId,
+      });
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'event_organizer.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Winner photos carousel (closed events).
+  static Future<Response> getWinnerPhotos({int limit = 20}) async {
+    try {
+      return await _dio.get(
+        'winner_photos.php',
+        queryParameters: {'limit': limit},
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'winner_photos.php'),
             statusCode: 0,
             data: _networkErrorBody(e),
           );

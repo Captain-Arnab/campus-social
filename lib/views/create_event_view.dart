@@ -129,6 +129,92 @@ class CreateEventViewState extends State<CreateEventView> {
   }
 
   Future<void> _openPosterDesigner() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 24.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40.w,
+                    height: 4.h,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                Text(
+                  'Event poster',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.navy,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 6.h),
+                Text(
+                  'Use a design template or upload your own poster '
+                  '(≤5MB, ≤1080×1920 px).',
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    color: AppColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 20.h),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, 'template'),
+                  icon: const Icon(Icons.palette_outlined),
+                  label: const Text('Use Template'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_fieldRadius),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, 'upload'),
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Upload Own'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side: const BorderSide(color: AppColors.accent),
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_fieldRadius),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || choice == null) return;
+
+    if (choice == 'upload') {
+      await _pickFromGallery();
+      return;
+    }
+
     final result = await Get.to(() => const TemplateGalleryView());
 
     if (!mounted || result == null) return;
@@ -449,41 +535,22 @@ class CreateEventViewState extends State<CreateEventView> {
             children: [
               _sectionHeader('Event Banner', Icons.image_outlined),
               SizedBox(height: 12.h),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _openPosterDesigner,
-                      icon: const Icon(Icons.palette_outlined),
-                      label: const Text('Design Poster'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFFF5F15),
-                        side: const BorderSide(color: Color(0xFFFF5F15)),
-                        padding: EdgeInsets.symmetric(vertical: 14.h),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(_fieldRadius),
-                        ),
-                      ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _openPosterDesigner,
+                  icon: const Icon(Icons.image_outlined),
+                  label: const Text('Add Poster'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_fieldRadius),
                     ),
                   ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _pickFromGallery,
-                      icon: const Icon(Icons.upload_file),
-                      label: const Text('Upload Own'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey[200],
-                        foregroundColor: Colors.black87,
-                        elevation: 0,
-                        padding: EdgeInsets.symmetric(vertical: 14.h),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(_fieldRadius),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
               SizedBox(height: 16.h),
               Container(
@@ -511,7 +578,7 @@ class CreateEventViewState extends State<CreateEventView> {
                           : (_existingBannerName != null && !_removeExistingBanner)
                               ? AppNetworkImage(
                                   url:
-                                      'https://micampus.co.in/admin/uploads/events/$_existingBannerName',
+                                      '${Constant.uploadsBaseUrl}events/$_existingBannerName',
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   height: double.infinity,

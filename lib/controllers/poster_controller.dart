@@ -21,9 +21,9 @@ class PosterController extends GetxController {
   var venue = "Campus Venue, Main Hall".obs;
   var dateStr = "DATE".obs;
   var timeStr = "TIME".obs;
-  /// Start / end clock for graduation & tech posters (paired with poster start/end dates).
-  var hostSlotStart = "9:00 AM".obs;
-  var hostSlotEnd = "5:00 PM".obs;
+  /// Shared start / end clock for all poster templates (paired with poster start/end dates).
+  var slotStart = "9:00 AM".obs;
+  var slotEnd = "5:00 PM".obs;
   var description = "Join us for an amazing event!".obs;
   
   // Tech template specific fields
@@ -34,27 +34,18 @@ class PosterController extends GetxController {
   static int get kTechTaglineMaxLength => kDefaultTechTagline.length;
   var techTagline = kDefaultTechTagline.obs;
 
-  // English template specific fields
-  var titleEnglish = "Online Course".obs;
+  // Spoken English template specific fields
+  var titleEnglish = "ONLINE COURSE".obs;
   var subtitle = "Spoken English".obs;
   /// Event / course run dates on all poster templates (end optional).
   var posterStartDate = Rx<DateTime?>(null);
   var posterEndDate = Rx<DateTime?>(null);
-  var startTime = "8 AM".obs;
-  var endTime = "2 PM".obs;
   var phoneNumber = "800 829 5550 / 51".obs;
   var coursePoints = <String>[].obs;
 
-  // Music Festival specific fields
-  var location = "Handover and Tyke Stadium".obs;
-  var startTimings = "10 AM".obs;
-  var endTimings = "10 PM".obs;
-
-  // Basketball specific fields
+  // Basketball specific fields (extended venue pair)
   var stadiumName = "Brocelle Stadium".obs;
   var address = "123 Anywhere St, Any City".obs;
-  var basketballStartTime = "2 PM".obs;
-  var basketballEndTime = "5 PM".obs;
 
   // Images
   Rx<File?> selectedImage = Rx<File?>(null);
@@ -80,8 +71,8 @@ class PosterController extends GetxController {
     description.value = "Class of 2025";
     dateStr.value = "DATE";
     timeStr.value = "TIME";
-    hostSlotStart.value = "9:00 AM";
-    hostSlotEnd.value = "5:00 PM";
+    slotStart.value = "9:00 AM";
+    slotEnd.value = "5:00 PM";
     venue.value = "Campus Venue, Main Hall";
     _initPosterDates();
   }
@@ -89,10 +80,9 @@ class PosterController extends GetxController {
   // --- LOAD SAMPLE IMAGES FOR GRADUATION THEME ---
   Future<void> loadGraduationSampleImages() async {
     try {
-      final logo = await assetToFile('assets/images/guru_nanak_logo.png');
-      final bgImage = await assetToFile('assets/images/basketball/element2.png');
+      // Logo left blank by default (user uploads their own).
+      final bgImage = await assetToFile('assets/images/graduation/element2.png');
       
-      if (logo != null) logoImage.value = logo;
       if (bgImage != null) selectedImage.value = bgImage;
       
       debugPrint("Graduation sample images loaded successfully");
@@ -104,14 +94,14 @@ class PosterController extends GetxController {
   // --- INITIALIZE SAMPLE DATA FOR TECH THEME ---
   void initializeTechData() {
     title.value = "Innovation & Technology";
-    description.value = "Guru Nanak University session of Innovation & Technology";
+    description.value = "Join us for an innovation session";
     techTagline.value = kDefaultTechTagline;
     trainerName.value = "Ram Sett";
     mode.value = "Online";
     dateStr.value = "DATE";
     timeStr.value = "TIME";
-    hostSlotStart.value = "9:00 AM";
-    hostSlotEnd.value = "5:00 PM";
+    slotStart.value = "9:00 AM";
+    slotEnd.value = "5:00 PM";
     venue.value = "Campus Venue, Main Hall";
     _initPosterDates();
   }
@@ -119,11 +109,10 @@ class PosterController extends GetxController {
   // --- LOAD SAMPLE IMAGES FOR TECH THEME ---
   Future<void> loadTechSampleImages() async {
     try {
-      final logo = await assetToFile('assets/images/guru_nanak_logo.png');
+      // Logo left blank by default (user uploads their own).
       final robotImage = await assetToFile('assets/images/innovation/robot.png');
       final trainerPhoto = await assetToFile('assets/images/online_course/element.png');
       
-      if (logo != null) logoImage.value = logo;
       if (robotImage != null) selectedImage.value = robotImage;
       if (trainerPhoto != null) trainerImage.value = trainerPhoto;
       
@@ -133,7 +122,7 @@ class PosterController extends GetxController {
     }
   }
 
-  // --- INITIALIZE SAMPLE DATA FOR ENGLISH THEME ---
+  // --- INITIALIZE SAMPLE DATA FOR SPOKEN ENGLISH THEME ---
   void initializeSampleEnglishData() {
     // Set sample course points
     coursePoints.value = [
@@ -143,12 +132,13 @@ class PosterController extends GetxController {
       "Speaking Course",
     ];
     
-    // Set other English theme defaults
+    // Layout banner title stays ONLINE COURSE; gallery name is Spoken English.
     titleEnglish.value = "ONLINE COURSE";
     subtitle.value = "Spoken English";
+    venue.value = "Campus Venue, Main Hall";
     _initPosterDates();
-    startTime.value = "08 AM";
-    endTime.value = "2 PM";
+    slotStart.value = "08 AM";
+    slotEnd.value = "2 PM";
     phoneNumber.value = "800 829 5550 / 51";
   }
 
@@ -172,9 +162,9 @@ class PosterController extends GetxController {
     title.value = "Music Festival";
     // Caps match poster editor (music description max 30 chars).
     description.value = "Live music, food & friends!";
-    location.value = "Handover and Tyke Stadium";
-    startTimings.value = "10 AM";
-    endTimings.value = "10 PM";
+    venue.value = "Handover and Tyke Stadium";
+    slotStart.value = "10 AM";
+    slotEnd.value = "10 PM";
     dateStr.value = "DATE";
     _initPosterDates();
   }
@@ -197,12 +187,13 @@ class PosterController extends GetxController {
   // --- INITIALIZE SAMPLE DATA FOR BASKETBALL THEME ---
   void initializeBasketballData() {
     title.value = "Basketball Tournament";
+    description.value = "Join us for an exciting match";
     stadiumName.value = "Brocelle Stadium";
     // Max 26 chars for address line on basketball poster.
     address.value = "123 Anywhere St, Any City";
     dateStr.value = "DATE";
-    basketballStartTime.value = "2 PM";
-    basketballEndTime.value = "5 PM";
+    slotStart.value = "2 PM";
+    slotEnd.value = "5 PM";
     _initPosterDates();
   }
 
@@ -274,8 +265,8 @@ class PosterController extends GetxController {
 
   /// `start — end` clock labels for graduation / tech footers.
   String posterHostTimeRangeLabel() {
-    final a = hostSlotStart.value.trim();
-    final b = hostSlotEnd.value.trim();
+    final a = slotStart.value.trim();
+    final b = slotEnd.value.trim();
     if (a.isEmpty && b.isEmpty) return "TIME";
     if (b.isEmpty || a == b) return a.isEmpty ? b : a;
     return "$a — $b";
@@ -284,8 +275,8 @@ class PosterController extends GetxController {
   /// Date line + explicit **From:** / **To:** times for graduation & tech posters (uppercase for card).
   String posterHostDateTimeBlockUppercase() {
     final dateLine = posterDateRangeLine();
-    final a = hostSlotStart.value.trim();
-    final b = hostSlotEnd.value.trim();
+    final a = slotStart.value.trim();
+    final b = slotEnd.value.trim();
     final fromT = a.isEmpty ? '—' : a;
     final toT = b.isEmpty ? '—' : b;
     return '${dateLine.toUpperCase()}\nFROM: ${fromT.toUpperCase()}\nTO: ${toT.toUpperCase()}';
@@ -330,34 +321,42 @@ class PosterController extends GetxController {
     return DateTime(s.year, s.month, s.day) != DateTime(e.year, e.month, e.day);
   }
 
-  Future<void> pickHostSlotStart(BuildContext context) async {
+  /// Shared slot start picker. [compactHour] formats as `"2 PM"` (basketball-style).
+  Future<void> pickSlotStart(BuildContext context, {bool compactHour = false}) async {
     TimeOfDay? picked = await showTimePicker(
       context: context,
-      initialTime: _parseLooseTime(hostSlotStart.value) ?? const TimeOfDay(hour: 9, minute: 0),
+      initialTime: _parseLooseTime(slotStart.value) ?? const TimeOfDay(hour: 9, minute: 0),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFFFF5F15))),
         child: child!,
       ),
     );
     if (picked != null && context.mounted) {
-      hostSlotStart.value = picked.format(context);
+      slotStart.value = compactHour ? _formatCompactHour(picked) : picked.format(context);
       timeStr.value = posterHostTimeRangeLabel();
     }
   }
 
-  Future<void> pickHostSlotEnd(BuildContext context) async {
+  /// Shared slot end picker. [compactHour] formats as `"5 PM"` (basketball-style).
+  Future<void> pickSlotEnd(BuildContext context, {bool compactHour = false}) async {
     TimeOfDay? picked = await showTimePicker(
       context: context,
-      initialTime: _parseLooseTime(hostSlotEnd.value) ?? const TimeOfDay(hour: 17, minute: 0),
+      initialTime: _parseLooseTime(slotEnd.value) ?? const TimeOfDay(hour: 17, minute: 0),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFFFF5F15))),
         child: child!,
       ),
     );
     if (picked != null && context.mounted) {
-      hostSlotEnd.value = picked.format(context);
+      slotEnd.value = compactHour ? _formatCompactHour(picked) : picked.format(context);
       timeStr.value = posterHostTimeRangeLabel();
     }
+  }
+
+  String _formatCompactHour(TimeOfDay picked) {
+    final hour = picked.hourOfPeriod == 0 ? 12 : picked.hourOfPeriod;
+    final period = picked.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour $period';
   }
 
   /// Used by poster editor validation (same rules as event ISO prefill).
@@ -563,78 +562,6 @@ class PosterController extends GetxController {
     );
     if (picked != null && context.mounted) {
       timeStr.value = picked.format(context);
-    }
-  }
-
-  // --- BASKETBALL START TIME PICKER ---
-  Future<void> pickBasketballStartTime(BuildContext context) async {
-    TimeOfDay? picked = await showTimePicker(
-      context: context, 
-      initialTime: TimeOfDay.now(),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: Color(0xFFFF6B35))
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) {
-      final hour = picked.hourOfPeriod == 0 ? 12 : picked.hourOfPeriod;
-      final period = picked.period == DayPeriod.am ? 'AM' : 'PM';
-      basketballStartTime.value = '$hour $period';
-    }
-  }
-
-  // --- BASKETBALL END TIME PICKER ---
-  Future<void> pickBasketballEndTime(BuildContext context) async {
-    TimeOfDay? picked = await showTimePicker(
-      context: context, 
-      initialTime: TimeOfDay.now(),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: Color(0xFFFF6B35))
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) {
-      final hour = picked.hourOfPeriod == 0 ? 12 : picked.hourOfPeriod;
-      final period = picked.period == DayPeriod.am ? 'AM' : 'PM';
-      basketballEndTime.value = '$hour $period';
-    }
-  }
-
-  // --- START TIME PICKER ---
-  Future<void> pickStartTime(BuildContext context) async {
-    TimeOfDay? picked = await showTimePicker(
-      context: context, 
-      initialTime: TimeOfDay.now(),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: Color(0xFFFF5F15))
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null && context.mounted) {
-      startTimings.value = picked.format(context);
-    }
-  }
-
-  // --- END TIME PICKER ---
-  Future<void> pickEndTime(BuildContext context) async {
-    TimeOfDay? picked = await showTimePicker(
-      context: context, 
-      initialTime: TimeOfDay.now(),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: Color(0xFFFF5F15))
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null && context.mounted) {
-      endTimings.value = picked.format(context);
     }
   }
 

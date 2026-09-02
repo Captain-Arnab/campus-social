@@ -10,6 +10,7 @@ import '../utils/auth_input_validators.dart';
 import '../utils/app_navigation.dart';
 import '../utils/sweetalert_helper.dart';
 import '../widgets/auth_widgets.dart';
+import 'forgot_password_view.dart';
 import 'signup_view.dart';
 
 class LoginView extends StatefulWidget {
@@ -179,7 +180,29 @@ class _LoginViewState extends State<LoginView> {
                     setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
-            SizedBox(height: 24.h),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => AppNavigation.to(
+                  () => const ForgotPasswordView(),
+                  loadingMessage: 'Loading...',
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.accent,
+                  padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'Forgot Password?',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.sp,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 16.h),
             Obx(
               () => AuthPrimaryButton(
                 label: 'Login',

@@ -11,6 +11,7 @@ import '../widgets/app_bar_title_with_brand_logo.dart';
 import 'template_gallery_view.dart';
 import '../widgets/app_calendar_theme.dart';
 import '../widgets/app_network_image.dart';
+import '../base/constant.dart';
 
 /// Full edit form for an approved event (organizer or editor). Same fields as create: banner, title, category, date, venue, description.
 class EditEventView extends StatefulWidget {
@@ -117,6 +118,70 @@ class _EditEventViewState extends State<EditEventView> {
   }
 
   Future<void> _openPosterDesigner() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 24.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Event poster',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 8.h),
+                Text(
+                  'Use a design template or upload your own poster '
+                  '(≤5MB, ≤1080×1920 px).',
+                  style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 20.h),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, 'template'),
+                  icon: const Icon(Icons.palette_outlined),
+                  label: const Text('Use Template'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF5F15),
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, 'upload'),
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Upload Own'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFFF5F15),
+                    side: const BorderSide(color: Color(0xFFFF5F15)),
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || choice == null) return;
+    if (choice == 'upload') {
+      await _pickFromGallery();
+      return;
+    }
+
     final result = await Get.to(() => const TemplateGalleryView());
     if (result == null || !mounted) return;
     if (result is Map<String, dynamic>) {
@@ -319,7 +384,7 @@ class _EditEventViewState extends State<EditEventView> {
                         ? Image.file(selectedImage!, fit: BoxFit.contain, width: double.infinity, height: double.infinity)
                         : (_existingBannerName != null && !_removeExistingBanner)
                             ? AppNetworkImage(
-                                url: "https://micampus.co.in/admin/uploads/events/$_existingBannerName",
+                                url: "${Constant.uploadsBaseUrl}events/$_existingBannerName",
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,

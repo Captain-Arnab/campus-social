@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/event_controller.dart';
+import '../base/constant.dart';
 import '../widgets/event_poster_image.dart';
 import 'event_detail_view.dart';
 
@@ -119,7 +120,7 @@ class _FavoriteEventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final List banners = event['banners'] ?? [];
     final String imageUrl = banners.isNotEmpty 
-        ? "https://micampus.co.in/admin/uploads/events/${banners[0]}" 
+        ? "${Constant.uploadsBaseUrl}events/${banners[0]}" 
         : "";
 
     return GestureDetector(

@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import '../controllers/profile_controller.dart';
+import '../base/constant.dart';
 import '../utils/sweetalert_helper.dart';
 import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../widgets/app_network_image.dart';
@@ -184,7 +185,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                                   : (controller.userData.value.image != null &&
                                           controller.userData.value.image!.isNotEmpty
                                       ? appNetworkImageProvider(
-                                          "https://micampus.co.in/admin/uploads/profiles/${controller.userData.value.image}",
+                                          "${Constant.uploadsBaseUrl}profiles/${controller.userData.value.image}",
                                         )
                                       : null),
                               child: selectedImage == null &&
@@ -319,7 +320,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                   SizedBox(height: 14.h),
                   _buildTextField(
                     controller: bioCtrl,
-                    label: "Bio",
+                    label: "Biodata",
                     hint: "Tell us about yourself...",
                     icon: Icons.edit_note,
                     maxLines: 4,

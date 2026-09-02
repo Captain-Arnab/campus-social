@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
+import '../base/constant.dart';
 import '../utils/sweetalert_helper.dart';
 import '../utils/event_participation_rules.dart';
 import 'profile_controller.dart';
@@ -736,7 +737,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         try {
           final tmpDir = await getTemporaryDirectory();
           final tmpPath = "${tmpDir.path}/evt_banner_${oldId}_${DateTime.now().millisecondsSinceEpoch}.jpg";
-          final url = "https://micampus.co.in/admin/uploads/events/$existingBannerName";
+          final url = "${Constant.uploadsBaseUrl}events/$existingBannerName";
           await Dio().download(url, tmpPath);
           bannerToUpload = File(tmpPath);
         } catch (e) {
@@ -881,14 +882,13 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       }
       final response = await ApiService.joinEvent(eventId);
       debugPrint("📱 joinEvent response status: ${response.data['status']}");
-      final isSuccess = response.data['status'] == 'success';
-      final msg = response.data['message']?.toString() ?? '';
+      final data = ApiService.parseResponseBody(response.data) ?? {};
+      ApiService.rememberServerTimeFromBody(data);
+      final isSuccess = data['status'] == 'success';
+      final msg = data['message']?.toString() ?? '';
       if (isSuccess) {
+        _applyParticipationResponse(eventId, data: data, roleJoined: 'attendee');
         SweetAlertHelper.showSuccess(Get.context, "Success", msg.isNotEmpty ? msg : "Registration successful.");
-        debugPrint("🔄 Refreshing attending events...");
-        await fetchAttendingEvents();
-        await fetchEvents();
-        debugPrint("✓ Lists refreshed");
       } else {
         SweetAlertHelper.showInfo(Get.context, "Notice", msg);
       }
@@ -896,6 +896,182 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       debugPrint("✗ joinEvent error: $e");
       SweetAlertHelper.showError(Get.context, "Error", "Registration failed");
     }
+  }
+
+  /// Leave attendee/viewer role. Allowed after registration deadline.
+  /// Returns parsed response data on success (for local UI count refresh).
+  Future<Map<String, dynamic>?> leaveEvent(String eventId) async {
+    try {
+      final response = await ApiService.leaveEvent(eventId);
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
+        SweetAlertHelper.showError(Get.context, 'Error', 'Invalid response from server.');
+        return null;
+      }
+      ApiService.rememberServerTimeFromBody(data);
+      if (data['status']?.toString() == 'success') {
+        _applyParticipationResponse(eventId, data: data, roleLeft: 'attendee');
+        final msg = data['message']?.toString().trim() ?? '';
+        SweetAlertHelper.showSuccess(
+          Get.context,
+          'Left',
+          msg.isNotEmpty ? msg : 'You left this event.',
+        );
+        return data;
+      }
+      SweetAlertHelper.showError(
+        Get.context,
+        'Error',
+        data['message']?.toString() ?? 'Could not leave event.',
+      );
+      return null;
+    } catch (e) {
+      debugPrint('✗ leaveEvent error: $e');
+      SweetAlertHelper.showError(Get.context, 'Error', 'Could not leave event.');
+      return null;
+    }
+  }
+
+  /// Leave volunteer role. Allowed anytime (including after deadline).
+  Future<Map<String, dynamic>?> leaveVolunteer(String eventId) async {
+    try {
+      final response = await ApiService.leaveVolunteer(eventId);
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
+        SweetAlertHelper.showError(Get.context, 'Error', 'Invalid response from server.');
+        return null;
+      }
+      ApiService.rememberServerTimeFromBody(data);
+      if (data['status']?.toString() == 'success') {
+        _applyParticipationResponse(eventId, data: data, roleLeft: 'volunteer');
+        final msg = data['message']?.toString().trim() ?? '';
+        SweetAlertHelper.showSuccess(
+          Get.context,
+          'Left',
+          msg.isNotEmpty ? msg : 'You are no longer a volunteer for this event.',
+        );
+        return data;
+      }
+      SweetAlertHelper.showError(
+        Get.context,
+        'Error',
+        data['message']?.toString() ?? 'Could not leave volunteer role.',
+      );
+      return null;
+    } catch (e) {
+      debugPrint('✗ leaveVolunteer error: $e');
+      SweetAlertHelper.showError(Get.context, 'Error', 'Could not leave volunteer role.');
+      return null;
+    }
+  }
+
+  /// Leave participant role. Backend may reject if user is a winner.
+  Future<Map<String, dynamic>?> leaveParticipant(String eventId) async {
+    try {
+      final response = await ApiService.leaveParticipant(eventId);
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
+        SweetAlertHelper.showError(Get.context, 'Error', 'Invalid response from server.');
+        return null;
+      }
+      ApiService.rememberServerTimeFromBody(data);
+      if (data['status']?.toString() == 'success') {
+        _applyParticipationResponse(eventId, data: data, roleLeft: 'participant');
+        final msg = data['message']?.toString().trim() ?? '';
+        SweetAlertHelper.showSuccess(
+          Get.context,
+          'Left',
+          msg.isNotEmpty ? msg : 'You are no longer a participant for this event.',
+        );
+        return data;
+      }
+      final raw = data['message']?.toString() ?? '';
+      final lower = raw.toLowerCase();
+      final winnerBlock = lower.contains('winner') ||
+          lower.contains('event_winners') ||
+          (data['code']?.toString().toLowerCase().contains('winner') ?? false) ||
+          (data['error_code']?.toString().toLowerCase().contains('winner') ?? false);
+      SweetAlertHelper.showError(
+        Get.context,
+        winnerBlock ? "Can't leave" : 'Error',
+        winnerBlock
+            ? (raw.isNotEmpty
+                ? raw
+                : "Can't leave — you're marked as a winner for this event. Contact the organizer.")
+            : (raw.isNotEmpty ? raw : 'Could not leave participant role.'),
+      );
+      return null;
+    } catch (e) {
+      debugPrint('✗ leaveParticipant error: $e');
+      SweetAlertHelper.showError(Get.context, 'Error', 'Could not leave participant role.');
+      return null;
+    }
+  }
+
+  /// Apply leave/join response counts + optional event mini-object without a full refetch.
+  void _applyParticipationResponse(
+    String eventId, {
+    required Map<String, dynamic> data,
+    String? roleLeft,
+    String? roleJoined,
+  }) {
+    void removeFrom(RxList<dynamic> list) {
+      list.removeWhere((e) => e is Map && e['id']?.toString() == eventId);
+      list.refresh();
+    }
+
+    void ensureIn(RxList<dynamic> list, Map<String, dynamic>? mini) {
+      final exists = list.any((e) => e is Map && e['id']?.toString() == eventId);
+      if (exists) return;
+      if (mini != null) {
+        list.add(Map<String, dynamic>.from(mini));
+      } else {
+        list.add({'id': eventId});
+      }
+      list.refresh();
+    }
+
+    Map<String, dynamic>? mini;
+    final ev = data['event'];
+    if (ev is Map) {
+      mini = Map<String, dynamic>.from(ev.map((k, v) => MapEntry(k.toString(), v)));
+    }
+
+    if (roleLeft == 'attendee') removeFrom(attendingList);
+    if (roleLeft == 'volunteer') removeFrom(volunteeringList);
+    if (roleLeft == 'participant') removeFrom(participatingList);
+
+    if (roleJoined == 'attendee') {
+      ensureIn(attendingList, mini);
+      removeFrom(volunteeringList);
+      removeFrom(participatingList);
+    }
+
+    void patchCounts(RxList<dynamic> list) {
+      for (var i = 0; i < list.length; i++) {
+        final e = list[i];
+        if (e is! Map || e['id']?.toString() != eventId) continue;
+        final m = Map<String, dynamic>.from(e);
+        if (mini != null) m.addAll(mini);
+        for (final key in [
+          'attendee_count',
+          'volunteer_count',
+          'participant_count',
+          'viewer_count',
+        ]) {
+          if (data.containsKey(key)) m[key] = data[key];
+        }
+        list[i] = m;
+      }
+      list.refresh();
+    }
+
+    patchCounts(liveEventCatalog);
+    patchCounts(eventList);
+    patchCounts(attendingList);
+    patchCounts(volunteeringList);
+    patchCounts(participatingList);
+    patchCounts(favoriteList);
   }
 
   Future<void> volunteer(

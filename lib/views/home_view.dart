@@ -30,6 +30,7 @@ import '../widgets/app_bottom_nav.dart';
 import '../widgets/app_loading_screen.dart';
 import '../widgets/app_network_image.dart';
 import '../widgets/home_ad_carousel.dart';
+import '../widgets/winner_photos_carousel.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_empty_state.dart';
 import '../widgets/event_list_skeleton.dart';
@@ -39,6 +40,7 @@ import '../widgets/app_calendar_theme.dart';
 import '../widgets/campus_app_bar.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../utils/event_participation_rules.dart';
+import '../utils/registration_deadline_helper.dart';
 
 /// Decode network posters at a capped pixel width for smoother lists/carousel (same on-screen layout).
 int _eventPosterCacheWidth(BuildContext context, double widthFraction) {
@@ -243,6 +245,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
   DateTime? _browseCustomEnd;
   final List<String> categories = ["All", "IT/Tech", "Cultural", "Sports", "Academic", "Social"];
   List<Map<String, dynamic>> _adPosts = [];
+  List<Map<String, dynamic>> _winnerPhotos = [];
   Timer? _exploreSearchDebounce;
 
   @override
@@ -252,6 +255,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
     await Future.wait([
       controller.fetchLiveEventCatalog(),
       _loadAdPosts(),
+      _loadWinnerPhotos(),
       AppBranding.refresh(),
     ]);
     if (mounted) setState(() {});
@@ -276,6 +280,40 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
     } catch (_) {}
   }
 
+  Future<void> _loadWinnerPhotos() async {
+    try {
+      final r = await ApiService.getWinnerPhotos(limit: 20);
+      final m = ApiService.parseResponseBody(r.data) ??
+          ApiService.responseDataMap(r.data);
+      debugPrint(
+        '[Explore] winner_photos status=${m?['status']} '
+        'count=${m?['count']} dataType=${m?['data']?.runtimeType}',
+      );
+      if (m == null || m['status']?.toString() != 'success') {
+        if (mounted) setState(() => _winnerPhotos = []);
+        return;
+      }
+      // Accept common envelope shapes: data | photos | winners
+      final list = m['data'] ?? m['photos'] ?? m['winners'];
+      if (list is! List) {
+        if (mounted) setState(() => _winnerPhotos = []);
+        return;
+      }
+      final next = <Map<String, dynamic>>[];
+      for (final e in list) {
+        if (e is Map<String, dynamic>) {
+          next.add(e);
+        } else if (e is Map) {
+          next.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
+        }
+      }
+      if (mounted) setState(() => _winnerPhotos = next);
+    } catch (e, st) {
+      debugPrint('[Explore] winner_photos load failed: $e\n$st');
+      if (mounted) setState(() => _winnerPhotos = []);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -286,6 +324,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
       unawaited(controller.fetchLiveEventCatalog());
     }
     unawaited(_loadAdPosts());
+    unawaited(_loadWinnerPhotos());
   }
 
   @override
@@ -306,6 +345,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
 
   bool _exploreApproved(dynamic e) {
     final st = (e is Map ? e['status'] : null)?.toString().toLowerCase() ?? '';
+    if (st == 'closed') return false;
     return st == 'approved' || st.isEmpty;
   }
 
@@ -806,6 +846,25 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
             }(),
           ),
 
+          // Ads + winner photos — high on Explore (near top of feed)
+          if (_adPosts.isNotEmpty)
+            SliverToBoxAdapter(
+              child: ColoredBox(
+                color: AppColors.cream,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 8.h),
+                  child: HomeAdCarousel(posts: _adPosts),
+                ),
+              ),
+            ),
+
+          SliverToBoxAdapter(
+            child: ColoredBox(
+              color: AppColors.cream,
+              child: WinnerPhotosCarousel(photos: _winnerPhotos),
+            ),
+          ),
+
           // Winners — single entry (removed from app bar)
           SliverToBoxAdapter(
             child: Padding(
@@ -1009,18 +1068,6 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                   ),
           ),
 
-          // Promotional / admissions carousel
-          if (_adPosts.isNotEmpty)
-            SliverToBoxAdapter(
-              child: ColoredBox(
-                color: AppColors.cream,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 12.h),
-                  child: HomeAdCarousel(posts: _adPosts),
-                ),
-              ),
-            ),
-
           if (!loading && catalog.isEmpty)
             SliverToBoxAdapter(
               child: Padding(
@@ -1177,6 +1224,7 @@ class _AllEventCardActions extends StatelessWidget {
         final eid = event['id'].toString();
         final status = (event['status'] ?? '').toString().toLowerCase();
         final isApproved = status == 'approved' || status.isEmpty;
+        final regClosed = isEventRegistrationClosed(event);
 
         if (waiting) {
           return SizedBox(
@@ -1226,6 +1274,65 @@ class _AllEventCardActions extends StatelessWidget {
           children: [
             const Divider(height: 1, thickness: 1, color: AppColors.border),
             SizedBox(height: 10.h),
+            if (regClosed && showJoin)
+              Obx(() {
+                final attending = controller.attendingList
+                    .any((e) => e['id'].toString() == eid);
+                final volunteering = controller.volunteeringList
+                        .any((e) => e['id'].toString() == eid) ||
+                    (userId != null &&
+                        EventParticipationRules.userInVolunteerList(event, userId));
+                final participating = controller.participatingList
+                        .any((e) => e['id'].toString() == eid) ||
+                    (userId != null &&
+                        EventParticipationRules.userInParticipantList(event, userId));
+                // Leaving is still allowed after the deadline; only new joins are blocked.
+                if (attending && !volunteering && !participating) {
+                  return _pill(
+                    label: 'Leave Event',
+                    icon: Icons.logout,
+                    bg: AppColors.surfaceMuted,
+                    fg: AppColors.navy,
+                    onPressed: () => controller.leaveEvent(eid),
+                  );
+                }
+                if (volunteering && !participating && showVolPart) {
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _pill(
+                          label: 'Leave',
+                          icon: Icons.logout,
+                          bg: AppColors.surfaceMuted,
+                          fg: AppColors.navy,
+                          onPressed: () => controller.leaveVolunteer(eid),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                if (participating && !volunteering && showVolPart) {
+                  return _pill(
+                    label: 'Leave',
+                    icon: Icons.logout,
+                    bg: AppColors.surfaceMuted,
+                    fg: AppColors.navy,
+                    onPressed: () => controller.leaveParticipant(eid),
+                  );
+                }
+                return OutlinedButton(
+                  onPressed: null,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: Size(0, 40.h),
+                    foregroundColor: AppColors.textSecondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.button),
+                    ),
+                  ),
+                  child: const Text('Registration closed'),
+                );
+              })
+            else
             Row(
               children: [
                 if (showJoin)
@@ -1244,21 +1351,25 @@ class _AllEventCardActions extends StatelessWidget {
                               EventParticipationRules.userInParticipantList(
                                   event, userId));
                       final blockJoin = volunteering || participating;
+                      final canLeave = attending && !blockJoin && isApproved;
+                      final canJoin = isApproved && !attending && !blockJoin;
                       return _pill(
-                        label: attending ? 'Viewer' : 'Join',
-                        icon: attending
-                            ? Icons.visibility_rounded
+                        label: canLeave ? 'Leave Event' : 'Join',
+                        icon: canLeave
+                            ? Icons.logout
                             : Icons.check_circle_outline_rounded,
-                        bg: attending ? AppColors.surfaceMuted : AppColors.accent,
-                        fg: attending ? AppColors.textSecondary : Colors.white,
-                        onPressed: (!isApproved || attending || blockJoin)
-                            ? null
-                            : () => controller.joinEvent(
-                                  eid,
-                                  organizerId: event['organizer_id']?.toString(),
-                                  eventSnapshot: event,
-                                  userIsStudent: userIsStudent,
-                                ),
+                        bg: canLeave ? AppColors.surfaceMuted : AppColors.accent,
+                        fg: canLeave ? AppColors.navy : Colors.white,
+                        onPressed: canLeave
+                            ? () => controller.leaveEvent(eid)
+                            : canJoin
+                                ? () => controller.joinEvent(
+                                      eid,
+                                      organizerId: event['organizer_id']?.toString(),
+                                      eventSnapshot: event,
+                                      userIsStudent: userIsStudent,
+                                    )
+                                : null,
                       );
                     }),
                   ),
@@ -1270,69 +1381,6 @@ class _AllEventCardActions extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Obx(() {
-                            final attending = controller.attendingList
-                                .any((e) => e['id'].toString() == eid);
-                            final volunteering = controller.volunteeringList
-                                    .any((e) => e['id'].toString() == eid) ||
-                                (userId != null &&
-                                    EventParticipationRules.userInVolunteerList(
-                                        event, userId));
-                            final participating = controller.participatingList
-                                    .any((e) => e['id'].toString() == eid) ||
-                                (userId != null &&
-                                    EventParticipationRules
-                                        .userInParticipantList(event, userId));
-                            final canSwitchToParticipant =
-                                volunteering && !participating && isApproved;
-                            return _pill(
-                              label: canSwitchToParticipant
-                                  ? '→ Participant'
-                                  : (volunteering ? 'Volunteered' : 'Volunteer'),
-                              icon: Icons.front_hand_outlined,
-                              bg: canSwitchToParticipant
-                                  ? AppColors.success
-                                  : (volunteering
-                                      ? AppColors.surfaceMuted
-                                      : AppColors.accent),
-                              fg: volunteering && !canSwitchToParticipant
-                                  ? AppColors.textSecondary
-                                  : Colors.white,
-                              onPressed: canSwitchToParticipant
-                                  ? () {
-                                      showParticipateRegistrationSheet(
-                                        context,
-                                        eventId: eid,
-                                        eventTitle:
-                                            (event['title'] ?? 'Event').toString(),
-                                        organizerId:
-                                            event['organizer_id']?.toString(),
-                                        eventSnapshot: event,
-                                        userIsStudent: userIsStudent,
-                                        switchFromVolunteer: true,
-                                      );
-                                    }
-                                  : (volunteering ||
-                                          attending ||
-                                          participating ||
-                                          !isApproved)
-                                      ? null
-                                      : () {
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => VolunteerDialog(
-                                              event: event,
-                                              userIsStudent: userIsStudent,
-                                            ),
-                                          );
-                                        },
-                            );
-                          }),
-                        ),
-                        SizedBox(width: 6.w),
-                        Expanded(
-                          child: Obx(() {
-                            final attending = controller.attendingList
-                                .any((e) => e['id'].toString() == eid);
                             final volunteering = controller.volunteeringList
                                     .any((e) => e['id'].toString() == eid) ||
                                 (userId != null &&
@@ -1345,21 +1393,26 @@ class _AllEventCardActions extends StatelessWidget {
                                         .userInParticipantList(event, userId));
                             final canSwitchToVolunteer =
                                 participating && !volunteering && isApproved;
+                            final canLeaveVolunteer =
+                                volunteering && !participating && isApproved;
+                            final canJoinVolunteer = isApproved &&
+                                !volunteering &&
+                                !participating;
                             return _pill(
                               label: canSwitchToVolunteer
                                   ? '→ Volunteer'
-                                  : (participating
-                                      ? 'Participating'
-                                      : 'Participate'),
-                              icon: Icons.person_add_alt_1_rounded,
+                                  : (canLeaveVolunteer ? 'Leave' : 'Volunteer'),
+                              icon: canSwitchToVolunteer
+                                  ? Icons.swap_horiz
+                                  : (canLeaveVolunteer
+                                      ? Icons.logout
+                                      : Icons.front_hand_outlined),
                               bg: canSwitchToVolunteer
                                   ? AppColors.accent
-                                  : (participating
+                                  : (canLeaveVolunteer
                                       ? AppColors.surfaceMuted
-                                      : AppColors.teal),
-                              fg: participating && !canSwitchToVolunteer
-                                  ? AppColors.textSecondary
-                                  : Colors.white,
+                                      : AppColors.accent),
+                              fg: canLeaveVolunteer ? AppColors.navy : Colors.white,
                               onPressed: canSwitchToVolunteer
                                   ? () {
                                       showDialog(
@@ -1371,12 +1424,65 @@ class _AllEventCardActions extends StatelessWidget {
                                         ),
                                       );
                                     }
-                                  : (participating ||
-                                          attending ||
-                                          volunteering ||
-                                          !isApproved)
-                                      ? null
-                                      : () {
+                                  : canLeaveVolunteer
+                                      ? () => controller.leaveVolunteer(eid)
+                                      : canJoinVolunteer
+                                          ? () {
+                                              showDialog(
+                                                context: context,
+                                                builder: (context) => VolunteerDialog(
+                                                  event: event,
+                                                  userIsStudent: userIsStudent,
+                                                ),
+                                              );
+                                            }
+                                          : null,
+                            );
+                          }),
+                        ),
+                        SizedBox(width: 6.w),
+                        Expanded(
+                          child: Obx(() {
+                            final volunteering = controller.volunteeringList
+                                    .any((e) => e['id'].toString() == eid) ||
+                                (userId != null &&
+                                    EventParticipationRules.userInVolunteerList(
+                                        event, userId));
+                            final participating = controller.participatingList
+                                    .any((e) => e['id'].toString() == eid) ||
+                                (userId != null &&
+                                    EventParticipationRules
+                                        .userInParticipantList(event, userId));
+                            final canSwitchFromVolunteer =
+                                volunteering && !participating && isApproved;
+                            final canLeaveParticipant =
+                                participating && !volunteering && isApproved;
+                            final canJoinParticipant = isApproved &&
+                                !participating &&
+                                !volunteering;
+                            return _pill(
+                              label: canLeaveParticipant
+                                  ? 'Leave'
+                                  : (canSwitchFromVolunteer
+                                      ? '→ Participant'
+                                      : 'Participate'),
+                              icon: canLeaveParticipant
+                                  ? Icons.logout
+                                  : (canSwitchFromVolunteer
+                                      ? Icons.swap_horiz
+                                      : Icons.person_add_alt_1_rounded),
+                              bg: canLeaveParticipant
+                                  ? AppColors.surfaceMuted
+                                  : (canSwitchFromVolunteer
+                                      ? AppColors.accent
+                                      : AppColors.teal),
+                              fg: canLeaveParticipant
+                                  ? AppColors.navy
+                                  : Colors.white,
+                              onPressed: canLeaveParticipant
+                                  ? () => controller.leaveParticipant(eid)
+                                  : canSwitchFromVolunteer
+                                      ? () {
                                           showParticipateRegistrationSheet(
                                             context,
                                             eventId: eid,
@@ -1386,8 +1492,24 @@ class _AllEventCardActions extends StatelessWidget {
                                                 event['organizer_id']?.toString(),
                                             eventSnapshot: event,
                                             userIsStudent: userIsStudent,
+                                            switchFromVolunteer: true,
                                           );
-                                        },
+                                        }
+                                      : canJoinParticipant
+                                          ? () {
+                                              showParticipateRegistrationSheet(
+                                                context,
+                                                eventId: eid,
+                                                eventTitle:
+                                                    (event['title'] ?? 'Event')
+                                                        .toString(),
+                                                organizerId: event['organizer_id']
+                                                    ?.toString(),
+                                                eventSnapshot: event,
+                                                userIsStudent: userIsStudent,
+                                              );
+                                            }
+                                          : null,
                             );
                           }),
                         ),
@@ -1506,6 +1628,7 @@ class _CertificatesTabState extends State<_CertificatesTab> {
           final eventTitle = (c is Map ? c['event_title'] : null)?.toString() ?? 'Event';
           final eventDate = (c is Map ? c['event_date'] : null)?.toString() ?? '';
           final type = (c is Map ? c['type'] : null)?.toString() ?? 'certificate';
+          final pending = certificateIsPending(c);
           final url = certificateUrlFromRecord(c);
           return Card(
             margin: EdgeInsets.only(bottom: 12.h),
@@ -1513,11 +1636,33 @@ class _CertificatesTabState extends State<_CertificatesTab> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: ListTile(
               contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-              leading: CircleAvatar(backgroundColor: const Color(0xFFFF5F15).withValues(alpha: 0.2), child: const Icon(Icons.card_membership, color: Color(0xFFFF5F15))),
+              leading: CircleAvatar(
+                backgroundColor: pending
+                    ? Colors.orange.withValues(alpha: 0.2)
+                    : const Color(0xFFFF5F15).withValues(alpha: 0.2),
+                child: Icon(
+                  pending ? Icons.hourglass_empty : Icons.card_membership,
+                  color: pending ? Colors.orange : const Color(0xFFFF5F15),
+                ),
+              ),
               title: Text(eventTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp)),
-              subtitle: Text('${type.toUpperCase()} | $eventDate', style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
-              trailing: const Icon(Icons.more_vert),
-              onTap: () => showCertificateViewDownloadSheet(context, url: url, title: eventTitle),
+              subtitle: Text(
+                pending
+                    ? 'Certificate not ready yet'
+                    : '${type.toUpperCase()} | $eventDate',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: pending ? Colors.orange[800] : Colors.grey[600],
+                ),
+              ),
+              trailing: pending
+                  ? Icon(Icons.refresh, color: Colors.grey[400], size: 20)
+                  : const Icon(Icons.more_vert),
+              onTap: pending
+                  ? () => _load()
+                  : (url.isEmpty
+                      ? null
+                      : () => showCertificateViewDownloadSheet(context, url: url, title: eventTitle)),
             ),
           );
         },
@@ -1724,7 +1869,7 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
         );
       }
 
-      // --- Hosted events: Pending / Rejected / Approved ---
+      // --- Hosted events: Pending / Rejected / Approved / Closed ---
       if (widget.type == 'hosted') {
         String hostNormStatus(dynamic e) =>
             (e is Map ? e['status'] : null)?.toString().toLowerCase().trim() ?? '';
@@ -1732,10 +1877,12 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
             eventsList.where((e) => hostNormStatus(e) == 'approved').toList();
         final rejected =
             eventsList.where((e) => hostNormStatus(e) == 'rejected').toList();
+        final closed =
+            eventsList.where((e) => hostNormStatus(e) == 'closed').toList();
         final pending = eventsList
             .where((e) {
               final s = hostNormStatus(e);
-              return s != 'approved' && s != 'rejected';
+              return s != 'approved' && s != 'rejected' && s != 'closed';
             })
             .toList();
 
@@ -1818,7 +1965,15 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
                 chipColor: Colors.green,
                 items: approved,
               ),
-              if (approved.isEmpty && pending.isEmpty && rejected.isEmpty)
+              buildSection(
+                title: "Closed",
+                chipColor: Colors.grey,
+                items: closed,
+              ),
+              if (approved.isEmpty &&
+                  pending.isEmpty &&
+                  rejected.isEmpty &&
+                  closed.isEmpty)
                 Padding(
                   padding: EdgeInsets.all(40.w),
                   child: Center(
@@ -2085,7 +2240,7 @@ class _ProfileTab extends StatelessWidget {
                               radius: 50.w,
                               backgroundColor: Colors.grey[100],
                               backgroundImage: user.image != null && user.image!.isNotEmpty 
-                                ? appNetworkImageProvider("https://micampus.co.in/admin/uploads/profiles/${user.image}") 
+                                ? appNetworkImageProvider("${Constant.uploadsBaseUrl}profiles/${user.image}") 
                                 : null,
                               child: user.image == null || user.image!.isEmpty 
                                 ? Icon(Icons.person, size: 50.w, color: const Color(0xFFFF5F15)) 
@@ -2253,7 +2408,7 @@ class _ProfileTab extends StatelessWidget {
                         ),
                         SizedBox(height: 16.h),
                         Text(
-                          user.bio ?? "No bio added yet. Tap edit to add one!", 
+                          user.bio ?? "No biodata added yet. Tap edit to add one!", 
                           style: TextStyle(
                             color: user.bio != null ? Colors.grey[700] : Colors.grey[400],
                             height: 1.5,
@@ -2471,31 +2626,46 @@ class _HostedEventTile extends StatelessWidget {
         return Colors.blueGrey;
       case 'rejected':
         return Colors.red;
+      case 'closed':
+        return Colors.grey;
       default:
         return Colors.orange;
     }
   }
 
-  String _statusLabel(String status) {
+  String _statusLabel(String status, {bool hasPendingEdit = false}) {
     switch (status) {
       case 'approved':
         return 'Approved';
       case 'pending':
-        return 'Pending';
+        return hasPendingEdit ? 'Pending re-approval' : 'Pending approval';
       case 'hold':
         return 'On Hold';
       case 'rejected':
         return 'Rejected';
+      case 'closed':
+        return 'Closed';
       default:
-        return status.isEmpty ? 'Pending' : status;
+        return status.isEmpty ? 'Pending approval' : status;
     }
+  }
+
+  bool _hasPendingEdit(dynamic event) {
+    if (event is! Map) return false;
+    final pe = event['pending_edit'];
+    return pe != null && pe is Map && pe.isNotEmpty;
   }
 
   @override
   Widget build(BuildContext context) {
     final EventController controller = AppBootstrap.ensureEventController();
     final status = (event is Map ? event['status'] : null)?.toString().toLowerCase() ?? '';
+    final hasPendingEdit = _hasPendingEdit(event);
     final canEditDelete = status == 'pending';
+    final badgeLabel = _statusLabel(status, hasPendingEdit: hasPendingEdit);
+    final badgeColor = hasPendingEdit && status == 'pending'
+        ? Colors.deepOrange
+        : _statusColor(status);
 
     return InkWell(
       onTap: () => _openEventDetail(event),
@@ -2549,14 +2719,14 @@ class _HostedEventTile extends StatelessWidget {
                       Container(
                         padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
                         decoration: BoxDecoration(
-                          color: _statusColor(status).withValues(alpha: 0.15),
+                          color: badgeColor.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: _statusColor(status).withValues(alpha: 0.35)),
+                          border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
                         ),
                         child: Text(
-                          _statusLabel(status),
+                          badgeLabel,
                           style: TextStyle(
-                            color: _statusColor(status),
+                            color: badgeColor,
                             fontWeight: FontWeight.w700,
                             fontSize: 11.sp,
                           ),

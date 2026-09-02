@@ -682,6 +682,7 @@ static Widget englishTheme({
   String title = "ONLINE COURSE",
   String subtitle = "Spoken English",
   required String scheduleCaption,
+  String venue = "",
   List<String> coursePoints = const [],
   String phoneNumber = "800 829 5550 / 51",
   File? image,
@@ -835,9 +836,27 @@ static Widget englishTheme({
             ),
           ),
 
+          // Optional venue near schedule
+          if (venue.trim().isNotEmpty)
+            Positioned(
+              top: 168.h,
+              left: 20.w,
+              right: 92.w,
+              child: boundedText(
+                venue,
+                TextStyle(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w700,
+                  color: engBlue,
+                  height: 1.2,
+                ),
+                maxLines: 2,
+              ),
+            ),
+
           // Our Course Section (Blue button style)
           Positioned(
-            top: 198.h,
+            top: venue.trim().isNotEmpty ? 210.h : 198.h,
             left: 20.w,
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
@@ -859,7 +878,7 @@ static Widget englishTheme({
           // Course Points List
           if (coursePoints.isNotEmpty)
             Positioned(
-              top: 228.h,
+              top: venue.trim().isNotEmpty ? 240.h : 228.h,
               left: 20.w,
               right: 100.w,
               child: Column(
@@ -987,7 +1006,7 @@ static Widget englishTheme({
   static Widget musicFestivalTheme({
     required String title,
     required String date,
-    required String location,
+    required String venue,
     required String startTime,
     required String endTime,
     /// Extra when line when the event spans multiple calendar days (dates + times).
@@ -1227,7 +1246,7 @@ static Widget englishTheme({
                       ),
                     ],
                     boundedText(
-                      "LOCATION : $location",
+                      "LOCATION : $venue",
                       GoogleFonts.nunito(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w900,
@@ -1362,6 +1381,7 @@ static Widget englishTheme({
     required String startTime,
     required String endTime,
     String scheduleDetail = "",
+    String description = "",
     File? image, // Basketball court action image
     File? logoImage,
   }) {
@@ -1541,6 +1561,21 @@ static Widget englishTheme({
                     maxLines: 3,
                     textAlign: TextAlign.center,
                   ),
+                  if (description.trim().isNotEmpty) ...[
+                    SizedBox(height: 4.h),
+                    boundedText(
+                      description,
+                      GoogleFonts.roboto(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white70,
+                        letterSpacing: -0.2,
+                        height: 1.2,
+                      ),
+                      maxLines: 3,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ],
               ),
             ),

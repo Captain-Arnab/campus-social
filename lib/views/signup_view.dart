@@ -355,7 +355,7 @@ class _SignupViewState extends State<SignupView> {
     debugPrint('Email: ${emailCtrl.text.trim()}');
     debugPrint('Phone: ${phoneCtrl.text.trim()}');
     debugPrint(
-      'Bio: ${bioCtrl.text.trim().isEmpty ? 'No bio provided' : bioCtrl.text.trim()}',
+      'Biodata: ${bioCtrl.text.trim().isEmpty ? 'No biodata provided' : bioCtrl.text.trim()}',
     );
     debugPrint(
       'Interests: ${_selectedInterests.isEmpty ? 'General' : _selectedInterests.join(', ')}',
@@ -370,7 +370,7 @@ class _SignupViewState extends State<SignupView> {
       emailCtrl.text.trim(),
       AuthInputValidators.phoneDigits(phoneCtrl.text),
       passCtrl.text,
-      bioCtrl.text.trim().isEmpty ? 'No bio provided' : bioCtrl.text.trim(),
+      bioCtrl.text.trim().isEmpty ? 'No biodata provided' : bioCtrl.text.trim(),
       _selectedInterests.isEmpty ? 'General' : _selectedInterests.join(', '),
       _isStudent,
       _isStudent ? rollNumberCtrl.text.trim() : null,
@@ -742,6 +742,46 @@ class _SignupViewState extends State<SignupView> {
   Widget _buildNavBar() {
     final isLast = _currentStep == 3;
     final canProceed = _stepFieldsValid();
+
+    // Final step: full-width Create Account (matches Login AuthPrimaryButton).
+    // Back is a secondary text control above it so it does not share the row.
+    if (isLast) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _back,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                '← Back',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14.sp,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Obx(() {
+            // Always read .value so Obx has an observable dependency.
+            final loading = controller.isLoading.value;
+            return AuthPrimaryButton(
+              label: 'Create Account',
+              loading: loading,
+              onPressed: (!canProceed || loading) ? null : _submit,
+            );
+          }),
+        ],
+      );
+    }
+
     return Row(
       children: [
         if (_currentStep > 0)
@@ -767,22 +807,10 @@ class _SignupViewState extends State<SignupView> {
           ),
         if (_currentStep > 0) SizedBox(width: 12.w),
         Expanded(
-          child: isLast
-              ? Obx(() {
-                  // Always read .value so Obx has an observable dependency.
-                  final loading = controller.isLoading.value;
-                  return AuthPrimaryButton(
-                    label: 'Create Account',
-                    loading: loading,
-                    onPressed: (!canProceed || loading)
-                        ? null
-                        : _submit,
-                  );
-                })
-              : AuthPrimaryButton(
-                  label: 'Next',
-                  onPressed: canProceed ? _next : null,
-                ),
+          child: AuthPrimaryButton(
+            label: 'Next',
+            onPressed: canProceed ? _next : null,
+          ),
         ),
       ],
     );
@@ -880,7 +908,7 @@ class _SignupViewState extends State<SignupView> {
       SizedBox(height: 14.h),
       AuthTextField(
         controller: bioCtrl,
-        label: 'Bio',
+        label: 'Biodata',
         hint: 'Tell us about yourself...',
         prefixIcon: Icons.description_outlined,
         maxLines: 3,

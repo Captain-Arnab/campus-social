@@ -447,34 +447,184 @@ class AuthController extends GetxController {
     ));
   }
 
-  // Forgot Password
-  Future<void> forgotPassword(String email) async {
+  var isSendingForgotOtp = false.obs;
+
+  /// Inline / step error from the last forgot-password API call.
+  final forgotPasswordError = RxnString();
+
+  /// Channel + masked destination from request_otp (for UI).
+  final forgotOtpChannel = RxnString();
+  final forgotOtpMasked = RxnString();
+  final forgotResetToken = RxnString();
+
+  void clearForgotPasswordState() {
+    forgotPasswordError.value = null;
+    forgotOtpChannel.value = null;
+    forgotOtpMasked.value = null;
+    forgotResetToken.value = null;
+    isSendingForgotOtp.value = false;
+  }
+
+  /// Step 1 — request OTP. Returns true on success.
+  Future<bool> requestForgotPasswordOtp(String identifier) async {
+    forgotPasswordError.value = null;
     isLoading.value = true;
     try {
-      final response = await ApiService.forgotPassword(email);
-      
-      final data = response.data;
+      final response = await ApiService.requestForgotPasswordOtp(identifier);
+      final data = ApiService.parseResponseBody(response.data);
       if (data == null) {
-        SweetAlertHelper.showError(Get.context, "Error", "No response from server");
-        return;
+        forgotPasswordError.value = 'No response from server';
+        _showRequestFailure('Error', forgotPasswordError.value!);
+        return false;
       }
-
-      if (data is! Map) {
-        SweetAlertHelper.showError(Get.context, "Error", "Invalid response format");
-        return;
-      }
-
       if (data['status'] == 'success') {
-        Get.back();
-        String msg = data['message']?.toString() ?? "Password reset email sent";
-        SweetAlertHelper.showSuccess(Get.context, "Success", msg);
-      } else {
-        String errorMsg = data['message']?.toString() ?? "Failed to process request";
-        _showRequestFailure("Error", errorMsg);
+        forgotOtpChannel.value = data['channel']?.toString();
+        forgotOtpMasked.value = data['masked']?.toString();
+        otpSentTime.value = DateTime.now();
+        return true;
       }
+      final err = data['message']?.toString() ?? 'Failed to send OTP';
+      forgotPasswordError.value = err;
+      _showRequestFailure('Error', err);
+      return false;
     } catch (e, st) {
-      debugPrint("Forgot password error: $e\n$st");
-      _showRequestFailure("Error", e.toString(), error: e);
+      debugPrint('Forgot password request OTP error: $e\n$st');
+      forgotPasswordError.value = e.toString();
+      _showRequestFailure('Error', e.toString(), error: e);
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Resend OTP (same as request) — uses [isSendingForgotOtp] for cooldown UI.
+  Future<bool> resendForgotPasswordOtp(String identifier) async {
+    forgotPasswordError.value = null;
+    isSendingForgotOtp.value = true;
+    try {
+      final response = await ApiService.requestForgotPasswordOtp(identifier);
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
+        forgotPasswordError.value = 'No response from server';
+        _showRequestFailure('Error', forgotPasswordError.value!);
+        return false;
+      }
+      if (data['status'] == 'success') {
+        forgotOtpChannel.value = data['channel']?.toString();
+        forgotOtpMasked.value = data['masked']?.toString();
+        otpSentTime.value = DateTime.now();
+        final msg = data['message']?.toString() ?? 'OTP resent';
+        SweetAlertHelper.showSuccess(Get.context, 'OTP', msg);
+        return true;
+      }
+      final err = data['message']?.toString() ?? 'Could not resend OTP';
+      forgotPasswordError.value = err;
+      _showRequestFailure('OTP', err);
+      return false;
+    } catch (e, st) {
+      debugPrint('Forgot password resend OTP error: $e\n$st');
+      forgotPasswordError.value = e.toString();
+      _showRequestFailure('Error', e.toString(), error: e);
+      return false;
+    } finally {
+      isSendingForgotOtp.value = false;
+    }
+  }
+
+  /// Step 2 — verify OTP. Returns true and stores [forgotResetToken] on success.
+  Future<bool> verifyForgotPasswordOtp({
+    required String identifier,
+    required String otp,
+  }) async {
+    forgotPasswordError.value = null;
+    isLoading.value = true;
+    try {
+      final response = await ApiService.verifyForgotPasswordOtp(
+        identifier: identifier,
+        otp: otp,
+      );
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
+        forgotPasswordError.value = 'No response from server';
+        _showRequestFailure('Error', forgotPasswordError.value!);
+        return false;
+      }
+      if (data['status'] == 'success') {
+        final token = data['reset_token']?.toString();
+        if (token == null || token.isEmpty) {
+          forgotPasswordError.value = 'Reset token missing from server';
+          _showRequestFailure('Error', forgotPasswordError.value!);
+          return false;
+        }
+        forgotResetToken.value = token;
+        return true;
+      }
+      final err = data['message']?.toString() ?? 'Invalid OTP';
+      forgotPasswordError.value = err;
+      _showRequestFailure('Error', err);
+      return false;
+    } catch (e, st) {
+      debugPrint('Forgot password verify OTP error: $e\n$st');
+      forgotPasswordError.value = e.toString();
+      _showRequestFailure('Error', e.toString(), error: e);
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Step 3 — set new password. On success navigates back to login.
+  Future<bool> resetPasswordWithToken({
+    required String password,
+    required String passwordConfirm,
+  }) async {
+    forgotPasswordError.value = null;
+    final token = forgotResetToken.value;
+    if (token == null || token.isEmpty) {
+      forgotPasswordError.value = 'Session expired. Please request a new OTP.';
+      _showRequestFailure('Error', forgotPasswordError.value!);
+      return false;
+    }
+    isLoading.value = true;
+    try {
+      final response = await ApiService.resetPasswordWithToken(
+        resetToken: token,
+        password: password,
+        passwordConfirm: passwordConfirm,
+      );
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null) {
+        forgotPasswordError.value = 'No response from server';
+        _showRequestFailure('Error', forgotPasswordError.value!);
+        return false;
+      }
+      if (data['status'] == 'success') {
+        final msg = data['message']?.toString() ?? 'Password reset successfully';
+        clearForgotPasswordState();
+        Get.back();
+        final ctx = Get.context;
+        if (ctx != null) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              backgroundColor: Colors.green.shade700,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          SweetAlertHelper.showSuccess(Get.context, 'Success', msg);
+        }
+        return true;
+      }
+      final err = data['message']?.toString() ?? 'Failed to reset password';
+      forgotPasswordError.value = err;
+      _showRequestFailure('Error', err);
+      return false;
+    } catch (e, st) {
+      debugPrint('Forgot password reset error: $e\n$st');
+      forgotPasswordError.value = e.toString();
+      _showRequestFailure('Error', e.toString(), error: e);
+      return false;
     } finally {
       isLoading.value = false;
     }

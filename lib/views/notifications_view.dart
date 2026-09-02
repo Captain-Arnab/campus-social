@@ -138,6 +138,7 @@ class _NotificationTile extends StatelessWidget {
       case 'event_created':
         return Icons.celebration;
       case 'event_approved':
+      case 'event_approved_notify':
         return Icons.check_circle;
       case 'event_rejected':
         return Icons.cancel;
@@ -147,6 +148,8 @@ class _NotificationTile extends StatelessWidget {
         return Icons.schedule;
       case 'organizer_message':
         return Icons.message;
+      case 'minutes_approved_notify':
+        return Icons.description;
       default:
         return Icons.notifications;
     }
@@ -157,6 +160,7 @@ class _NotificationTile extends StatelessWidget {
       case 'event_created':
         return const Color(0xFFFF5F15);
       case 'event_approved':
+      case 'event_approved_notify':
         return const Color(0xFF10B981);
       case 'event_rejected':
         return const Color(0xFFEF4444);
@@ -166,6 +170,8 @@ class _NotificationTile extends StatelessWidget {
         return const Color(0xFF3B82F6);
       case 'organizer_message':
         return const Color(0xFF8B5CF6);
+      case 'minutes_approved_notify':
+        return const Color(0xFF0D9488); // teal — distinct from event_approved green
       default:
         return const Color(0xFF6B7280);
     }

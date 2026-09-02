@@ -17,11 +17,13 @@ import '../widgets/app_network_image.dart';
 import '../widgets/event_poster_image.dart';
 import 'volunteer_dialog.dart';
 import 'edit_event_view.dart';
+import 'meeting_minutes_view.dart';
 import '../data/api_service.dart';
 import '../data/pref_service.dart';
 import '../widgets/app_loading_screen.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../utils/event_participation_rules.dart';
+import '../utils/registration_deadline_helper.dart';
 import '../theme/app_theme.dart';
 
 List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
@@ -39,8 +41,11 @@ List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
   return out;
 }
 
-Future<void> openReviewFileUrl(BuildContext context, String path) async {
-  final url = Constant.uploadPublicUrl(path);
+Future<void> openReviewFileUrl(BuildContext context, String pathOrUrl) async {
+  final trimmed = pathOrUrl.trim();
+  final url = (trimmed.startsWith('http://') || trimmed.startsWith('https://'))
+      ? trimmed
+      : Constant.uploadPublicUrl(trimmed);
   if (url.isEmpty) return;
   final u = Uri.tryParse(url);
   if (u == null) return;
@@ -49,6 +54,26 @@ Future<void> openReviewFileUrl(BuildContext context, String path) async {
   if (!ok) {
     SweetAlertHelper.showError(context, 'Open link', 'Could not open file URL.');
   }
+}
+
+/// Prefer API `file_url`; fall back to building from path via [Constant.uploadPublicUrl].
+String reviewFileDisplayUrl(Map<String, dynamic> file) {
+  final direct = (file['file_url'] ?? '').toString().trim();
+  if (direct.isNotEmpty) {
+    if (direct.startsWith('http://') || direct.startsWith('https://')) {
+      if (direct.contains('://micampus.co.in/') &&
+          !direct.contains('://www.micampus.co.in/')) {
+        return direct.replaceFirst('://micampus.co.in/', '://www.micampus.co.in/');
+      }
+      return direct;
+    }
+    return Constant.uploadPublicUrl(direct);
+  }
+  for (final key in ['file_path', 'path', 'filename', 'file']) {
+    final raw = (file[key] ?? '').toString().trim();
+    if (raw.isNotEmpty) return Constant.uploadPublicUrl(raw);
+  }
+  return '';
 }
 
 class EventDetailView extends StatefulWidget {
@@ -63,6 +88,8 @@ class _EventDetailViewState extends State<EventDetailView> {
   dynamic _event;
   bool _loadingFull = true;
   List<dynamic> _winnersList = [];
+  String? _minutesStatus;
+  bool _closingEvent = false;
 
   @override
   void initState() {
@@ -96,6 +123,18 @@ class _EventDetailViewState extends State<EventDetailView> {
       }
       if (mounted) setState(() => _winnersList = winners);
     }
+    // Meeting minutes status (separate from event report)
+    try {
+      final minRes = await ApiService.getMeetingMinutes(id);
+      final minData = ApiService.parseResponseBody(minRes.data);
+      if (mounted && minData != null && minData['status'] == 'success') {
+        final payload = minData['data'] is Map
+            ? Map<String, dynamic>.from(minData['data'] as Map)
+            : minData;
+        final st = (payload['status'] ?? '').toString().toLowerCase();
+        setState(() => _minutesStatus = st.isEmpty ? null : st);
+      }
+    } catch (_) {}
     if (mounted) setState(() => _loadingFull = false);
   }
 
@@ -180,6 +219,114 @@ class _EventDetailViewState extends State<EventDetailView> {
     final ed = _eventCalendarDayOnly();
     if (ed == null) return true;
     return !_todayDateOnly().isAfter(ed);
+  }
+
+  void _applyLeaveResponseToEvent(Map<String, dynamic>? data) {
+    if (data == null || _event is! Map) return;
+    setState(() {
+      final m = Map<String, dynamic>.from(_event as Map);
+      final ev = data['event'];
+      if (ev is Map) {
+        m.addAll(Map<String, dynamic>.from(ev.map((k, v) => MapEntry(k.toString(), v))));
+      }
+      for (final key in [
+        'attendee_count',
+        'volunteer_count',
+        'participant_count',
+        'viewer_count',
+      ]) {
+        if (data.containsKey(key)) m[key] = data[key];
+      }
+      // Drop local lists that imply membership after leave — full refresh preferred but counts update immediately.
+      _event = m;
+    });
+  }
+
+  Widget _buildCloseEventSection() {
+    final canCloseRaw = _event is Map ? _event['can_close'] : null;
+    final canClose = canCloseRaw == true ||
+        canCloseRaw == 1 ||
+        canCloseRaw?.toString() == '1' ||
+        canCloseRaw?.toString().toLowerCase() == 'true';
+    final blockersRaw = _event is Map ? _event['close_blockers'] : null;
+    String blockersText = '';
+    if (blockersRaw is List && blockersRaw.isNotEmpty) {
+      blockersText = blockersRaw.map((e) => e.toString()).where((s) => s.isNotEmpty).join('\n');
+    } else if (blockersRaw != null) {
+      blockersText = blockersRaw.toString();
+    }
+
+    if (!canClose) {
+      return Container(
+        padding: EdgeInsets.all(12.w),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.lock_outline, color: Colors.grey.shade700, size: 22),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: Text(
+                blockersText.isNotEmpty
+                    ? blockersText
+                    : 'This event cannot be closed yet (e.g. submit event report first).',
+                style: TextStyle(fontSize: 13.sp, color: Colors.grey.shade800),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ElevatedButton.icon(
+      onPressed: _closingEvent ? null : _closeEvent,
+      icon: _closingEvent
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
+          : const Icon(Icons.event_busy),
+      label: Text(_closingEvent ? 'Closing…' : 'Close Event'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.navy,
+        foregroundColor: Colors.white,
+        padding: EdgeInsets.symmetric(vertical: 14.h),
+      ),
+    );
+  }
+
+  Future<void> _closeEvent() async {
+    final eid = int.tryParse((_event is Map ? _event['id'] : null)?.toString() ?? '');
+    final oid = int.tryParse((_event is Map ? _event['organizer_id'] : null)?.toString() ?? '');
+    if (eid == null || oid == null) return;
+    setState(() => _closingEvent = true);
+    try {
+      final r = await ApiService.closeEvent(eventId: eid, organizerId: oid);
+      final data = ApiService.parseResponseBody(r.data);
+      if (data?['status'] == 'success') {
+        if (!mounted) return;
+        SweetAlertHelper.showSuccess(
+          context,
+          'Closed',
+          data?['message']?.toString() ?? 'Event closed.',
+          onConfirm: _loadFullEvent,
+        );
+      } else {
+        if (!mounted) return;
+        SweetAlertHelper.showError(
+          context,
+          'Error',
+          data?['message']?.toString() ?? ApiService.responseErrorHint(r),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _closingEvent = false);
+    }
   }
 
   Future<bool> _isEventOrganizerOnly() async {
@@ -663,7 +810,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                     itemCount: banners.length,
                     itemBuilder: (context, index) {
                       return EventPosterImage.fromUrl(
-                        "https://micampus.co.in/admin/uploads/events/${banners[index]}",
+                        "${Constant.uploadsBaseUrl}events/${banners[index]}",
                         category: _event is Map ? _event['category']?.toString() : null,
                       );
                     },
@@ -923,13 +1070,39 @@ class _EventDetailViewState extends State<EventDetailView> {
                                   runSpacing: 8.h,
                                   children: reviewFiles.map((f) {
                                     final name = (f['original_name'] ?? 'File').toString();
-                                    final path = (f['file_path'] ?? '').toString();
+                                    final url = reviewFileDisplayUrl(f);
                                     final ft = (f['file_type'] ?? '').toString().toLowerCase();
                                     final isPdf = ft.contains('pdf') || name.toLowerCase().endsWith('.pdf');
+                                    final isImage = !isPdf &&
+                                        (ft.contains('image') ||
+                                            RegExp(r'\.(jpe?g|png|gif|webp)$', caseSensitive: false)
+                                                .hasMatch(name) ||
+                                            RegExp(r'\.(jpe?g|png|gif|webp)$', caseSensitive: false)
+                                                .hasMatch(url));
+                                    if (isImage && url.isNotEmpty) {
+                                      return GestureDetector(
+                                        onTap: () => openReviewFileUrl(context, url),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: AppNetworkImage(
+                                            url: url,
+                                            width: 72.w,
+                                            height: 72.w,
+                                            fit: BoxFit.cover,
+                                            errorWidget: (_, __, ___) => Container(
+                                              width: 72.w,
+                                              height: 72.w,
+                                              color: Colors.grey.shade200,
+                                              child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade500),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
                                     return ActionChip(
                                       avatar: Icon(isPdf ? Icons.picture_as_pdf : Icons.image, size: 18, color: isPdf ? Colors.red.shade700 : Colors.blue.shade700),
                                       label: Text(name, style: TextStyle(fontSize: 12.sp)),
-                                      onPressed: path.isEmpty ? null : () => openReviewFileUrl(context, path),
+                                      onPressed: url.isEmpty ? null : () => openReviewFileUrl(context, url),
                                     );
                                   }).toList(),
                                 ),
@@ -940,7 +1113,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                       },
                     ),
 
-                  // Pending edit banner
+                  // Pending re-approval banner (approved event with an edit awaiting admin)
                   if (pendingEdit != null && pendingEdit is Map) ...[
                     Container(
                       padding: EdgeInsets.all(12.w),
@@ -954,15 +1127,73 @@ class _EventDetailViewState extends State<EventDetailView> {
                           Icon(Icons.pending_actions, color: Colors.amber.shade800, size: 24),
                           SizedBox(width: 12.w),
                           Expanded(
-                            child: Text(
-                              "An edit is pending admin approval. The event will update in the list once approved.",
-                              style: TextStyle(color: Colors.amber.shade900, fontSize: 13.sp),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Pending re-approval',
+                                  style: TextStyle(
+                                    color: Colors.amber.shade900,
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(height: 4.h),
+                                Text(
+                                  'An edit is awaiting admin approval. The event will update once approved.',
+                                  style: TextStyle(color: Colors.amber.shade900, fontSize: 13.sp),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
                     SizedBox(height: 24.h),
+                  ],
+
+                  // Meeting minutes status banner
+                  if (_minutesStatus != null) ...[
+                    Builder(builder: (context) {
+                      final st = _minutesStatus!;
+                      final color = st == 'approved'
+                          ? Colors.green.shade700
+                          : st == 'rejected'
+                              ? Colors.red.shade700
+                              : Colors.amber.shade800;
+                      final label = st == 'approved'
+                          ? 'Minutes approved'
+                          : st == 'rejected'
+                              ? 'Minutes rejected'
+                              : 'Minutes pending approval';
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: 24.h),
+                        child: Container(
+                          padding: EdgeInsets.all(12.w),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: color),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.description_outlined, color: color, size: 24),
+                              SizedBox(width: 12.w),
+                              Expanded(
+                                child: Text(
+                                  label,
+                                  style: TextStyle(
+                                    color: color,
+                                    fontSize: 13.sp,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
                   ],
 
                   // Winners section (always show; empty state when no winners)
@@ -1044,6 +1275,48 @@ class _EventDetailViewState extends State<EventDetailView> {
                               side: const BorderSide(color: Color(0xFFFF5F15)),
                             ),
                           ),
+                        );
+                      },
+                    ),
+
+                  // Submit meeting minutes (organizer) — separate from Event Report
+                  if (_isApprovedEvent())
+                    FutureBuilder<bool>(
+                      future: _isEventOrganizerOnly(),
+                      builder: (context, snap) {
+                        if (snap.data != true) return const SizedBox.shrink();
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 16.h),
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final ok = await Get.to<bool>(
+                                () => MeetingMinutesView(
+                                  event: Map<String, dynamic>.from(_event as Map),
+                                ),
+                                transition: Transition.rightToLeft,
+                              );
+                              if (ok == true) await _loadFullEvent();
+                            },
+                            icon: const Icon(Icons.notes_outlined),
+                            label: const Text('Submit Minutes'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.teal,
+                              side: const BorderSide(color: AppColors.teal),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                  // Close event (organizer) — only after event end
+                  if (_isPastEvent() && _eventStatus() != 'closed')
+                    FutureBuilder<bool>(
+                      future: _isEventOrganizerOnly(),
+                      builder: (context, snap) {
+                        if (snap.data != true) return const SizedBox.shrink();
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 16.h),
+                          child: _buildCloseEventSection(),
                         );
                       },
                     ),
@@ -1164,7 +1437,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                           radius: 25.w,
                           backgroundColor: AppColors.accent,
                           backgroundImage: organizerAvatar != 'default_avatar.png'
-                            ? appNetworkImageProvider("https://micampus.co.in/admin/uploads/profiles/$organizerAvatar")
+                            ? appNetworkImageProvider("${Constant.uploadsBaseUrl}profiles/$organizerAvatar")
                             : null,
                           child: organizerAvatar == 'default_avatar.png'
                             ? const Icon(Icons.person, color: Colors.white)
@@ -1331,6 +1604,43 @@ class _EventDetailViewState extends State<EventDetailView> {
                   SizedBox(height: 12.h),
                 ],
 
+                Builder(
+                  builder: (context) {
+                    final regClosed = isEventRegistrationClosed(_event);
+                    if (!regClosed) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: 12.h),
+                      child: Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(12.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceMuted,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.event_busy, color: AppColors.textSecondary, size: 20),
+                            SizedBox(width: 12.w),
+                            Expanded(
+                              child: Text(
+                                'Registration closed',
+                                style: TextStyle(
+                                  color: AppColors.navy,
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
                 // Buttons row
                 Row(
                   children: [
@@ -1343,18 +1653,30 @@ class _EventDetailViewState extends State<EventDetailView> {
                         final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                             (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                         final blockAttend = volunteering || participating;
+                        final regClosed = isEventRegistrationClosed(_event);
+                        final canLeaveAttend = attending && !blockAttend && _isApprovedEvent();
+                        final canJoin = _isApprovedEvent() && !attending && !blockAttend && !regClosed;
                         return ElevatedButton(
-                          onPressed: (!_isApprovedEvent() || attending || blockAttend)
-                              ? null
-                              : () => controller.joinEvent(
-                                    eid,
-                                    organizerId: _event['organizer_id']?.toString(),
-                                    eventSnapshot: _event,
-                                    userIsStudent: isStudent,
-                                  ),
+                          onPressed: canLeaveAttend
+                              ? () async {
+                                  final data = await controller.leaveEvent(eid);
+                                  _applyLeaveResponseToEvent(data);
+                                }
+                              : canJoin
+                                  ? () => controller.joinEvent(
+                                        eid,
+                                        organizerId: _event['organizer_id']?.toString(),
+                                        eventSnapshot: _event,
+                                        userIsStudent: isStudent,
+                                      )
+                                  : null,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: attending ? AppColors.surfaceMuted : AppColors.accent,
-                            foregroundColor: attending ? AppColors.textSecondary : Colors.white,
+                            backgroundColor: canLeaveAttend
+                                ? AppColors.surfaceMuted
+                                : AppColors.accent,
+                            foregroundColor: canLeaveAttend
+                                ? AppColors.navy
+                                : Colors.white,
                             disabledBackgroundColor: AppColors.surfaceMuted,
                             disabledForegroundColor: AppColors.textSecondary,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
@@ -1364,10 +1686,19 @@ class _EventDetailViewState extends State<EventDetailView> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(attending ? Icons.check : Icons.check_circle, size: 18),
+                              Icon(
+                                canLeaveAttend
+                                    ? Icons.logout
+                                    : (regClosed && !attending ? Icons.event_busy : Icons.check_circle),
+                                size: 18,
+                              ),
                               SizedBox(height: 4.h),
                               Text(
-                                attending ? "Viewer" : (blockAttend ? "Attend" : "Join"),
+                                canLeaveAttend
+                                    ? 'Leave Event'
+                                    : (regClosed
+                                        ? 'Closed'
+                                        : (blockAttend ? 'Attend' : 'Join')),
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                               ),
                             ],
@@ -1386,29 +1717,40 @@ class _EventDetailViewState extends State<EventDetailView> {
                               (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
-                          final canSwitchToParticipant = volunteering && !participating && _isApprovedEvent();
+                          final regClosed = isEventRegistrationClosed(_event);
+                          final canSwitchToVolunteer =
+                              participating && !volunteering && _isApprovedEvent() && !regClosed;
+                          final canLeaveVolunteer =
+                              volunteering && !participating && _isApprovedEvent();
+                          final canJoinVolunteer =
+                              _isApprovedEvent() && !volunteering && !participating && !regClosed;
                           return OutlinedButton(
-                            // Attendees may switch straight to volunteer (backend
-                            // removes the attendee row), so don't disable on `attending`.
-                            onPressed: canSwitchToParticipant
-                                ? () => _showParticipateDialog(context, userIsStudent: isStudent, switchFromVolunteer: true)
-                                : (!_isApprovedEvent() || volunteering || participating)
-                                    ? null
-                                    : () => showDialog(
-                                          context: context,
-                                          builder: (context) => VolunteerDialog(
-                                            event: _event,
-                                            userIsStudent: isStudent,
-                                          ),
-                                        ),
+                            onPressed: canSwitchToVolunteer
+                                ? () => _showSwitchToVolunteerDialog(context, userIsStudent: isStudent)
+                                : canLeaveVolunteer
+                                    ? () async {
+                                        final data = await controller.leaveVolunteer(eid);
+                                        _applyLeaveResponseToEvent(data);
+                                      }
+                                    : canJoinVolunteer
+                                        ? () => showDialog(
+                                              context: context,
+                                              builder: (context) => VolunteerDialog(
+                                                event: _event,
+                                                userIsStudent: isStudent,
+                                              ),
+                                            )
+                                        : null,
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: canSwitchToParticipant
-                                  ? AppColors.success
-                                  : (volunteering ? AppColors.textSecondary : AppColors.accent),
+                              foregroundColor: canSwitchToVolunteer
+                                  ? AppColors.accent
+                                  : (canLeaveVolunteer
+                                      ? AppColors.navy
+                                      : AppColors.accent),
                               side: BorderSide(
-                                color: canSwitchToParticipant
-                                    ? AppColors.success
-                                    : (volunteering ? AppColors.border : AppColors.accent),
+                                color: canSwitchToVolunteer
+                                    ? AppColors.accent
+                                    : (canLeaveVolunteer ? AppColors.navy : AppColors.accent),
                                 width: 2,
                               ),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
@@ -1418,14 +1760,22 @@ class _EventDetailViewState extends State<EventDetailView> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  canSwitchToParticipant ? Icons.swap_horiz : Icons.volunteer_activism,
+                                  canSwitchToVolunteer
+                                      ? Icons.swap_horiz
+                                      : (canLeaveVolunteer
+                                          ? Icons.logout
+                                          : (regClosed && !volunteering
+                                              ? Icons.event_busy
+                                              : Icons.volunteer_activism)),
                                   size: 18,
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  canSwitchToParticipant
-                                      ? "→ Participant"
-                                      : (volunteering ? "Volunteered" : "Volunteer"),
+                                  canSwitchToVolunteer
+                                      ? '→ Volunteer'
+                                      : (canLeaveVolunteer
+                                          ? 'Leave'
+                                          : (regClosed ? 'Closed' : 'Volunteer')),
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                                 ),
                               ],
@@ -1443,23 +1793,36 @@ class _EventDetailViewState extends State<EventDetailView> {
                               (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
-                          final canSwitchToVolunteer = participating && !volunteering && _isApprovedEvent();
+                          final regClosed = isEventRegistrationClosed(_event);
+                          final canSwitchFromVolunteer =
+                              volunteering && !participating && _isApprovedEvent() && !regClosed;
+                          final canLeaveParticipant =
+                              participating && !volunteering && _isApprovedEvent();
+                          final canJoinParticipant =
+                              _isApprovedEvent() && !participating && !volunteering && !regClosed;
                           return OutlinedButton(
-                            // Attendees may switch straight to participant (backend
-                            // removes the attendee row), so don't disable on `attending`.
-                            onPressed: canSwitchToVolunteer
-                                ? () => _showSwitchToVolunteerDialog(context, userIsStudent: isStudent)
-                                : (!_isApprovedEvent() || participating || volunteering)
-                                    ? null
-                                    : () => _showParticipateDialog(context, userIsStudent: isStudent),
+                            onPressed: canLeaveParticipant
+                                ? () async {
+                                    final data = await controller.leaveParticipant(eid);
+                                    _applyLeaveResponseToEvent(data);
+                                  }
+                                : canSwitchFromVolunteer
+                                    ? () => _showParticipateDialog(context, userIsStudent: isStudent, switchFromVolunteer: true)
+                                    : canJoinParticipant
+                                        ? () => _showParticipateDialog(context, userIsStudent: isStudent)
+                                        : null,
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: canSwitchToVolunteer
-                                  ? AppColors.accent
-                                  : (participating ? AppColors.textSecondary : AppColors.success),
+                              foregroundColor: canLeaveParticipant
+                                  ? AppColors.navy
+                                  : (canSwitchFromVolunteer
+                                      ? AppColors.accent
+                                      : AppColors.success),
                               side: BorderSide(
-                                color: canSwitchToVolunteer
-                                    ? AppColors.accent
-                                    : (participating ? AppColors.border : AppColors.success),
+                                color: canLeaveParticipant
+                                    ? AppColors.navy
+                                    : (canSwitchFromVolunteer
+                                        ? AppColors.accent
+                                        : AppColors.success),
                                 width: 2,
                               ),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
@@ -1469,14 +1832,22 @@ class _EventDetailViewState extends State<EventDetailView> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  canSwitchToVolunteer ? Icons.swap_horiz : Icons.groups,
+                                  canLeaveParticipant
+                                      ? Icons.logout
+                                      : (canSwitchFromVolunteer
+                                          ? Icons.swap_horiz
+                                          : (regClosed && !participating
+                                              ? Icons.event_busy
+                                              : Icons.groups)),
                                   size: 18,
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  canSwitchToVolunteer
-                                      ? "→ Volunteer"
-                                      : (participating ? "Participating" : "Participate"),
+                                  canLeaveParticipant
+                                      ? 'Leave'
+                                      : (canSwitchFromVolunteer
+                                          ? '→ Participant'
+                                          : (regClosed ? 'Closed' : 'Participate')),
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                                 ),
                               ],
@@ -2205,10 +2576,10 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
               runSpacing: 6.h,
               children: existing.map((f) {
                 final name = (f['original_name'] ?? 'File').toString();
-                final path = (f['file_path'] ?? '').toString();
+                final url = reviewFileDisplayUrl(f);
                 return InputChip(
-                  label: Text(name, style: TextStyle(fontSize: 11.sp)),
-                  onPressed: path.isEmpty ? null : () => openReviewFileUrl(context, path),
+                  label: Text(name, overflow: TextOverflow.ellipsis),
+                  onPressed: url.isEmpty ? null : () => openReviewFileUrl(context, url),
                 );
               }).toList(),
             ),

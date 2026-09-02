@@ -28,7 +28,7 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
       'image': 'assets/images/tech_poster.jpeg',
     },
     {
-      'title': 'Online Course',
+      'title': 'Spoken English',
       'subtitle': 'Professional Split Layout',
       'image': 'assets/images/online_course_poster.jpeg',
     },

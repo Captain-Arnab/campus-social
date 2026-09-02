@@ -13,7 +13,7 @@ import 'upload_file_validators.dart';
 class PosterExportHelper {
   PosterExportHelper._();
 
-  /// Capture + compress until ≤ [UploadFileValidators.maxPosterBytes] (3 MB).
+  /// Capture + compress until ≤ [UploadFileValidators.maxPosterBytes] (5 MB).
   /// Returns a `.jpg` temp file, or null on failure.
   static Future<File?> saveJpegUnderMaxSize(
     GlobalKey key, {

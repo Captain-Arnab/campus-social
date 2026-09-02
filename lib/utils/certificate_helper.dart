@@ -13,15 +13,30 @@ import '../base/constant.dart';
 import '../data/pref_service.dart';
 import 'sweetalert_helper.dart';
 
+/// Confirmed backend field for forced-download streaming URL
+/// (`download_certificate.php?id=...`). Prefer this for the app download action
+/// over [certificate_url] / [url] (direct file URLs).
+const String kCertificateDownloadUrlField = 'download_url';
+
+/// Certificate readiness from [certificates.php] (`pending` / `ready`).
+/// Check this — not empty URL fields — when status is pending (URLs are `""`).
+String certificateStatusFromRecord(dynamic item) {
+  if (item is! Map) return '';
+  return (item['status'] ?? '').toString().trim().toLowerCase();
+}
+
+/// True when the certificate is not ready for view/download.
+bool certificateIsPending(dynamic item) =>
+    certificateStatusFromRecord(item) == 'pending';
+
 /// Resolves the best public URL for a certificate row from [certificates.php].
-/// Prefers the backend [download_url] streaming endpoint (sends Content-Length +
-/// attachment headers, so the client knows when the transfer is done and the
-/// Download button can stop spinning). Falls back to [certificate_url] / [url] /
-/// [file_path]; relative paths are passed through [Constant.certificateFileUrl].
+/// Prefers [kCertificateDownloadUrlField] (`download_url`). Skips empty strings.
+/// Callers must gate on [certificateIsPending] / status before downloading.
 String certificateUrlFromRecord(dynamic item) {
   if (item is! Map) return '';
+  if (certificateIsPending(item)) return '';
   for (final key in [
-    'download_url',
+    kCertificateDownloadUrlField,
     'certificate_url',
     'url',
     'file_path',

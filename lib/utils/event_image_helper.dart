@@ -4,7 +4,7 @@ import '../base/constant.dart';
 class EventImageHelper {
   EventImageHelper._();
 
-  static const _eventUploadBase = 'https://micampus.co.in/admin/uploads/events/';
+  static String get _eventUploadBase => '${Constant.uploadsBaseUrl}events/';
 
   static String? bannerUrl(dynamic event) {
     if (event is! Map) return null;
@@ -36,7 +36,17 @@ class EventImageHelper {
 
   static String? _resolve(String raw) {
     if (raw.isEmpty) return null;
-    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      // Normalize non-www host to Constant.uploadsBaseUrl host.
+      if (raw.contains('://micampus.co.in/') &&
+          !raw.contains('://www.micampus.co.in/')) {
+        return raw.replaceFirst(
+          '://micampus.co.in/',
+          '://www.micampus.co.in/',
+        );
+      }
+      return raw;
+    }
     var path = raw.replaceAll('\\', '/');
     while (path.startsWith('/')) {
       path = path.substring(1);

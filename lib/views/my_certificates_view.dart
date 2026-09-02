@@ -166,6 +166,7 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
                           ? '$eventDate → $eventEndDate'
                           : eventDate;
                       final type = (c is Map ? c['type'] : null)?.toString() ?? 'certificate';
+                      final pending = certificateIsPending(c);
                       final url = certificateUrlFromRecord(c);
                       return Card(
                         margin: EdgeInsets.only(bottom: 12.h),
@@ -174,19 +175,39 @@ class _MyCertificatesViewState extends State<MyCertificatesView> {
                         child: ListTile(
                           contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
                           leading: CircleAvatar(
-                            backgroundColor: const Color(0xFFFF5F15).withValues(alpha: 0.2),
-                            child: const Icon(Icons.card_membership, color: Color(0xFFFF5F15)),
+                            backgroundColor: pending
+                                ? Colors.orange.withValues(alpha: 0.2)
+                                : const Color(0xFFFF5F15).withValues(alpha: 0.2),
+                            child: Icon(
+                              pending ? Icons.hourglass_empty : Icons.card_membership,
+                              color: pending ? Colors.orange : const Color(0xFFFF5F15),
+                            ),
                           ),
                           title: Text(
                             eventTitle,
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp),
                           ),
                           subtitle: Text(
-                            '${type.toUpperCase()} • $dateDisplay',
-                            style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                            pending
+                                ? 'Certificate not ready yet'
+                                : '${type.toUpperCase()} • $dateDisplay',
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color: pending ? Colors.orange[800] : Colors.grey[600],
+                            ),
                           ),
-                          trailing: const Icon(Icons.more_vert),
-                          onTap: () => showCertificateViewDownloadSheet(context, url: url, title: eventTitle),
+                          trailing: pending
+                              ? Icon(Icons.refresh, color: Colors.grey[400], size: 20)
+                              : const Icon(Icons.more_vert),
+                          onTap: pending
+                              ? () => _load() // pull-style refresh via tap
+                              : (url.isEmpty
+                                  ? null
+                                  : () => showCertificateViewDownloadSheet(
+                                        context,
+                                        url: url,
+                                        title: eventTitle,
+                                      )),
                         ),
                       );
                     },

@@ -14,6 +14,9 @@ class ModelEvent {
   String? status;
   DateTime? createdAt;
   String? userRole; // 'attendee', 'volunteer', 'host', or null
+  DateTime? registrationDeadline;
+  bool? canClose;
+  dynamic closeBlockers;
 
   ModelEvent({
     this.id,
@@ -31,6 +34,9 @@ class ModelEvent {
     this.status,
     this.createdAt,
     this.userRole,
+    this.registrationDeadline,
+    this.canClose,
+    this.closeBlockers,
   });
 
   // Maps JSON from API to Dart object
@@ -51,6 +57,21 @@ class ModelEvent {
     status = json['status'] ?? 'pending';
     createdAt = json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null;
     userRole = json['user_role'] ?? json['role'];
+    final rawDeadline = json['registration_deadline']?.toString();
+    if (rawDeadline != null &&
+        rawDeadline.isNotEmpty &&
+        rawDeadline != 'null' &&
+        rawDeadline != '0000-00-00 00:00:00') {
+      registrationDeadline = DateTime.tryParse(rawDeadline.replaceAll(' ', 'T'));
+    }
+    final rawCanClose = json['can_close'];
+    if (rawCanClose is bool) {
+      canClose = rawCanClose;
+    } else if (rawCanClose != null) {
+      final s = rawCanClose.toString().toLowerCase();
+      canClose = s == '1' || s == 'true';
+    }
+    closeBlockers = json['close_blockers'];
   }
 
   // Convert object to JSON for API requests
@@ -71,6 +92,9 @@ class ModelEvent {
     data['status'] = status;
     data['created_at'] = createdAt?.toIso8601String();
     data['user_role'] = userRole;
+    data['registration_deadline'] = registrationDeadline?.toIso8601String();
+    data['can_close'] = canClose;
+    data['close_blockers'] = closeBlockers;
     return data;
   }
 }

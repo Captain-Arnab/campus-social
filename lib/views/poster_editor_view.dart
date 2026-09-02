@@ -22,14 +22,16 @@ class _PosterCopyLimits {
   static const int englishSubtitle = 15;
   static const int englishTitle = 14;
   static const int musicTitle = 14;
-  static const int musicLocation = 25;
+  static const int musicVenue = 25;
   static const int musicDescription = 30;
   static const int basketballTitle = 22;
   static const int basketballStadium = 18;
   static const int basketballAddress = 26;
+  static const int basketballDescription = 60;
   static const int trainerName = 40;
   static const int venue = 56;
   static const int phone = 32;
+  static const int englishVenue = 40;
 
   static String get graduationTitleGuidance =>
       'Graduation headline: max $graduationTitle characters so it fits the layout.';
@@ -50,11 +52,14 @@ class _PosterCopyLimits {
   static String get englishTitleGuidance =>
       'Banner title: max $englishTitle characters (e.g. ONLINE COURSE).';
   static String get musicTitleGuidance => 'Music poster headline: max $musicTitle characters.';
-  static String get musicLocationGuidance => 'Location line: max $musicLocation characters.';
+  static String get musicVenueGuidance => 'Venue line: max $musicVenue characters.';
   static String get musicDescriptionGuidance => 'Info box text: max $musicDescription characters.';
   static String get basketballTitleGuidance => 'Event title: max $basketballTitle characters.';
   static String get basketballStadiumGuidance => 'Stadium name: max $basketballStadium characters.';
   static String get basketballAddressGuidance => 'Address: max $basketballAddress characters.';
+  static String get basketballDescriptionGuidance =>
+      'Optional. Max $basketballDescription characters on the poster.';
+  static String get englishVenueGuidance => 'Max $englishVenue characters for the venue line.';
   static String get trainerGuidance => 'Max $trainerName characters so it fits next to the photo.';
   static String get venueGuidance => 'Max $venue characters; long venue names may wrap or clip.';
 }
@@ -79,7 +84,6 @@ class _PosterEditorViewState extends State<PosterEditorView> {
   late TextEditingController subtitleController;
   late TextEditingController phoneController;
   late TextEditingController coursePointController;
-  late TextEditingController locationController;
   late TextEditingController stadiumNameController;
   late TextEditingController addressController;
   late TextEditingController techTaglineController;
@@ -101,7 +105,6 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     subtitleController = TextEditingController(text: controller.subtitle.value);
     phoneController = TextEditingController(text: controller.phoneNumber.value);
     coursePointController = TextEditingController();
-    locationController = TextEditingController(text: controller.location.value);
     stadiumNameController = TextEditingController(text: controller.stadiumName.value);
     addressController = TextEditingController(text: controller.address.value);
     techTaglineController = TextEditingController(text: controller.techTagline.value);
@@ -118,7 +121,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
         controller.initializeTechData();
         controller.loadTechSampleImages();
         break;
-      case 2: // English Theme
+      case 2: // Spoken English Theme
         controller.initializeSampleEnglishData();
         controller.loadEnglishSampleImages();
         break;
@@ -144,7 +147,6 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     subtitleController.dispose();
     phoneController.dispose();
     coursePointController.dispose();
-    locationController.dispose();
     stadiumNameController.dispose();
     addressController.dispose();
     techTaglineController.dispose();
@@ -192,28 +194,32 @@ class _PosterEditorViewState extends State<PosterEditorView> {
       clip(subtitleController, _PosterCopyLimits.englishSubtitle);
       clip(titleController, _PosterCopyLimits.englishTitle);
       clip(phoneController, _PosterCopyLimits.phone);
+      clip(venueController, _PosterCopyLimits.englishVenue);
       if (syncToRx) {
         controller.subtitle.value = subtitleController.text;
         controller.titleEnglish.value = titleController.text;
         controller.phoneNumber.value = phoneController.text;
+        controller.venue.value = venueController.text;
       }
     } else if (isMusicFestivalTheme) {
       clip(titleController, _PosterCopyLimits.musicTitle);
-      clip(locationController, _PosterCopyLimits.musicLocation);
+      clip(venueController, _PosterCopyLimits.musicVenue);
       clip(descriptionController, _PosterCopyLimits.musicDescription);
       if (syncToRx) {
         controller.title.value = titleController.text;
-        controller.location.value = locationController.text;
+        controller.venue.value = venueController.text;
         controller.description.value = descriptionController.text;
       }
     } else if (isBasketballTheme) {
       clip(titleController, _PosterCopyLimits.basketballTitle);
       clip(stadiumNameController, _PosterCopyLimits.basketballStadium);
       clip(addressController, _PosterCopyLimits.basketballAddress);
+      clip(descriptionController, _PosterCopyLimits.basketballDescription);
       if (syncToRx) {
         controller.title.value = titleController.text;
         controller.stadiumName.value = stadiumNameController.text;
         controller.address.value = addressController.text;
+        controller.description.value = descriptionController.text;
       }
     }
   }
@@ -222,7 +228,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     switch (widget.themeIndex) {
       case 0: return 'Cultural';     // Graduation
       case 1: return 'IT/Tech';      // Tech & Innovation
-      case 2: return 'Academic';     // Online Course / English
+      case 2: return 'Academic';     // Spoken English
       case 3: return 'Cultural';     // Music Festival
       case 4: return 'Sports';       // Basketball
       default: return 'IT/Tech';
@@ -267,17 +273,9 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                         final qrCode = controller.qrCodeImage.value;
                         
                         final schedHost = controller.posterHostDateTimeBlockUppercase();
-                        final schedEnglish = controller.posterFullWhenCaption(
-                          controller.startTime.value,
-                          controller.endTime.value,
-                        );
-                        final schedMusic = controller.posterFullWhenCaption(
-                          controller.startTimings.value,
-                          controller.endTimings.value,
-                        );
-                        final schedBasket = controller.posterFullWhenCaption(
-                          controller.basketballStartTime.value,
-                          controller.basketballEndTime.value,
+                        final schedSlot = controller.posterFullWhenCaption(
+                          controller.slotStart.value,
+                          controller.slotEnd.value,
                         );
                         switch (widget.themeIndex) {
                           case 0: return PosterTheme.graduationTheme(
@@ -304,7 +302,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                           case 2: return PosterTheme.englishTheme(
                             title: controller.titleEnglish.value,
                             subtitle: controller.subtitle.value,
-                            scheduleCaption: schedEnglish,
+                            scheduleCaption: schedSlot,
+                            venue: controller.venue.value,
                             coursePoints: controller.coursePoints.toList(),
                             phoneNumber: controller.phoneNumber.value,
                             image: img,
@@ -313,10 +312,10 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                           case 3: return PosterTheme.musicFestivalTheme(
                             title: controller.title.value,
                             date: controller.posterDateRangeLine(),
-                            location: controller.location.value,
-                            startTime: controller.startTimings.value,
-                            endTime: controller.endTimings.value,
-                            scheduleDetail: controller.posterSpansMultipleCalendarDays ? schedMusic : '',
+                            venue: controller.venue.value,
+                            startTime: controller.slotStart.value,
+                            endTime: controller.slotEnd.value,
+                            scheduleDetail: controller.posterSpansMultipleCalendarDays ? schedSlot : '',
                             description: desc,
                             image: img,
                             logoImage: logo,
@@ -327,9 +326,10 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                             stadiumName: controller.stadiumName.value,
                             address: controller.address.value,
                             date: controller.posterDateRangeLine(),
-                            startTime: controller.basketballStartTime.value,
-                            endTime: controller.basketballEndTime.value,
-                            scheduleDetail: controller.posterSpansMultipleCalendarDays ? schedBasket : '',
+                            startTime: controller.slotStart.value,
+                            endTime: controller.slotEnd.value,
+                            scheduleDetail: controller.posterSpansMultipleCalendarDays ? schedSlot : '',
+                            description: desc,
                             image: img,
                             logoImage: logo,
                           );
@@ -372,11 +372,17 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                      
                      Row(
                        children: [
-                         Expanded(child: _buildPickerButton("Start Time", Icons.schedule, controller.basketballStartTime, () => controller.pickBasketballStartTime(context))),
+                         Expanded(child: _buildPickerButton("Start Time", Icons.schedule, controller.slotStart, () => controller.pickSlotStart(context, compactHour: true))),
                          SizedBox(width: 10.w),
-                         Expanded(child: _buildPickerButton("End Time", Icons.schedule, controller.basketballEndTime, () => controller.pickBasketballEndTime(context))),
+                         Expanded(child: _buildPickerButton("End Time", Icons.schedule, controller.slotEnd, () => controller.pickSlotEnd(context, compactHour: true))),
                        ],
                      ),
+                     SizedBox(height: 10.h),
+
+                     _buildTextField("Description (Optional)", Icons.description, descriptionController, (v) => controller.description.value = v,
+                         maxLines: 3,
+                         maxLength: _PosterCopyLimits.basketballDescription,
+                         helperText: _PosterCopyLimits.basketballDescriptionGuidance),
                      SizedBox(height: 10.h),
                    ],
                    
@@ -386,8 +392,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                          maxLength: _PosterCopyLimits.musicTitle, helperText: _PosterCopyLimits.musicTitleGuidance),
                      SizedBox(height: 10.h),
                      
-                     _buildTextField("Location", Icons.location_on, locationController, (v) => controller.location.value = v,
-                         maxLength: _PosterCopyLimits.musicLocation, helperText: _PosterCopyLimits.musicLocationGuidance),
+                     _buildTextField("Venue", Icons.location_on, venueController, (v) => controller.venue.value = v,
+                         maxLength: _PosterCopyLimits.musicVenue, helperText: _PosterCopyLimits.musicVenueGuidance),
                      SizedBox(height: 10.h),
 
                      _buildTextField("Description (Optional)", Icons.description, descriptionController, (v) => controller.description.value = v,
@@ -398,15 +404,15 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                      
                      Row(
                        children: [
-                         Expanded(child: _buildPickerButton("Start Time", Icons.schedule, controller.startTimings, () => controller.pickStartTime(context))),
+                         Expanded(child: _buildPickerButton("Start Time", Icons.schedule, controller.slotStart, () => controller.pickSlotStart(context))),
                          SizedBox(width: 10.w),
-                         Expanded(child: _buildPickerButton("End Time", Icons.schedule, controller.endTimings, () => controller.pickEndTime(context))),
+                         Expanded(child: _buildPickerButton("End Time", Icons.schedule, controller.slotEnd, () => controller.pickSlotEnd(context))),
                        ],
                      ),
                      SizedBox(height: 10.h),
                    ],
                    
-                   // English Theme Fields
+                   // Spoken English Theme Fields
                    if (isEnglishTheme) ...[
                      _buildTextField("Subtitle (e.g., Spoken English)", Icons.text_fields, subtitleController, (v) => controller.subtitle.value = v,
                          maxLength: _PosterCopyLimits.englishSubtitle, helperText: _PosterCopyLimits.subtitleGuidance),
@@ -414,6 +420,10 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                      
                      _buildTextField("Title (e.g., ONLINE COURSE)", Icons.title, titleController, (v) => controller.titleEnglish.value = v,
                          maxLength: _PosterCopyLimits.englishTitle, helperText: _PosterCopyLimits.englishTitleGuidance),
+                     SizedBox(height: 10.h),
+
+                     _buildTextField("Venue", Icons.location_on, venueController, (v) => controller.venue.value = v,
+                         maxLength: _PosterCopyLimits.englishVenue, helperText: _PosterCopyLimits.englishVenueGuidance),
                      SizedBox(height: 10.h),
                      
                      _buildTimeRangeSelector(),
@@ -441,8 +451,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                            child: _buildPickerButton(
                              "From",
                              Icons.schedule,
-                             controller.hostSlotStart,
-                             () => controller.pickHostSlotStart(context),
+                             controller.slotStart,
+                             () => controller.pickSlotStart(context),
                            ),
                          ),
                          SizedBox(width: 10.w),
@@ -450,8 +460,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                            child: _buildPickerButton(
                              "To",
                              Icons.schedule,
-                             controller.hostSlotEnd,
-                             () => controller.pickHostSlotEnd(context),
+                             controller.slotEnd,
+                             () => controller.pickSlotEnd(context),
                            ),
                          ),
                        ],
@@ -484,8 +494,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                            child: _buildPickerButton(
                              "From",
                              Icons.schedule,
-                             controller.hostSlotStart,
-                             () => controller.pickHostSlotStart(context),
+                             controller.slotStart,
+                             () => controller.pickSlotStart(context),
                            ),
                          ),
                          SizedBox(width: 10.w),
@@ -493,8 +503,8 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                            child: _buildPickerButton(
                              "To",
                              Icons.schedule,
-                             controller.hostSlotEnd,
-                             () => controller.pickHostSlotEnd(context),
+                             controller.slotEnd,
+                             () => controller.pickSlotEnd(context),
                            ),
                          ),
                        ],
@@ -728,9 +738,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                         'description': controller.description.value,
                         'venue': isBasketballTheme
                             ? '${controller.stadiumName.value}, ${controller.address.value}'
-                            : isMusicFestivalTheme
-                                ? controller.location.value
-                                : controller.venue.value,
+                            : controller.venue.value,
                         'date': startIso ?? controller.dateStr.value,
                         'time': startTimeRaw,
                         'category': _inferCategory(),
@@ -801,7 +809,7 @@ class _PosterEditorViewState extends State<PosterEditorView> {
     } else if (isMusicFestivalTheme) {
       msg =
           'Music festival poster: title max ${_PosterCopyLimits.musicTitle} characters, '
-          'location max ${_PosterCopyLimits.musicLocation}, description max ${_PosterCopyLimits.musicDescription}.';
+          'venue max ${_PosterCopyLimits.musicVenue}, description max ${_PosterCopyLimits.musicDescription}.';
     } else if (isBasketballTheme) {
       msg =
           'Basketball poster: title max ${_PosterCopyLimits.basketballTitle} characters, '
@@ -941,18 +949,18 @@ class _PosterEditorViewState extends State<PosterEditorView> {
   }
 
   String _posterSaveStartTimeRaw() {
-    if (isEnglishTheme) return controller.startTime.value;
-    if (isMusicFestivalTheme) return controller.startTimings.value;
-    if (isBasketballTheme) return controller.basketballStartTime.value;
-    if (isGraduationTheme || isTechTheme) return controller.hostSlotStart.value;
+    if (isEnglishTheme || isMusicFestivalTheme || isBasketballTheme ||
+        isGraduationTheme || isTechTheme) {
+      return controller.slotStart.value;
+    }
     return controller.timeStr.value;
   }
 
   String _posterSaveEndTimeRaw() {
-    if (isEnglishTheme) return controller.endTime.value;
-    if (isMusicFestivalTheme) return controller.endTimings.value;
-    if (isBasketballTheme) return controller.basketballEndTime.value;
-    if (isGraduationTheme || isTechTheme) return controller.hostSlotEnd.value;
+    if (isEnglishTheme || isMusicFestivalTheme || isBasketballTheme ||
+        isGraduationTheme || isTechTheme) {
+      return controller.slotEnd.value;
+    }
     return controller.timeStr.value;
   }
 
@@ -1092,25 +1100,25 @@ class _PosterEditorViewState extends State<PosterEditorView> {
             children: [
               Expanded(
                 child: TextField(
-                  controller: TextEditingController(text: controller.startTime.value),
+                  controller: TextEditingController(text: controller.slotStart.value),
                   decoration: const InputDecoration(
                     labelText: "Start Time (e.g., 08 AM)",
                     contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (val) => controller.startTime.value = val,
+                  onChanged: (val) => controller.slotStart.value = val,
                 ),
               ),
               SizedBox(width: 10.w),
               Expanded(
                 child: TextField(
-                  controller: TextEditingController(text: controller.endTime.value),
+                  controller: TextEditingController(text: controller.slotEnd.value),
                   decoration: const InputDecoration(
                     labelText: "End Time (e.g., 2 PM)",
                     contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (val) => controller.endTime.value = val,
+                  onChanged: (val) => controller.slotEnd.value = val,
                 ),
               ),
             ],
