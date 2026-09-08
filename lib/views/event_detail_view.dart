@@ -1498,7 +1498,9 @@ class _EventDetailViewState extends State<EventDetailView> {
                     ),
                   ),
                   
-                  SizedBox(height: 120.h),
+                  SizedBox(
+                    height: 120.h + MediaQuery.viewPaddingOf(context).bottom,
+                  ),
                 ],
               ),
             ),
@@ -1510,16 +1512,21 @@ class _EventDetailViewState extends State<EventDetailView> {
         future: _getUserAndOrganizerRoles(),
         builder: (context, snapshot) {
           Widget sheetShell({required Widget child}) {
+            // Edge-to-edge: Scaffold bottomSheet often zeros MediaQuery.padding,
+            // so SafeArea alone does nothing. Pad with viewPadding explicitly.
+            final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
             return Material(
               color: AppColors.surface,
               elevation: 12,
               shadowColor: AppColors.navy.withValues(alpha: 0.18),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 12.h),
-                  child: child,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16.w,
+                  12.h,
+                  16.w,
+                  12.h + bottomInset,
                 ),
+                child: child,
               ),
             );
           }
