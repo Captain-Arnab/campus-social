@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../data/pref_service.dart';
+import '../services/force_update_service.dart';
 import '../widgets/app_loading_screen.dart';
 import 'bootstrap_views.dart';
 
@@ -21,6 +22,9 @@ class _AppHomeGateState extends State<AppHomeGate> {
   }
 
   Future<void> _resolve() async {
+    // Play Store immediate update when a newer build is published.
+    await ForceUpdateService.instance.ensureUpToDate();
+
     // SharedPreferences.getInstance is cached after first call, but the two
     // bool reads used to run sequentially — keep them concurrent.
     final results = await Future.wait<bool>([

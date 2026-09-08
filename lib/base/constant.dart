@@ -4,6 +4,9 @@ class Constant {
   /// Public marketing / help site (opens in browser from the app).
   static const String websiteUrl = 'https://www.micampus.co.in/';
 
+  /// Android applicationId / Play Store package name.
+  static const String androidPackageId = 'co.micampus.app';
+
   // --- API Configuration ---
   static const String baseUrl = "https://www.micampus.co.in/admin/api/";
 

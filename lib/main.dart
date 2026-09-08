@@ -11,6 +11,7 @@ import 'data/app_branding.dart';
 import 'theme/app_theme.dart';
 import 'views/app_home_gate.dart';
 import 'services/deep_link_service.dart';
+import 'services/force_update_service.dart';
 import 'services/notification_service.dart';
 
 /// Non-critical work after the first frame. Previously ran sequentially
@@ -57,6 +58,7 @@ void main() async {
   runApp(const MyApp());
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    ForceUpdateService.instance.startLifecycleWatcher();
     unawaited(_startupDeferredServices());
     unawaited(DeepLinkService.instance.init());
   });

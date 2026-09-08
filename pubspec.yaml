@@ -47,6 +47,8 @@ dependencies:
   webview_flutter: ^4.10.0
   share_plus: ^7.2.2
   app_links: ^6.4.1
+  # Play Store immediate update when a newer version is published
+  in_app_update: ^4.2.3
 
 dev_dependencies:
   flutter_test:
