@@ -691,11 +691,19 @@ class _EventDetailViewState extends State<EventDetailView> {
     }
   }
 
-  void _showParticipateDialog(BuildContext context, {required bool userIsStudent, bool switchFromVolunteer = false}) {
+  void _showParticipateDialog(
+    BuildContext context, {
+    required bool userIsStudent,
+    bool isRoleSwitch = false,
+  }) {
     if (!_isApprovedEvent()) {
       final st = _eventStatus();
       final label = st.isEmpty ? "pending" : st;
       SweetAlertHelper.showWarning(context, "Not Available", "This event is $label. You can participate only after approval.");
+      return;
+    }
+    if (isEventRegistrationClosed(_event)) {
+      SweetAlertHelper.showWarning(context, 'Registration closed', 'Registration for this event has closed.');
       return;
     }
     showParticipateRegistrationSheet(
@@ -705,14 +713,22 @@ class _EventDetailViewState extends State<EventDetailView> {
       organizerId: _event['organizer_id']?.toString(),
       eventSnapshot: _event,
       userIsStudent: userIsStudent,
-      switchFromVolunteer: switchFromVolunteer,
+      switchFromVolunteer: isRoleSwitch,
       onSwitchSuccess: () => _loadFullEvent(),
     );
   }
 
-  void _showSwitchToVolunteerDialog(BuildContext context, {required bool userIsStudent}) {
+  void _showVolunteerDialog(
+    BuildContext context, {
+    required bool userIsStudent,
+    bool isRoleSwitch = false,
+  }) {
     if (!_isApprovedEvent()) {
-      SweetAlertHelper.showWarning(context, 'Not Available', 'Role switch is only allowed for approved events.');
+      SweetAlertHelper.showWarning(context, 'Not Available', 'You can volunteer only after approval.');
+      return;
+    }
+    if (isEventRegistrationClosed(_event)) {
+      SweetAlertHelper.showWarning(context, 'Registration closed', 'Registration for this event has closed.');
       return;
     }
     showDialog(
@@ -720,7 +736,7 @@ class _EventDetailViewState extends State<EventDetailView> {
       builder: (ctx) => VolunteerDialog(
         event: _event,
         userIsStudent: userIsStudent,
-        switchFromParticipant: true,
+        switchFromParticipant: isRoleSwitch,
         onSwitchSuccess: () => _loadFullEvent(),
       ),
     );
@@ -879,6 +895,15 @@ class _EventDetailViewState extends State<EventDetailView> {
                     "Venue",
                     _event['venue'] ?? "Venue TBD",
                   ),
+
+                  if (registrationClosesLabel(_event) != null) ...[
+                    SizedBox(height: 10.h),
+                    _buildInfoTile(
+                      Icons.event_busy_rounded,
+                      "Registration",
+                      registrationClosesLabel(_event)!,
+                    ),
+                  ],
 
                   SizedBox(height: 10.h),
 
@@ -1661,7 +1686,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                             SizedBox(width: 12.w),
                             Expanded(
                               child: Text(
-                                'Registration closed',
+                                'Registration Closed',
                                 style: TextStyle(
                                   color: AppColors.navy,
                                   fontSize: 13.sp,
@@ -1676,7 +1701,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   },
                 ),
 
-                // Buttons row
+                // Buttons row — Join / Volunteer / Participate (+ role switch while open)
                 Row(
                   children: [
                     Expanded(
@@ -1687,24 +1712,41 @@ class _EventDetailViewState extends State<EventDetailView> {
                             (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                         final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                             (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
-                        final blockAttend = volunteering || participating;
                         final regClosed = isEventRegistrationClosed(_event);
-                        final canLeaveAttend = attending && !blockAttend && _isApprovedEvent();
-                        final canJoin = _isApprovedEvent() && !attending && !blockAttend && !regClosed;
+                        final canLeaveAttend = attending && _isApprovedEvent();
+                        final canSwitchToAttend = _isApprovedEvent() &&
+                            !attending &&
+                            (volunteering || participating) &&
+                            !regClosed;
+                        final canJoin = _isApprovedEvent() &&
+                            !attending &&
+                            !volunteering &&
+                            !participating &&
+                            !regClosed;
                         return ElevatedButton(
                           onPressed: canLeaveAttend
                               ? () async {
                                   final data = await controller.leaveEvent(eid);
                                   _applyLeaveResponseToEvent(data);
                                 }
-                              : canJoin
-                                  ? () => controller.joinEvent(
+                              : canSwitchToAttend
+                                  ? () async {
+                                      await controller.joinEvent(
                                         eid,
                                         organizerId: _event['organizer_id']?.toString(),
                                         eventSnapshot: _event,
                                         userIsStudent: isStudent,
-                                      )
-                                  : null,
+                                      );
+                                      await _loadFullEvent();
+                                    }
+                                  : canJoin
+                                      ? () => controller.joinEvent(
+                                            eid,
+                                            organizerId: _event['organizer_id']?.toString(),
+                                            eventSnapshot: _event,
+                                            userIsStudent: isStudent,
+                                          )
+                                      : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: canLeaveAttend
                                 ? AppColors.surfaceMuted
@@ -1724,16 +1766,18 @@ class _EventDetailViewState extends State<EventDetailView> {
                               Icon(
                                 canLeaveAttend
                                     ? Icons.logout
-                                    : (regClosed && !attending ? Icons.event_busy : Icons.check_circle),
+                                    : (canSwitchToAttend
+                                        ? Icons.swap_horiz
+                                        : (regClosed ? Icons.event_busy : Icons.check_circle)),
                                 size: 18,
                               ),
                               SizedBox(height: 4.h),
                               Text(
                                 canLeaveAttend
                                     ? 'Leave Event'
-                                    : (regClosed
-                                        ? 'Closed'
-                                        : (blockAttend ? 'Attend' : 'Join')),
+                                    : (canSwitchToAttend
+                                        ? '→ Attend'
+                                        : (regClosed ? 'Closed' : 'Join')),
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                               ),
                             ],
@@ -1748,44 +1792,36 @@ class _EventDetailViewState extends State<EventDetailView> {
                       Expanded(
                         child: Obx(() {
                           final eid = _event['id'].toString();
+                          final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
                           final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                           final regClosed = isEventRegistrationClosed(_event);
-                          final canSwitchToVolunteer =
-                              participating && !volunteering && _isApprovedEvent() && !regClosed;
-                          final canLeaveVolunteer =
-                              volunteering && !participating && _isApprovedEvent();
+                          final canLeaveVolunteer = volunteering && _isApprovedEvent();
+                          final canSwitchToVolunteer = _isApprovedEvent() &&
+                              !volunteering &&
+                              (attending || participating) &&
+                              !regClosed;
                           final canJoinVolunteer =
-                              _isApprovedEvent() && !volunteering && !participating && !regClosed;
+                              _isApprovedEvent() && !attending && !volunteering && !participating && !regClosed;
                           return OutlinedButton(
-                            onPressed: canSwitchToVolunteer
-                                ? () => _showSwitchToVolunteerDialog(context, userIsStudent: isStudent)
-                                : canLeaveVolunteer
-                                    ? () async {
-                                        final data = await controller.leaveVolunteer(eid);
-                                        _applyLeaveResponseToEvent(data);
-                                      }
+                            onPressed: canLeaveVolunteer
+                                ? () async {
+                                    final data = await controller.leaveVolunteer(eid);
+                                    _applyLeaveResponseToEvent(data);
+                                  }
+                                : canSwitchToVolunteer
+                                    ? () => _showVolunteerDialog(context, userIsStudent: isStudent, isRoleSwitch: true)
                                     : canJoinVolunteer
-                                        ? () => showDialog(
-                                              context: context,
-                                              builder: (context) => VolunteerDialog(
-                                                event: _event,
-                                                userIsStudent: isStudent,
-                                              ),
-                                            )
+                                        ? () => _showVolunteerDialog(context, userIsStudent: isStudent)
                                         : null,
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: canSwitchToVolunteer
-                                  ? AppColors.accent
-                                  : (canLeaveVolunteer
-                                      ? AppColors.navy
-                                      : AppColors.accent),
+                              foregroundColor: canLeaveVolunteer
+                                  ? AppColors.navy
+                                  : AppColors.accent,
                               side: BorderSide(
-                                color: canSwitchToVolunteer
-                                    ? AppColors.accent
-                                    : (canLeaveVolunteer ? AppColors.navy : AppColors.accent),
+                                color: canLeaveVolunteer ? AppColors.navy : AppColors.accent,
                                 width: 2,
                               ),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
@@ -1795,21 +1831,19 @@ class _EventDetailViewState extends State<EventDetailView> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  canSwitchToVolunteer
-                                      ? Icons.swap_horiz
-                                      : (canLeaveVolunteer
-                                          ? Icons.logout
-                                          : (regClosed && !volunteering
-                                              ? Icons.event_busy
-                                              : Icons.volunteer_activism)),
+                                  canLeaveVolunteer
+                                      ? Icons.logout
+                                      : (canSwitchToVolunteer
+                                          ? Icons.swap_horiz
+                                          : (regClosed ? Icons.event_busy : Icons.volunteer_activism)),
                                   size: 18,
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  canSwitchToVolunteer
-                                      ? '→ Volunteer'
-                                      : (canLeaveVolunteer
-                                          ? 'Leave'
+                                  canLeaveVolunteer
+                                      ? 'Leave'
+                                      : (canSwitchToVolunteer
+                                          ? '→ Volunteer'
                                           : (regClosed ? 'Closed' : 'Volunteer')),
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                                 ),
@@ -1819,45 +1853,43 @@ class _EventDetailViewState extends State<EventDetailView> {
                         }),
                       ),
                       SizedBox(width: 10.w),
-                      
+
                       // Participate Button
                       Expanded(
                         child: Obx(() {
                           final eid = _event['id'].toString();
+                          final attending = controller.attendingList.any((e) => e['id'].toString() == eid);
                           final volunteering = controller.volunteeringList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInVolunteerList(_event, userId));
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                           final regClosed = isEventRegistrationClosed(_event);
-                          final canSwitchFromVolunteer =
-                              volunteering && !participating && _isApprovedEvent() && !regClosed;
-                          final canLeaveParticipant =
-                              participating && !volunteering && _isApprovedEvent();
+                          final canLeaveParticipant = participating && _isApprovedEvent();
+                          final canSwitchToParticipant = _isApprovedEvent() &&
+                              !participating &&
+                              (attending || volunteering) &&
+                              !regClosed;
                           final canJoinParticipant =
-                              _isApprovedEvent() && !participating && !volunteering && !regClosed;
+                              _isApprovedEvent() && !attending && !volunteering && !participating && !regClosed;
                           return OutlinedButton(
                             onPressed: canLeaveParticipant
                                 ? () async {
                                     final data = await controller.leaveParticipant(eid);
                                     _applyLeaveResponseToEvent(data);
                                   }
-                                : canSwitchFromVolunteer
-                                    ? () => _showParticipateDialog(context, userIsStudent: isStudent, switchFromVolunteer: true)
+                                : canSwitchToParticipant
+                                    ? () => _showParticipateDialog(context, userIsStudent: isStudent, isRoleSwitch: true)
                                     : canJoinParticipant
                                         ? () => _showParticipateDialog(context, userIsStudent: isStudent)
                                         : null,
                             style: OutlinedButton.styleFrom(
                               foregroundColor: canLeaveParticipant
                                   ? AppColors.navy
-                                  : (canSwitchFromVolunteer
-                                      ? AppColors.accent
-                                      : AppColors.success),
+                                  : (canSwitchToParticipant ? AppColors.accent : AppColors.success),
                               side: BorderSide(
                                 color: canLeaveParticipant
                                     ? AppColors.navy
-                                    : (canSwitchFromVolunteer
-                                        ? AppColors.accent
-                                        : AppColors.success),
+                                    : (canSwitchToParticipant ? AppColors.accent : AppColors.success),
                                 width: 2,
                               ),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
@@ -1869,19 +1901,17 @@ class _EventDetailViewState extends State<EventDetailView> {
                                 Icon(
                                   canLeaveParticipant
                                       ? Icons.logout
-                                      : (canSwitchFromVolunteer
+                                      : (canSwitchToParticipant
                                           ? Icons.swap_horiz
-                                          : (regClosed && !participating
-                                              ? Icons.event_busy
-                                              : Icons.groups)),
+                                          : (regClosed ? Icons.event_busy : Icons.groups)),
                                   size: 18,
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
                                   canLeaveParticipant
                                       ? 'Leave'
-                                      : (canSwitchFromVolunteer
-                                          ? '→ Participant'
+                                      : (canSwitchToParticipant
+                                          ? '→ Participate'
                                           : (regClosed ? 'Closed' : 'Participate')),
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                                 ),

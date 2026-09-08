@@ -30,6 +30,7 @@ class CreateEventViewState extends State<CreateEventView> {
   final descCtrl = TextEditingController();
   final rulesCtrl = TextEditingController();
   final dateCtrl = TextEditingController();
+  final registrationDeadlineCtrl = TextEditingController();
   final venueCtrl = TextEditingController();
   String selectedCategory = "IT/Tech";
   File? selectedImage;
@@ -37,6 +38,9 @@ class CreateEventViewState extends State<CreateEventView> {
   TimeOfDay? selectedTime;
   DateTime? selectedEndDate;
   TimeOfDay? selectedEndTime;
+  DateTime? selectedRegDeadlineDate;
+  TimeOfDay? selectedRegDeadlineTime;
+  String? _registrationDeadlineError;
   final List<String> categories = ["IT/Tech", "Cultural", "Sports", "Academic", "Social"];
 
   late final EventController controller;
@@ -81,6 +85,16 @@ class CreateEventViewState extends State<CreateEventView> {
         }
       }
 
+      final rawDeadline = (e['registration_deadline'] ?? '').toString();
+      if (rawDeadline.isNotEmpty && rawDeadline != '0000-00-00 00:00:00') {
+        registrationDeadlineCtrl.text = rawDeadline;
+        final parsedDl = DateTime.tryParse(rawDeadline.replaceAll(' ', 'T'));
+        if (parsedDl != null) {
+          selectedRegDeadlineDate = DateTime(parsedDl.year, parsedDl.month, parsedDl.day);
+          selectedRegDeadlineTime = TimeOfDay(hour: parsedDl.hour, minute: parsedDl.minute);
+        }
+      }
+
       final banners = e['banners'];
       if (banners is List && banners.isNotEmpty) {
         _existingBannerName = banners.first.toString();
@@ -94,6 +108,7 @@ class CreateEventViewState extends State<CreateEventView> {
     descCtrl.dispose();
     rulesCtrl.dispose();
     dateCtrl.dispose();
+    registrationDeadlineCtrl.dispose();
     venueCtrl.dispose();
     Get.delete<CreateEventViewState>();
     super.dispose();
@@ -341,6 +356,18 @@ class CreateEventViewState extends State<CreateEventView> {
     return DateFormat('yyyy-MM-dd HH:mm:ss').format(full);
   }
 
+  String? _buildRegistrationDeadlineString() {
+    if (selectedRegDeadlineDate == null || selectedRegDeadlineTime == null) return null;
+    final full = DateTime(
+      selectedRegDeadlineDate!.year,
+      selectedRegDeadlineDate!.month,
+      selectedRegDeadlineDate!.day,
+      selectedRegDeadlineTime!.hour,
+      selectedRegDeadlineTime!.minute,
+    );
+    return DateFormat('yyyy-MM-dd HH:mm:ss').format(full);
+  }
+
   void _publishEvent() async {
     if (!_validateForm()) return;
 
@@ -355,6 +382,7 @@ class CreateEventViewState extends State<CreateEventView> {
 
     final isEdit = widget.existingEvent != null;
     final endDateStr = _buildEndDateString();
+    final deadlineStr = _buildRegistrationDeadlineString()!;
     final success = isEdit
         ? await controller.replacePendingHostedEvent(
             oldEvent: widget.existingEvent,
@@ -368,6 +396,7 @@ class CreateEventViewState extends State<CreateEventView> {
                 _removeExistingBanner ? null : _existingBannerName,
             rules: rulesCtrl.text.trim(),
             eventEndDate: endDateStr,
+            registrationDeadline: deadlineStr,
           )
         : await controller.createEvent(
             titleCtrl.text.trim(),
@@ -378,11 +407,13 @@ class CreateEventViewState extends State<CreateEventView> {
             selectedImage,
             rules: rulesCtrl.text.trim(),
             eventEndDate: endDateStr,
+            registrationDeadline: deadlineStr,
           );
 
     if (!mounted) return;
 
     if (success) {
+      setState(() => _registrationDeadlineError = null);
       final String successBody = isEdit
           ? (Constant.notifyAdminsBySmsOnEventSubmit
               ? "Event updated successfully (pending). Administrators are notified by SMS."
@@ -410,21 +441,91 @@ class CreateEventViewState extends State<CreateEventView> {
           }
         },
       );
+    } else if (controller.lastCreateErrorField == 'registration_deadline') {
+      setState(() {
+        _registrationDeadlineError = controller.lastCreateErrorMessage ??
+            'Please set a valid registration closing date & time.';
+      });
     }
-    // Errors are shown by EventController.createEvent with server message/field.
   }
 
   bool _validateForm() {
-    if (titleCtrl.text.trim().isEmpty || descCtrl.text.trim().isEmpty || selectedDate == null || selectedTime == null || venueCtrl.text.trim().isEmpty) {
+    setState(() => _registrationDeadlineError = null);
+
+    if (titleCtrl.text.trim().isEmpty ||
+        descCtrl.text.trim().isEmpty ||
+        selectedDate == null ||
+        selectedTime == null ||
+        venueCtrl.text.trim().isEmpty) {
       SweetAlertHelper.showError(context, "Required", "Please fill all fields");
       return false;
     }
+
+    if (selectedRegDeadlineDate == null || selectedRegDeadlineTime == null) {
+      setState(() {
+        _registrationDeadlineError =
+            'Registration Closing Date & Time is required.';
+      });
+      SweetAlertHelper.showError(
+        context,
+        'Registration deadline',
+        'Please set the Registration Closing Date & Time.',
+      );
+      return false;
+    }
+
+    final startDt = DateTime(
+      selectedDate!.year,
+      selectedDate!.month,
+      selectedDate!.day,
+      selectedTime!.hour,
+      selectedTime!.minute,
+    );
+    final deadlineDt = DateTime(
+      selectedRegDeadlineDate!.year,
+      selectedRegDeadlineDate!.month,
+      selectedRegDeadlineDate!.day,
+      selectedRegDeadlineTime!.hour,
+      selectedRegDeadlineTime!.minute,
+    );
+    final now = DateTime.now();
+
+    if (!deadlineDt.isAfter(now)) {
+      setState(() {
+        _registrationDeadlineError =
+            'Registration closing must be a future date & time.';
+      });
+      SweetAlertHelper.showError(
+        context,
+        'Registration deadline',
+        'Registration Closing Date & Time must be in the future.',
+      );
+      return false;
+    }
+
+    // Soft warning only — backend is source of truth (do not block submit).
+    if (deadlineDt.isAfter(startDt)) {
+      setState(() {
+        _registrationDeadlineError =
+            'Note: closing is after event start. Server will validate if needed.';
+      });
+    }
+
     if (selectedEndDate != null) {
-      final startDt = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, selectedTime!.hour, selectedTime!.minute);
       final endTime = selectedEndTime ?? const TimeOfDay(hour: 23, minute: 59);
-      final endDt = DateTime(selectedEndDate!.year, selectedEndDate!.month, selectedEndDate!.day, endTime.hour, endTime.minute);
+      final endDt = DateTime(
+        selectedEndDate!.year,
+        selectedEndDate!.month,
+        selectedEndDate!.day,
+        endTime.hour,
+        endTime.minute,
+      );
       if (endDt.isBefore(startDt)) {
-        SweetAlertHelper.showError(context, "Invalid Date", "End date must be on or after the start date.");
+        SweetAlertHelper.showError(
+          context,
+          "Invalid Date",
+          "End date must be on or after the start date.",
+        );
         return false;
       }
     }
@@ -685,6 +786,8 @@ class CreateEventViewState extends State<CreateEventView> {
               _sectionHeader('When', Icons.schedule_outlined),
               SizedBox(height: 16.h),
               _buildDateTimeSection(),
+              SizedBox(height: 20.h),
+              _buildRegistrationDeadlineSection(),
 
               SizedBox(height: 28.h),
 
@@ -891,6 +994,59 @@ class CreateEventViewState extends State<CreateEventView> {
     );
   }
 
+  Widget _buildRegistrationDeadlineSection() {
+    final hasError = _registrationDeadlineError != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Registration Closing Date & Time *', style: _labelStyle),
+        SizedBox(height: 6.h),
+        Text(
+          'Last date/time users can Join, Volunteer, or Participate.',
+          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+        ),
+        SizedBox(height: 10.h),
+        Row(
+          children: [
+            Expanded(
+              child: _dateTimeChip(
+                onTap: _selectRegDeadlineDate,
+                icon: Icons.event_busy,
+                text: selectedRegDeadlineDate != null
+                    ? DateFormat('dd MMM yyyy').format(selectedRegDeadlineDate!)
+                    : 'Closing Date',
+                active: selectedRegDeadlineDate != null,
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: _dateTimeChip(
+                onTap: _selectRegDeadlineTime,
+                icon: Icons.access_time,
+                text: selectedRegDeadlineTime != null
+                    ? selectedRegDeadlineTime!.format(context)
+                    : 'Closing Time',
+                active: selectedRegDeadlineTime != null,
+              ),
+            ),
+          ],
+        ),
+        if (hasError) ...[
+          SizedBox(height: 8.h),
+          Text(
+            _registrationDeadlineError!,
+            style: TextStyle(
+              color: _registrationDeadlineError!.startsWith('Note:')
+                  ? Colors.orange[800]
+                  : Colors.red[700],
+              fontSize: 12.sp,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -940,6 +1096,44 @@ class CreateEventViewState extends State<CreateEventView> {
     if (picked != null) setState(() => selectedEndTime = picked);
   }
 
+  Future<void> _selectRegDeadlineDate() async {
+    final now = DateTime.now();
+    final first = DateTime(now.year, now.month, now.day);
+    DateTime last = selectedDate != null
+        ? DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day)
+        : DateTime(2100);
+    if (last.isBefore(first)) last = DateTime(2100);
+    final initial = selectedRegDeadlineDate ?? first;
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initial.isAfter(last) ? last : initial,
+      firstDate: first,
+      lastDate: last,
+      builder: (ctx, child) => AppCalendarTheme.wrap(ctx, child),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedRegDeadlineDate = picked;
+        _registrationDeadlineError = null;
+        _updateRegistrationDeadlineController();
+      });
+    }
+  }
+
+  Future<void> _selectRegDeadlineTime() async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: selectedRegDeadlineTime ?? TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedRegDeadlineTime = picked;
+        _registrationDeadlineError = null;
+        _updateRegistrationDeadlineController();
+      });
+    }
+  }
+
   void _updateDateTimeController() {
     if (selectedDate != null && selectedTime != null) {
       final DateTime fullDateTime = DateTime(
@@ -951,5 +1145,10 @@ class CreateEventViewState extends State<CreateEventView> {
       );
       dateCtrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(fullDateTime);
     }
+  }
+
+  void _updateRegistrationDeadlineController() {
+    final s = _buildRegistrationDeadlineString();
+    if (s != null) registrationDeadlineCtrl.text = s;
   }
 }

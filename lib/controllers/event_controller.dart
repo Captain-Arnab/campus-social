@@ -265,14 +265,6 @@ class EventController extends GetxController {
     }
   }
 
-  bool _eventRowMatchesId(String eventId, dynamic row) {
-    if (row is! Map) return false;
-    return row['id']?.toString() == eventId.toString();
-  }
-
-  bool _inVolunteeringList(String eventId) => volunteeringList.any((e) => _eventRowMatchesId(eventId, e));
-  bool _inParticipatingList(String eventId) => participatingList.any((e) => _eventRowMatchesId(eventId, e));
-
   bool _isOrganiserForGuard(String userId, {String? organizerId, dynamic eventSnapshot}) {
     final oid = organizerId ?? EventParticipationRules.organizerIdFromEvent(eventSnapshot);
     return oid != null && oid == userId;
@@ -283,14 +275,6 @@ class EventController extends GetxController {
       Get.context,
       'Not allowed',
       'Event organisers cannot attend, volunteer, or register as participants for their own event.',
-    );
-  }
-
-  void _warnSingleRoleConflict(String description) {
-    SweetAlertHelper.showInfo(
-      Get.context,
-      'Already registered',
-      'You are already $description for this event. You can only have one role: attendee, volunteer, or participant.',
     );
   }
 
@@ -327,37 +311,9 @@ class EventController extends GetxController {
       }
     }
 
-    final id = eventId.toString();
-    switch (trying) {
-      case 'attendee':
-        if (_inVolunteeringList(id) || EventParticipationRules.userInVolunteerList(eventSnapshot, userId)) {
-          _warnSingleRoleConflict('registered as a volunteer');
-          return false;
-        }
-        if (_inParticipatingList(id) || EventParticipationRules.userInParticipantList(eventSnapshot, userId)) {
-          _warnSingleRoleConflict('registered as a participant');
-          return false;
-        }
-        return true;
-      case 'volunteer':
-        // An attendee may upgrade directly to volunteer; the backend clears the
-        // attendee row on success, so don't block it here.
-        if (_inParticipatingList(id) || EventParticipationRules.userInParticipantList(eventSnapshot, userId)) {
-          _warnSingleRoleConflict('registered as a participant');
-          return false;
-        }
-        return true;
-      case 'participant':
-        // An attendee may upgrade directly to participant; the backend clears the
-        // attendee row on success, so don't block it here.
-        if (_inVolunteeringList(id) || EventParticipationRules.userInVolunteerList(eventSnapshot, userId)) {
-          _warnSingleRoleConflict('registered as a volunteer');
-          return false;
-        }
-        return true;
-      default:
-        return true;
-    }
+    // Attend ↔ Volunteer ↔ Participate switches update the same registration
+    // server-side; do not block cross-role calls here.
+    return true;
   }
 
   Future<void> participate(
@@ -422,10 +378,11 @@ class EventController extends GetxController {
       final message = data['message']?.toString() ?? 'Unknown error occurred';
       
       if (status == 'success') {
+        ApiService.rememberServerTimeFromBody(data);
+        _applyParticipationResponse(eventId, data: data, roleJoined: 'participant');
         fetchParticipatingEvents();
-        // Attendee → participant clears the attendee row on the backend; refresh so
-        // the local attending state (and the "Viewer" button) updates immediately.
         fetchAttendingEvents();
+        fetchVolunteeringEvents();
         if (Get.isRegistered<ProfileController>()) {
           Get.find<ProfileController>().loadProfile();
         }
@@ -638,9 +595,28 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
   Future<Map<String, dynamic>?> fetchEventById(int eventId) async {
     try {
       final response = await ApiService.getEventById(eventId);
+      ApiService.rememberServerTimeFromBody(response.data);
       if (response.data is Map && response.data['status'] == 'success') {
         final d = response.data['data'];
-        return d is Map ? Map<String, dynamic>.from(d) : null;
+        if (d is Map) {
+          final map = Map<String, dynamic>.from(d);
+          // Promote top-level registration flags onto the event map when present.
+          final body = ApiService.responseDataMap(response.data);
+          if (body != null) {
+            for (final key in [
+              'registration_deadline',
+              'registration_open',
+              'registration_closed',
+              'server_time',
+            ]) {
+              if (body.containsKey(key) && !map.containsKey(key)) {
+                map[key] = body[key];
+              }
+            }
+          }
+          return map;
+        }
+        return null;
       }
       return null;
     } catch (e) {
@@ -693,6 +669,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     required String? existingBannerName,
     String rules = '',
     String? eventEndDate,
+    String? registrationDeadline,
   }) async {
     // Only pending events can be modified
     if (!_isPending(oldEvent)) {
@@ -742,14 +719,25 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       if (eventEndDate != null && eventEndDate.isNotEmpty) {
         createFields["event_end_date"] = eventEndDate;
       }
+      if (registrationDeadline != null && registrationDeadline.isNotEmpty) {
+        createFields["registration_deadline"] = registrationDeadline;
+      }
       final createResp = await ApiService.createEvent(createFields, bannerToUpload != null ? [bannerToUpload] : []);
 
       final createData = ApiService.parseResponseBody(createResp.data);
       if (createData == null || createData['status']?.toString() != 'success') {
+        lastCreateErrorField = createData?['field']?.toString();
+        lastCreateErrorMessage = ApiService.formatFieldError(
+          createData,
+          fallback: "Failed to update event",
+        );
+        final title = (lastCreateErrorField == 'registration_deadline')
+            ? 'Registration deadline'
+            : 'Error';
         SweetAlertHelper.showError(
           Get.context,
-          "Error",
-          ApiService.formatFieldError(createData, fallback: "Failed to update event"),
+          title,
+          lastCreateErrorMessage ?? "Failed to update event",
         );
         return false;
       }
@@ -773,9 +761,25 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
     }
   }
 
+  /// Last create/update API field error (e.g. `registration_deadline`) for inline UI.
+  String? lastCreateErrorField;
+  String? lastCreateErrorMessage;
+
   // Image is now optional - pass null if no image selected
-  Future<bool> createEvent(String title, String desc, String date, String category, String venue, File? image, {String rules = '', String? eventEndDate}) async {
+  Future<bool> createEvent(
+    String title,
+    String desc,
+    String date,
+    String category,
+    String venue,
+    File? image, {
+    String rules = '',
+    String? eventEndDate,
+    String? registrationDeadline,
+  }) async {
     isLoading.value = true;
+    lastCreateErrorField = null;
+    lastCreateErrorMessage = null;
     try {
       String? userId = await PrefService.getUserId();
       if (userId == null) {
@@ -798,7 +802,10 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       if (eventEndDate != null && eventEndDate.isNotEmpty) {
         fields["event_end_date"] = eventEndDate;
       }
-      
+      if (registrationDeadline != null && registrationDeadline.isNotEmpty) {
+        fields["registration_deadline"] = registrationDeadline;
+      }
+
       final response = await ApiService.createEvent(fields, image != null ? [image] : []);
 
       debugPrint("Create event response: ${response.data}");
@@ -810,19 +817,28 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
         await fetchHostedEvents();
         return true;
       } else {
+        lastCreateErrorField = data?['field']?.toString();
+        lastCreateErrorMessage = ApiService.formatFieldError(
+          data,
+          fallback: "Failed to create event",
+        );
+        final errTitle = (lastCreateErrorField == 'registration_deadline')
+            ? 'Registration deadline'
+            : 'Error';
         SweetAlertHelper.showError(
           Get.context,
-          "Error",
-          ApiService.formatFieldError(data, fallback: "Failed to create event"),
+          errTitle,
+          lastCreateErrorMessage ?? "Failed to create event",
         );
         return false;
       }
     } catch (e) {
       debugPrint("Create event error: $e");
+      lastCreateErrorMessage = "Failed to create event. Please try again.";
       SweetAlertHelper.showError(
         Get.context,
         "Error",
-        ApiService.formatFieldError(null, fallback: "Failed to create event. Please try again."),
+        lastCreateErrorMessage!,
       );
       return false;
     } finally {
@@ -872,6 +888,9 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       final msg = data['message']?.toString() ?? '';
       if (isSuccess) {
         _applyParticipationResponse(eventId, data: data, roleJoined: 'attendee');
+        fetchAttendingEvents();
+        fetchVolunteeringEvents();
+        fetchParticipatingEvents();
         SweetAlertHelper.showSuccess(Get.context, "Success", msg.isNotEmpty ? msg : "Registration successful.");
       } else {
         SweetAlertHelper.showInfo(Get.context, "Notice", msg);
@@ -1030,6 +1049,16 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       removeFrom(volunteeringList);
       removeFrom(participatingList);
     }
+    if (roleJoined == 'volunteer') {
+      ensureIn(volunteeringList, mini);
+      removeFrom(attendingList);
+      removeFrom(participatingList);
+    }
+    if (roleJoined == 'participant') {
+      ensureIn(participatingList, mini);
+      removeFrom(attendingList);
+      removeFrom(volunteeringList);
+    }
 
     void patchCounts(RxList<dynamic> list) {
       for (var i = 0; i < list.length; i++) {
@@ -1124,13 +1153,14 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
       final message = data['message']?.toString() ?? 'Unknown error occurred';
       
       if (status == 'success') {
+        ApiService.rememberServerTimeFromBody(data);
         if (Get.context != null) {
           Navigator.of(Get.context!, rootNavigator: true).maybePop();
         }
+        _applyParticipationResponse(eventId, data: data, roleJoined: 'volunteer');
         fetchVolunteeringEvents();
-        // Attendee → volunteer clears the attendee row on the backend; refresh so
-        // the local attending state (and the "Viewer" button) updates immediately.
         fetchAttendingEvents();
+        fetchParticipatingEvents();
         SweetAlertHelper.showSuccess(Get.context, "Success", "Successfully registered as volunteer!");
       } else {
         SweetAlertHelper.showError(Get.context, "Error", message);

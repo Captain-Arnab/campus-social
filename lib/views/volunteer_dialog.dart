@@ -318,16 +318,16 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
 
     if (widget.switchFromParticipant) {
       // Close first so the success alert is not dismissed by this pop.
+      // Backend updates the same registration in place via volunteers.php.
       _closeDialog();
-      controller
-          .switchStaffRole(
-            eventId: widget.event['id'].toString(),
-            toRole: 'volunteer',
-            volunteerRole: role,
-          )
-          .then((ok) {
-        if (ok) widget.onSwitchSuccess?.call();
-      });
+      controller.volunteer(
+        widget.event['id'].toString(),
+        role,
+        "",
+        organizerId: widget.event['organizer_id']?.toString(),
+        eventSnapshot: widget.event,
+        userIsStudent: widget.userIsStudent,
+      ).then((_) => widget.onSwitchSuccess?.call());
       return;
     }
 

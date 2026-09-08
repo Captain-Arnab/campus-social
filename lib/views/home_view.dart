@@ -1329,26 +1329,43 @@ class _AllEventCardActions extends StatelessWidget {
                           (userId != null &&
                               EventParticipationRules.userInParticipantList(
                                   event, userId));
-                      final blockJoin = volunteering || participating;
-                      final canLeave = attending && !blockJoin && isApproved;
-                      final canJoin = isApproved && !attending && !blockJoin;
+                      final canLeave = attending && isApproved;
+                      final canSwitchToAttend = isApproved &&
+                          !attending &&
+                          (volunteering || participating);
+                      final canJoin = isApproved &&
+                          !attending &&
+                          !volunteering &&
+                          !participating;
                       return _pill(
-                        label: canLeave ? 'Leave Event' : 'Join',
+                        label: canLeave
+                            ? 'Leave Event'
+                            : (canSwitchToAttend ? '→ Attend' : 'Join'),
                         icon: canLeave
                             ? Icons.logout
-                            : Icons.check_circle_outline_rounded,
+                            : (canSwitchToAttend
+                                ? Icons.swap_horiz
+                                : Icons.check_circle_outline_rounded),
                         bg: canLeave ? AppColors.surfaceMuted : AppColors.accent,
                         fg: canLeave ? AppColors.navy : Colors.white,
                         onPressed: canLeave
                             ? () => controller.leaveEvent(eid)
-                            : canJoin
+                            : canSwitchToAttend
                                 ? () => controller.joinEvent(
                                       eid,
                                       organizerId: event['organizer_id']?.toString(),
                                       eventSnapshot: event,
                                       userIsStudent: userIsStudent,
                                     )
-                                : null,
+                                : canJoin
+                                    ? () => controller.joinEvent(
+                                          eid,
+                                          organizerId:
+                                              event['organizer_id']?.toString(),
+                                          eventSnapshot: event,
+                                          userIsStudent: userIsStudent,
+                                        )
+                                    : null,
                       );
                     }),
                   ),
@@ -1360,6 +1377,8 @@ class _AllEventCardActions extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Obx(() {
+                            final attending = controller.attendingList
+                                .any((e) => e['id'].toString() == eid);
                             final volunteering = controller.volunteeringList
                                     .any((e) => e['id'].toString() == eid) ||
                                 (userId != null &&
@@ -1370,46 +1389,48 @@ class _AllEventCardActions extends StatelessWidget {
                                 (userId != null &&
                                     EventParticipationRules
                                         .userInParticipantList(event, userId));
-                            final canSwitchToVolunteer =
-                                participating && !volunteering && isApproved;
-                            final canLeaveVolunteer =
-                                volunteering && !participating && isApproved;
+                            final canLeaveVolunteer = volunteering && isApproved;
+                            final canSwitchToVolunteer = isApproved &&
+                                !volunteering &&
+                                (attending || participating);
                             final canJoinVolunteer = isApproved &&
+                                !attending &&
                                 !volunteering &&
                                 !participating;
                             return _pill(
-                              label: canSwitchToVolunteer
-                                  ? '→ Volunteer'
-                                  : (canLeaveVolunteer ? 'Leave' : 'Volunteer'),
-                              icon: canSwitchToVolunteer
-                                  ? Icons.swap_horiz
-                                  : (canLeaveVolunteer
-                                      ? Icons.logout
+                              label: canLeaveVolunteer
+                                  ? 'Leave'
+                                  : (canSwitchToVolunteer
+                                      ? '→ Volunteer'
+                                      : 'Volunteer'),
+                              icon: canLeaveVolunteer
+                                  ? Icons.logout
+                                  : (canSwitchToVolunteer
+                                      ? Icons.swap_horiz
                                       : Icons.front_hand_outlined),
-                              bg: canSwitchToVolunteer
-                                  ? AppColors.accent
-                                  : (canLeaveVolunteer
-                                      ? AppColors.surfaceMuted
-                                      : AppColors.accent),
+                              bg: canLeaveVolunteer
+                                  ? AppColors.surfaceMuted
+                                  : AppColors.accent,
                               fg: canLeaveVolunteer ? AppColors.navy : Colors.white,
-                              onPressed: canSwitchToVolunteer
-                                  ? () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => VolunteerDialog(
-                                          event: event,
-                                          userIsStudent: userIsStudent,
-                                          switchFromParticipant: true,
-                                        ),
-                                      );
-                                    }
-                                  : canLeaveVolunteer
-                                      ? () => controller.leaveVolunteer(eid)
+                              onPressed: canLeaveVolunteer
+                                  ? () => controller.leaveVolunteer(eid)
+                                  : canSwitchToVolunteer
+                                      ? () {
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => VolunteerDialog(
+                                              event: event,
+                                              userIsStudent: userIsStudent,
+                                              switchFromParticipant: true,
+                                            ),
+                                          );
+                                        }
                                       : canJoinVolunteer
                                           ? () {
                                               showDialog(
                                                 context: context,
-                                                builder: (context) => VolunteerDialog(
+                                                builder: (context) =>
+                                                    VolunteerDialog(
                                                   event: event,
                                                   userIsStudent: userIsStudent,
                                                 ),
@@ -1422,6 +1443,8 @@ class _AllEventCardActions extends StatelessWidget {
                         SizedBox(width: 6.w),
                         Expanded(
                           child: Obx(() {
+                            final attending = controller.attendingList
+                                .any((e) => e['id'].toString() == eid);
                             final volunteering = controller.volunteeringList
                                     .any((e) => e['id'].toString() == eid) ||
                                 (userId != null &&
@@ -1432,27 +1455,29 @@ class _AllEventCardActions extends StatelessWidget {
                                 (userId != null &&
                                     EventParticipationRules
                                         .userInParticipantList(event, userId));
-                            final canSwitchFromVolunteer =
-                                volunteering && !participating && isApproved;
                             final canLeaveParticipant =
-                                participating && !volunteering && isApproved;
+                                participating && isApproved;
+                            final canSwitchToParticipant = isApproved &&
+                                !participating &&
+                                (attending || volunteering);
                             final canJoinParticipant = isApproved &&
+                                !attending &&
                                 !participating &&
                                 !volunteering;
                             return _pill(
                               label: canLeaveParticipant
                                   ? 'Leave'
-                                  : (canSwitchFromVolunteer
-                                      ? '→ Participant'
+                                  : (canSwitchToParticipant
+                                      ? '→ Participate'
                                       : 'Participate'),
                               icon: canLeaveParticipant
                                   ? Icons.logout
-                                  : (canSwitchFromVolunteer
+                                  : (canSwitchToParticipant
                                       ? Icons.swap_horiz
                                       : Icons.person_add_alt_1_rounded),
                               bg: canLeaveParticipant
                                   ? AppColors.surfaceMuted
-                                  : (canSwitchFromVolunteer
+                                  : (canSwitchToParticipant
                                       ? AppColors.accent
                                       : AppColors.teal),
                               fg: canLeaveParticipant
@@ -1460,7 +1485,7 @@ class _AllEventCardActions extends StatelessWidget {
                                   : Colors.white,
                               onPressed: canLeaveParticipant
                                   ? () => controller.leaveParticipant(eid)
-                                  : canSwitchFromVolunteer
+                                  : canSwitchToParticipant
                                       ? () {
                                           showParticipateRegistrationSheet(
                                             context,

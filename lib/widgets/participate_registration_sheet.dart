@@ -148,25 +148,18 @@ class _ParticipateRegistrationContentState
                       return;
                     }
                     Navigator.pop(context);
-                    if (widget.switchFromVolunteer) {
-                      eventController
-                          .switchStaffRole(
-                            eventId: widget.eventId,
-                            toRole: 'participant',
-                            departmentClass: d,
-                          )
-                          .then((ok) {
-                        if (ok) widget.onSwitchSuccess?.call();
-                      });
-                    } else {
-                      eventController.participate(
-                        widget.eventId,
-                        d,
-                        organizerId: widget.organizerId,
-                        eventSnapshot: widget.eventSnapshot,
-                        userIsStudent: widget.userIsStudent,
-                      );
-                    }
+                    // Join and role-switch both hit participant.php; backend updates in place.
+                    eventController.participate(
+                      widget.eventId,
+                      d,
+                      organizerId: widget.organizerId,
+                      eventSnapshot: widget.eventSnapshot,
+                      userIsStudent: widget.userIsStudent,
+                    ).then((_) {
+                      if (widget.switchFromVolunteer) {
+                        widget.onSwitchSuccess?.call();
+                      }
+                    });
                   },
                   child: Text(widget.switchFromVolunteer ? 'Switch role' : 'Confirm'),
                 ),
