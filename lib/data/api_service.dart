@@ -41,12 +41,21 @@ class ApiService {
     rememberServerTimeFromBody(r.data);
   }
 
+  /// Auth headers for protected endpoints: Bearer token + [X-User-Id]
+  /// (backend falls back to this header when JWT subject resolution fails).
   static Future<Options> _getAuthOptions() async {
     final token = await PrefService.getToken();
-    if (token == null || token.isEmpty) {
-      return Options();
+    final userId = await PrefService.getUserId();
+    final headers = <String, dynamic>{};
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
     }
-    return Options(headers: {"Authorization": "Bearer $token"});
+    final uid = userId?.trim() ?? '';
+    if (uid.isNotEmpty) {
+      headers['X-User-Id'] = uid;
+    }
+    if (headers.isEmpty) return Options();
+    return Options(headers: headers);
   }
 
   static Map<String, dynamic> _networkErrorBody(DioException e) {
@@ -1511,14 +1520,16 @@ class ApiService {
     }
   }
 
-  /// Meeting minutes — fetch current minutes + status for an event.
+  /// Meeting minutes for an event (`action=list&event_id=`).
+  /// Note: `action=get` requires a minutes-row `id` and returns "id required"
+  /// when only `event_id` is sent — do not use it for event-scoped fetch.
   static Future<Response> getMeetingMinutes(int eventId) async {
     try {
       final auth = await _getAuthOptions();
       return await _dio.get(
         'meeting_minutes.php',
         queryParameters: {
-          'action': 'get',
+          'action': 'list',
           'event_id': eventId.toString(),
         },
         options: auth,
@@ -1531,6 +1542,58 @@ class ApiService {
             data: _networkErrorBody(e),
           );
     }
+  }
+
+  /// Picks the best minutes record from a [getMeetingMinutes] response.
+  /// Prefers `approved`, then newest by `created_at` / `updated_at` / id.
+  static Map<String, dynamic>? meetingMinutesRecordFromResponse(dynamic data) {
+    final map = parseResponseBody(data);
+    if (map == null) return null;
+    if (map['status']?.toString() != 'success') return null;
+    final raw = map['data'];
+    final list = <Map<String, dynamic>>[];
+    if (raw is List) {
+      for (final e in raw) {
+        if (e is Map<String, dynamic>) {
+          list.add(e);
+        } else if (e is Map) {
+          list.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
+        }
+      }
+    } else if (raw is Map) {
+      list.add(Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v))));
+    }
+    if (list.isEmpty) return null;
+
+    int rank(Map<String, dynamic> m) {
+      final st = (m['status'] ?? '').toString().toLowerCase();
+      if (st == 'approved') return 3;
+      if (st == 'pending') return 2;
+      if (st == 'rejected') return 1;
+      return 0;
+    }
+
+    DateTime? ts(Map<String, dynamic> m) {
+      for (final key in ['updated_at', 'created_at', 'reviewed_at']) {
+        final rawTs = (m[key] ?? '').toString().trim();
+        if (rawTs.isEmpty) continue;
+        final t = DateTime.tryParse(rawTs.replaceAll(' ', 'T'));
+        if (t != null) return t;
+      }
+      return null;
+    }
+
+    list.sort((a, b) {
+      final r = rank(b).compareTo(rank(a));
+      if (r != 0) return r;
+      final ta = ts(a);
+      final tb = ts(b);
+      if (ta != null && tb != null) return tb.compareTo(ta);
+      final ida = int.tryParse(a['id']?.toString() ?? '') ?? 0;
+      final idb = int.tryParse(b['id']?.toString() ?? '') ?? 0;
+      return idb.compareTo(ida);
+    });
+    return list.first;
   }
 
   /// Organizer closes a past event.
