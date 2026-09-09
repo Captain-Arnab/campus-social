@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:get/get.dart';
 
-import '../controllers/inbox_notification_controller.dart';
 import '../theme/app_theme.dart';
 
-/// Custom bottom nav: Explore — My Events — elevated Host — Notifications — Profile.
+/// Custom bottom nav: Explore — My Events — elevated Host — Food — Profile.
 class AppBottomNav extends StatelessWidget {
   /// Visual slot 0–4 (2 is the Host center button).
   final int currentIndex;
@@ -57,19 +55,13 @@ class AppBottomNav extends StatelessWidget {
             ),
             Expanded(child: _HostCenterButton(onTap: onHostTap)),
             Expanded(
-              child: Obx(() {
-                final unread = Get.isRegistered<InboxNotificationController>()
-                    ? Get.find<InboxNotificationController>().unreadCount.value
-                    : 0;
-                return _NavItem(
-                  selected: currentIndex == 3,
-                  icon: Icons.notifications_outlined,
-                  activeIcon: Icons.notifications_rounded,
-                  label: 'Alerts',
-                  badgeCount: unread,
-                  onTap: () => onTap(3),
-                );
-              }),
+              child: _NavItem(
+                selected: currentIndex == 3,
+                icon: Icons.restaurant_menu_outlined,
+                activeIcon: Icons.restaurant_menu_rounded,
+                label: 'Food',
+                onTap: () => onTap(3),
+              ),
             ),
             Expanded(
               child: _NavItem(
@@ -181,7 +173,6 @@ class _NavItem extends StatefulWidget {
   final IconData activeIcon;
   final String label;
   final VoidCallback onTap;
-  final int badgeCount;
 
   const _NavItem({
     required this.selected,
@@ -189,7 +180,6 @@ class _NavItem extends StatefulWidget {
     required this.activeIcon,
     required this.label,
     required this.onTap,
-    this.badgeCount = 0,
   });
 
   @override
@@ -242,38 +232,10 @@ class _NavItemState extends State<_NavItem> with SingleTickerProviderStateMixin 
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    widget.selected ? widget.activeIcon : widget.icon,
-                    color: color,
-                    size: 24.sp,
-                  ),
-                  if (widget.badgeCount > 0)
-                    Positioned(
-                      right: -8,
-                      top: -4,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-                        constraints: BoxConstraints(minWidth: 16.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.error,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.surface, width: 1.5),
-                        ),
-                        child: Text(
-                          widget.badgeCount > 99 ? '99+' : '${widget.badgeCount}',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9.sp,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
+              Icon(
+                widget.selected ? widget.activeIcon : widget.icon,
+                color: color,
+                size: 24.sp,
               ),
               SizedBox(height: 2.h),
               Text(
