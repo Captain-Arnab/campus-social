@@ -91,6 +91,10 @@ class _EventDetailViewState extends State<EventDetailView> {
   bool _loadingFull = true;
   List<dynamic> _winnersList = [];
   String? _minutesStatus;
+  String? _minutesContent;
+  String? _minutesFileUrl;
+  String? _minutesFilePath;
+  String? _minutesSubmittedAt;
   bool _closingEvent = false;
 
   @override
@@ -134,18 +138,42 @@ class _EventDetailViewState extends State<EventDetailView> {
       }
       if (mounted) setState(() => _winnersList = winners);
     }
-    // Meeting minutes status (separate from event report)
+    // Meeting minutes (list by event_id) — approved content is public; pending/rejected for host only.
     try {
       final minRes = await ApiService.getMeetingMinutes(id);
-      final minData = ApiService.parseResponseBody(minRes.data);
-      if (mounted && minData != null && minData['status'] == 'success') {
-        final payload = minData['data'] is Map
-            ? Map<String, dynamic>.from(minData['data'] as Map)
-            : minData;
-        final st = (payload['status'] ?? '').toString().toLowerCase();
-        setState(() => _minutesStatus = st.isEmpty ? null : st);
+      final record = ApiService.meetingMinutesRecordFromResponse(minRes.data);
+      if (mounted) {
+        if (record == null) {
+          setState(() {
+            _minutesStatus = null;
+            _minutesContent = null;
+            _minutesFileUrl = null;
+            _minutesFilePath = null;
+            _minutesSubmittedAt = null;
+          });
+        } else {
+          final st = (record['status'] ?? '').toString().toLowerCase();
+          setState(() {
+            _minutesStatus = st.isEmpty ? null : st;
+            _minutesContent = (record['content'] ?? record['minutes'] ?? '').toString();
+            _minutesFileUrl = (record['file_url'] ?? '').toString().trim();
+            _minutesFilePath = (record['file_path'] ?? '').toString().trim();
+            _minutesSubmittedAt =
+                (record['created_at'] ?? record['updated_at'] ?? '').toString().trim();
+          });
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _minutesStatus = null;
+          _minutesContent = null;
+          _minutesFileUrl = null;
+          _minutesFilePath = null;
+          _minutesSubmittedAt = null;
+        });
+      }
+    }
     if (mounted) setState(() => _loadingFull = false);
   }
 
@@ -216,6 +244,12 @@ class _EventDetailViewState extends State<EventDetailView> {
       return '${dateFmt.format(start)}, ${timeFmt.format(start)} – ${timeFmt.format(end)}';
     }
     return '${dateFmt.format(start)}, ${timeFmt.format(start)}\n→ ${dateFmt.format(end)}, ${timeFmt.format(end)}';
+  }
+
+  String _formatMinutesDate(String raw) {
+    final dt = DateTime.tryParse(raw.replaceAll(' ', 'T'));
+    if (dt == null) return raw;
+    return DateFormat('dd MMM yyyy').format(dt);
   }
 
   /// Editing is allowed only before the event calendar day (not on or after).
@@ -293,20 +327,29 @@ class _EventDetailViewState extends State<EventDetailView> {
       );
     }
 
-    return ElevatedButton.icon(
-      onPressed: _closingEvent ? null : _closeEvent,
-      icon: _closingEvent
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-            )
-          : const Icon(Icons.event_busy),
-      label: Text(_closingEvent ? 'Closing…' : 'Close Event'),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.navy,
-        foregroundColor: Colors.white,
-        padding: EdgeInsets.symmetric(vertical: 14.h),
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _closingEvent ? null : _closeEvent,
+        icon: _closingEvent
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : const Icon(Icons.event_busy),
+        label: Text(
+          _closingEvent ? 'Closing…' : 'Close Event',
+          maxLines: 1,
+          overflow: TextOverflow.visible,
+          softWrap: false,
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.navy,
+          foregroundColor: Colors.white,
+          minimumSize: Size(double.infinity, 48.h),
+          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 14.h),
+        ),
       ),
     );
   }
@@ -1188,48 +1231,132 @@ class _EventDetailViewState extends State<EventDetailView> {
                     SizedBox(height: 24.h),
                   ],
 
-                  // Meeting minutes status banner
-                  if (_minutesStatus != null) ...[
-                    Builder(builder: (context) {
-                      final st = _minutesStatus!;
-                      final color = st == 'approved'
-                          ? Colors.green.shade700
-                          : st == 'rejected'
-                              ? Colors.red.shade700
-                              : Colors.amber.shade800;
-                      final label = st == 'approved'
-                          ? 'Minutes approved'
-                          : st == 'rejected'
-                              ? 'Minutes rejected'
-                              : 'Minutes pending approval';
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: 24.h),
-                        child: Container(
-                          padding: EdgeInsets.all(12.w),
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: color),
-                          ),
-                          child: Row(
+                  // Approved meeting minutes — visible to all stakeholders
+                  if (_minutesStatus == 'approved' &&
+                      ((_minutesContent != null && _minutesContent!.trim().isNotEmpty) ||
+                          (_minutesFileUrl != null && _minutesFileUrl!.isNotEmpty) ||
+                          (_minutesFilePath != null && _minutesFilePath!.isNotEmpty))) ...[
+                    _sectionHeading('Meeting Minutes'),
+                    SizedBox(height: 12.h),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(16.w),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Icon(Icons.description_outlined, color: color, size: 24),
-                              SizedBox(width: 12.w),
-                              Expanded(
-                                child: Text(
-                                  label,
-                                  style: TextStyle(
-                                    color: color,
-                                    fontSize: 13.sp,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                              Icon(Icons.verified_rounded, color: Colors.green.shade700, size: 20),
+                              SizedBox(width: 8.w),
+                              Text(
+                                'Approved',
+                                style: TextStyle(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.green.shade700,
                                 ),
                               ),
+                              if (_minutesSubmittedAt != null &&
+                                  _minutesSubmittedAt!.isNotEmpty) ...[
+                                const Spacer(),
+                                Text(
+                                  _formatMinutesDate(_minutesSubmittedAt!),
+                                  style: TextStyle(
+                                    fontSize: 11.sp,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
-                        ),
-                      );
-                    }),
+                          if (_minutesContent != null &&
+                              _minutesContent!.trim().isNotEmpty) ...[
+                            SizedBox(height: 12.h),
+                            Text(
+                              _minutesContent!,
+                              style: TextStyle(
+                                fontSize: 15.sp,
+                                color: AppColors.navyMuted,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                          if ((_minutesFileUrl != null && _minutesFileUrl!.isNotEmpty) ||
+                              (_minutesFilePath != null && _minutesFilePath!.isNotEmpty)) ...[
+                            SizedBox(height: 12.h),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                final direct = (_minutesFileUrl ?? '').trim();
+                                final path = (_minutesFilePath ?? '').trim();
+                                final url = direct.isNotEmpty
+                                    ? (direct.startsWith('http')
+                                        ? direct
+                                        : Constant.uploadPublicUrl(direct))
+                                    : Constant.uploadPublicUrl(path);
+                                openReviewFileUrl(context, url);
+                              },
+                              icon: const Icon(Icons.attach_file, size: 18),
+                              label: const Text('Open attachment'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.teal,
+                                side: const BorderSide(color: AppColors.teal),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 24.h),
+                  ],
+
+                  // Host-only: pending/rejected minutes status (approved is shown above for everyone)
+                  if (_minutesStatus != null &&
+                      _minutesStatus != 'approved') ...[
+                    FutureBuilder<bool>(
+                      future: _isEventOrganizerOnly(),
+                      builder: (context, snap) {
+                        if (snap.data != true) return const SizedBox.shrink();
+                        final st = _minutesStatus!;
+                        final color = st == 'rejected'
+                            ? Colors.red.shade700
+                            : Colors.amber.shade800;
+                        final label = st == 'rejected'
+                            ? 'Minutes rejected'
+                            : 'Minutes pending approval';
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 24.h),
+                          child: Container(
+                            padding: EdgeInsets.all(12.w),
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: color),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.description_outlined, color: color, size: 24),
+                                SizedBox(width: 12.w),
+                                Expanded(
+                                  child: Text(
+                                    label,
+                                    style: TextStyle(
+                                      color: color,
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ],
 
                   // Winners section (always show; empty state when no winners)
@@ -2413,11 +2540,19 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
   late final TextEditingController _ctrl;
   bool _saving = false;
   final List<PlatformFile> _pendingFiles = [];
+  /// When a report already exists, start in read-only "submitted" view.
+  late bool _editing;
+
+  String get _existingText => (widget.event['organizer_review'] ?? '').toString().trim();
+
+  bool get _hasSubmittedReport =>
+      _existingText.isNotEmpty || reviewFilesFromEvent(widget.event).isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: (widget.event['organizer_review'] ?? '').toString());
+    _editing = !_hasSubmittedReport;
   }
 
   @override
@@ -2425,8 +2560,10 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
     super.didUpdateWidget(oldWidget);
     final next = (widget.event['organizer_review'] ?? '').toString();
     final prev = (oldWidget.event['organizer_review'] ?? '').toString();
-    if (next != prev && _ctrl.text == prev) {
-      _ctrl.text = next;
+    if (next != prev) {
+      if (!_editing || _ctrl.text == prev) {
+        _ctrl.text = next;
+      }
     }
   }
 
@@ -2452,6 +2589,14 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
 
   void _removePending(int i) {
     setState(() => _pendingFiles.removeAt(i));
+  }
+
+  String? _formatSubmittedAt() {
+    final raw = (widget.event['organizer_review_at'] ?? '').toString().trim();
+    if (raw.isEmpty || raw == '0000-00-00 00:00:00') return null;
+    final dt = DateTime.tryParse(raw.replaceAll(' ', 'T'));
+    if (dt == null) return raw;
+    return DateFormat('dd MMM yyyy, hh:mm a').format(dt);
   }
 
   Future<void> _submit() async {
@@ -2482,7 +2627,10 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
       final ok = ApiService.responseDataMap(r.data)?['status'] == 'success';
       if (ok) {
         if (mounted) {
-          setState(() => _pendingFiles.clear());
+          setState(() {
+            _pendingFiles.clear();
+            _editing = false;
+          });
           SweetAlertHelper.showSuccess(
             context,
             'Saved',
@@ -2500,6 +2648,226 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
     }
   }
 
+  Widget _buildAttachmentChips(List<Map<String, dynamic>> files) {
+    return Wrap(
+      spacing: 8.w,
+      runSpacing: 8.h,
+      children: files.map((f) {
+        final name = (f['original_name'] ?? 'File').toString();
+        final url = reviewFileDisplayUrl(f);
+        final ft = (f['file_type'] ?? '').toString().toLowerCase();
+        final isPdf = ft.contains('pdf') || name.toLowerCase().endsWith('.pdf');
+        final isImage = !isPdf &&
+            (ft.contains('image') ||
+                RegExp(r'\.(jpe?g|png|gif|webp)$', caseSensitive: false).hasMatch(name) ||
+                RegExp(r'\.(jpe?g|png|gif|webp)$', caseSensitive: false).hasMatch(url));
+        if (isImage && url.isNotEmpty) {
+          return GestureDetector(
+            onTap: () => openReviewFileUrl(context, url),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: AppNetworkImage(
+                url: url,
+                width: 72.w,
+                height: 72.w,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => Container(
+                  width: 72.w,
+                  height: 72.w,
+                  color: Colors.grey.shade200,
+                  child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade500),
+                ),
+              ),
+            ),
+          );
+        }
+        return ActionChip(
+          avatar: Icon(
+            isPdf ? Icons.picture_as_pdf : Icons.attach_file,
+            size: 18,
+            color: isPdf ? Colors.red.shade700 : Colors.blue.shade700,
+          ),
+          label: Text(name, style: TextStyle(fontSize: 12.sp)),
+          onPressed: url.isEmpty ? null : () => openReviewFileUrl(context, url),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSubmittedView(List<Map<String, dynamic>> existing) {
+    final submittedAt = _formatSubmittedAt();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Event Report',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.purple.shade900,
+                ),
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.green.shade300),
+              ),
+              child: Text(
+                'Submitted',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.green.shade800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (submittedAt != null) ...[
+          SizedBox(height: 6.h),
+          Text(
+            'Submitted $submittedAt',
+            style: TextStyle(fontSize: 12.sp, color: Colors.purple.shade700),
+          ),
+        ],
+        SizedBox(height: 12.h),
+        if (_existingText.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(14.w),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.purple.shade100),
+            ),
+            child: Text(
+              _existingText,
+              style: TextStyle(fontSize: 14.sp, color: AppColors.navyMuted, height: 1.5),
+            ),
+          ),
+        if (existing.isNotEmpty) ...[
+          SizedBox(height: 12.h),
+          Text(
+            'Attachments',
+            style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.purple.shade900),
+          ),
+          SizedBox(height: 8.h),
+          _buildAttachmentChips(existing),
+        ],
+        SizedBox(height: 14.h),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => setState(() {
+              _editing = true;
+              _ctrl.text = _existingText;
+              _pendingFiles.clear();
+            }),
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('Edit'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.purple.shade800,
+              side: BorderSide(color: Colors.purple.shade300),
+              padding: EdgeInsets.symmetric(vertical: 12.h),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditForm(List<Map<String, dynamic>> existing) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Event Report',
+                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.purple.shade900),
+              ),
+            ),
+            if (_hasSubmittedReport)
+              TextButton(
+                onPressed: _saving
+                    ? null
+                    : () => setState(() {
+                          _editing = false;
+                          _pendingFiles.clear();
+                          _ctrl.text = _existingText;
+                        }),
+                child: Text('Cancel', style: TextStyle(color: Colors.purple.shade800)),
+              ),
+          ],
+        ),
+        SizedBox(height: 8.h),
+        TextField(
+          controller: _ctrl,
+          maxLines: 4,
+          decoration: InputDecoration(
+            hintText: 'Share how the event went, highlights, thanks...',
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        SizedBox(height: 10.h),
+        Text(
+          'Attachments (images or PDF)',
+          style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.purple.shade900),
+        ),
+        SizedBox(height: 6.h),
+        if (existing.isNotEmpty) ...[
+          Text('Already uploaded', style: TextStyle(fontSize: 12.sp, color: Colors.purple.shade800)),
+          SizedBox(height: 6.h),
+          _buildAttachmentChips(existing),
+          SizedBox(height: 8.h),
+        ],
+        OutlinedButton.icon(
+          onPressed: _saving ? null : _pickAttachments,
+          icon: const Icon(Icons.attach_file, size: 18),
+          label: const Text('Add files'),
+        ),
+        if (_pendingFiles.isNotEmpty) ...[
+          SizedBox(height: 8.h),
+          ...List.generate(_pendingFiles.length, (i) {
+            final name = _pendingFiles[i].name;
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.sp)),
+              trailing: IconButton(
+                icon: const Icon(Icons.close, size: 20),
+                onPressed: _saving ? null : () => _removePending(i),
+              ),
+            );
+          }),
+        ],
+        SizedBox(height: 12.h),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _saving ? null : _submit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: _saving
+                ? SizedBox(width: 22.w, height: 22.h, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Text(_hasSubmittedReport ? 'Update report' : 'Post review'),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final existing = reviewFilesFromEvent(widget.event);
@@ -2510,83 +2878,9 @@ class _OrganizerReviewEditorState extends State<_OrganizerReviewEditor> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.purple.shade200),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Event Report',
-            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.purple.shade900),
-          ),
-          SizedBox(height: 8.h),
-          TextField(
-            controller: _ctrl,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: 'Share how the event went, highlights, thanks...',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          ),
-          SizedBox(height: 10.h),
-          Text(
-            'Attachments (images or PDF)',
-            style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.purple.shade900),
-          ),
-          SizedBox(height: 6.h),
-          if (existing.isNotEmpty) ...[
-            Text('Already uploaded', style: TextStyle(fontSize: 12.sp, color: Colors.purple.shade800)),
-            SizedBox(height: 6.h),
-            Wrap(
-              spacing: 6.w,
-              runSpacing: 6.h,
-              children: existing.map((f) {
-                final name = (f['original_name'] ?? 'File').toString();
-                final url = reviewFileDisplayUrl(f);
-                return InputChip(
-                  label: Text(name, overflow: TextOverflow.ellipsis),
-                  onPressed: url.isEmpty ? null : () => openReviewFileUrl(context, url),
-                );
-              }).toList(),
-            ),
-            SizedBox(height: 8.h),
-          ],
-          OutlinedButton.icon(
-            onPressed: _saving ? null : _pickAttachments,
-            icon: const Icon(Icons.attach_file, size: 18),
-            label: const Text('Add files'),
-          ),
-          if (_pendingFiles.isNotEmpty) ...[
-            SizedBox(height: 8.h),
-            ...List.generate(_pendingFiles.length, (i) {
-              final name = _pendingFiles[i].name;
-              return ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.sp)),
-                trailing: IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: _saving ? null : () => _removePending(i),
-                ),
-              );
-            }),
-          ],
-          SizedBox(height: 12.h),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _saving ? null : _submit,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple.shade700,
-                foregroundColor: Colors.white,
-              ),
-              child: _saving
-                  ? SizedBox(width: 22.w, height: 22.h, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Post review'),
-            ),
-          ),
-        ],
-      ),
+      child: (!_editing && _hasSubmittedReport)
+          ? _buildSubmittedView(existing)
+          : _buildEditForm(existing),
     );
   }
 }

@@ -4,7 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../base/constant.dart';
 import '../data/api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/sweetalert_helper.dart';
@@ -27,6 +30,10 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
   bool _saving = false;
   String? _status;
   String? _existingContent;
+  String? _fileUrl;
+  String? _filePath;
+  String? _submittedAt;
+  /// Only set when the current load/submit request fails — never left over from prior opens.
   String? _error;
 
   int? get _eventId => int.tryParse(widget.event['id']?.toString() ?? '');
@@ -46,40 +53,82 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
   Future<void> _load() async {
     final eid = _eventId;
     if (eid == null) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _error = 'Invalid event';
+        _status = null;
+        _existingContent = null;
+        _fileUrl = null;
+        _filePath = null;
+        _submittedAt = null;
       });
       return;
     }
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
+      _status = null;
+      _existingContent = null;
+      _fileUrl = null;
+      _filePath = null;
+      _submittedAt = null;
     });
     try {
       final res = await ApiService.getMeetingMinutes(eid);
       final data = ApiService.parseResponseBody(res.data);
-      if (data != null && data['status'] == 'success') {
-        final payload = data['data'] is Map
-            ? Map<String, dynamic>.from(data['data'] as Map)
-            : data;
-        final content = (payload['content'] ?? payload['minutes'] ?? '')
-            .toString();
-        final status = (payload['status'] ?? '').toString().toLowerCase();
+      if (!mounted) return;
+
+      if (data == null) {
+        setState(() => _error = ApiService.responseErrorHint(res));
+        return;
+      }
+
+      final statusStr = data['status']?.toString().toLowerCase() ?? '';
+      if (statusStr == 'success') {
+        final record = ApiService.meetingMinutesRecordFromResponse(res.data);
+        if (record == null) {
+          // Empty list — no minutes yet; not an error.
+          setState(() {
+            _error = null;
+            _status = null;
+            _existingContent = null;
+          });
+          return;
+        }
+        final content = (record['content'] ?? record['minutes'] ?? '').toString();
+        final status = (record['status'] ?? '').toString().toLowerCase();
         setState(() {
+          _error = null;
           _existingContent = content;
           _status = status.isEmpty ? null : status;
+          _fileUrl = (record['file_url'] ?? '').toString().trim();
+          _filePath = (record['file_path'] ?? '').toString().trim();
+          _submittedAt = (record['created_at'] ?? record['updated_at'] ?? '')
+              .toString()
+              .trim();
           if (content.isNotEmpty) _contentCtrl.text = content;
         });
-      } else if (data != null && data['status'] == 'error') {
-        // No minutes yet is OK
-        final msg = data['message']?.toString().toLowerCase() ?? '';
-        if (!msg.contains('not found') && !msg.contains('no minutes')) {
-          _error = data['message']?.toString();
-        }
+        return;
       }
+
+      // Error responses: treat "not found" / empty as no minutes; ignore stale
+      // "id required" from the old action=get shape if the server still returns it.
+      final msg = (data['message'] ?? '').toString();
+      final lower = msg.toLowerCase();
+      final benign = lower.contains('not found') ||
+          lower.contains('no minutes') ||
+          lower.contains('id required') ||
+          lower.trim().isEmpty;
+      setState(() {
+        _error = benign ? null : msg;
+        _status = null;
+        _existingContent = null;
+      });
     } catch (e) {
-      _error = e.toString();
+      if (!mounted) return;
+      setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -98,6 +147,18 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
     }
   }
 
+  Future<void> _openExistingFile() async {
+    final direct = (_fileUrl ?? '').trim();
+    final path = (_filePath ?? '').trim();
+    final url = direct.isNotEmpty
+        ? (direct.startsWith('http') ? direct : Constant.uploadPublicUrl(direct))
+        : (path.isNotEmpty ? Constant.uploadPublicUrl(path) : '');
+    if (url.isEmpty) return;
+    final u = Uri.tryParse(url);
+    if (u == null) return;
+    await launchUrl(u, mode: LaunchMode.externalApplication);
+  }
+
   Future<void> _submit() async {
     final text = _contentCtrl.text.trim();
     if (text.isEmpty) {
@@ -106,7 +167,10 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
     }
     final eid = _eventId;
     if (eid == null) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
       File? file;
       final path = _attachment?.path;
@@ -168,10 +232,22 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
     }
   }
 
+  String? _formatSubmittedAt() {
+    final raw = _submittedAt;
+    if (raw == null || raw.isEmpty) return null;
+    final dt = DateTime.tryParse(raw.replaceAll(' ', 'T'));
+    if (dt == null) return raw;
+    return DateFormat('dd MMM yyyy, hh:mm a').format(dt);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final title =
-        (widget.event['title'] ?? 'Event').toString();
+    final title = (widget.event['title'] ?? 'Event').toString();
+    final hasExistingFile =
+        (_fileUrl != null && _fileUrl!.isNotEmpty) ||
+        (_filePath != null && _filePath!.isNotEmpty);
+    final submittedLabel = _formatSubmittedAt();
+
     return Scaffold(
       backgroundColor: AppColors.cream,
       appBar: AppBar(
@@ -227,13 +303,28 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
                           ),
                           SizedBox(width: 10.w),
                           Expanded(
-                            child: Text(
-                              'Minutes status: ${_statusLabel(_status!)}',
-                              style: TextStyle(
-                                color: _statusColor(_status!),
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13.sp,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Minutes status: ${_statusLabel(_status!)}',
+                                  style: TextStyle(
+                                    color: _statusColor(_status!),
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13.sp,
+                                  ),
+                                ),
+                                if (submittedLabel != null) ...[
+                                  SizedBox(height: 2.h),
+                                  Text(
+                                    'Submitted $submittedLabel',
+                                    style: TextStyle(
+                                      color: _statusColor(_status!),
+                                      fontSize: 11.sp,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         ],
@@ -260,6 +351,19 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
                     ),
                   ),
                   SizedBox(height: 16.h),
+                  if (hasExistingFile) ...[
+                    OutlinedButton.icon(
+                      onPressed: _openExistingFile,
+                      icon: const Icon(Icons.attach_file),
+                      label: const Text('Open current attachment'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.teal,
+                        side: const BorderSide(color: AppColors.teal),
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                  ],
                   OutlinedButton.icon(
                     onPressed: _pickAttachment,
                     icon: const Icon(Icons.attach_file),
