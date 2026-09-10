@@ -41,6 +41,8 @@ class PosterController extends GetxController {
   var posterStartDate = Rx<DateTime?>(null);
   var posterEndDate = Rx<DateTime?>(null);
   var phoneNumber = "800 829 5550 / 51".obs;
+  /// Max course bullet points on the Spoken English / Online Course poster.
+  static const int kMaxCoursePoints = 4;
   var coursePoints = <String>[].obs;
 
   // Basketball specific fields (extended venue pair)
@@ -233,7 +235,7 @@ class PosterController extends GetxController {
 
   // --- COURSE POINTS MANAGEMENT ---
   void addCoursePoint(String point) {
-    if (point.trim().isNotEmpty) {
+    if (point.trim().isNotEmpty && coursePoints.length < kMaxCoursePoints) {
       coursePoints.add(point.trim());
     }
   }

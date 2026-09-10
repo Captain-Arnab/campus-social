@@ -819,111 +819,132 @@ static Widget englishTheme({
             ),
           ),
 
-          // Schedule (dates + times; width capped so text does not run under the image)
+          // Schedule, venue, Our Course badge, and points — one flexible column
+          // so vertical gaps tighten with content and scale for 1–4 points.
           Positioned(
             top: 132.h,
             left: 20.w,
-            right: 92.w,
-            child: boundedText(
-              scheduleCaption,
-              TextStyle(
-                fontSize: 15.sp,
-                fontWeight: FontWeight.w900,
-                color: engBlue,
-                height: 1.2,
-              ),
-              maxLines: 4,
-            ),
-          ),
+            right: 100.w,
+            bottom: 85.h,
+            child: Builder(
+              builder: (context) {
+                final points = coursePoints
+                    .where((p) => p.trim().isNotEmpty)
+                    .take(4)
+                    .toList();
+                final pointCount = points.length;
+                // Tighter gaps / slightly smaller type when more bullets are shown.
+                final itemGap = pointCount <= 1
+                    ? 0.0
+                    : pointCount == 2
+                        ? 8.h
+                        : pointCount == 3
+                            ? 5.h
+                            : 3.h;
+                final checkSize = pointCount >= 4 ? 16.w : 18.w;
+                final pointFont = pointCount >= 4 ? 12.sp : 13.sp;
+                final pointMaxLines = pointCount >= 4 ? 2 : 3;
 
-          // Optional venue near schedule
-          if (venue.trim().isNotEmpty)
-            Positioned(
-              top: 168.h,
-              left: 20.w,
-              right: 92.w,
-              child: boundedText(
-                venue,
-                TextStyle(
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.w700,
-                  color: engBlue,
-                  height: 1.2,
-                ),
-                maxLines: 2,
-              ),
-            ),
-
-          // Our Course Section (Blue button style)
-          Positioned(
-            top: venue.trim().isNotEmpty ? 210.h : 198.h,
-            left: 20.w,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-              decoration: BoxDecoration(
-                color: engBlue,
-                borderRadius: BorderRadius.circular(30.r),
-              ),
-              child: Text(
-                "Our Course",
-                style: TextStyle(
-                  fontSize: 10.sp,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-
-          // Course Points List
-          if (coursePoints.isNotEmpty)
-            Positioned(
-              top: venue.trim().isNotEmpty ? 240.h : 228.h,
-              left: 20.w,
-              right: 100.w,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: coursePoints.map((point) {
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 8.h),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          margin: EdgeInsets.only(top: 1.h, right: 8.w),
-                          width: 20.w,
-                          height: 20.w,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: engBlue,
-                            border: Border.all(color: engBlue, width: 2),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.check,
-                              size: 12.sp,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: boundedText(
-                            point,
-                            TextStyle(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w600,
-                              color: engBlue,
-                              height: 1.3,
-                            ),
-                            maxLines: 3,
-                          ),
-                        ),
-                      ],
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    boundedText(
+                      scheduleCaption,
+                      TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w900,
+                        color: engBlue,
+                        height: 1.2,
+                      ),
+                      maxLines: 4,
                     ),
-                  );
-                }).toList(),
-              ),
+                    if (venue.trim().isNotEmpty) ...[
+                      SizedBox(height: 4.h),
+                      boundedText(
+                        venue,
+                        TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w700,
+                          color: engBlue,
+                          height: 1.2,
+                        ),
+                        maxLines: 2,
+                      ),
+                    ],
+                    // Keep "Our Course" close to the date/venue block (was a large dead zone).
+                    SizedBox(height: 8.h),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
+                      decoration: BoxDecoration(
+                        color: engBlue,
+                        borderRadius: BorderRadius.circular(30.r),
+                      ),
+                      child: Text(
+                        "Our Course",
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (points.isNotEmpty) ...[
+                      SizedBox(height: 6.h),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (var i = 0; i < points.length; i++)
+                              Flexible(
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                    bottom: i < points.length - 1 ? itemGap : 0,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        margin: EdgeInsets.only(top: 1.h, right: 8.w),
+                                        width: checkSize,
+                                        height: checkSize,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: engBlue,
+                                          border: Border.all(color: engBlue, width: 2),
+                                        ),
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.check,
+                                            size: checkSize * 0.6,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: boundedText(
+                                          points[i],
+                                          TextStyle(
+                                            fontSize: pointFont,
+                                            fontWeight: FontWeight.w600,
+                                            color: engBlue,
+                                            height: 1.25,
+                                          ),
+                                          maxLines: pointMaxLines,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
+          ),
 
 
 
