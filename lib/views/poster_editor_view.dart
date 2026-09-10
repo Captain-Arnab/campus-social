@@ -32,6 +32,7 @@ class _PosterCopyLimits {
   static const int venue = 56;
   static const int phone = 32;
   static const int englishVenue = 40;
+  static const int englishCoursePointsMax = PosterController.kMaxCoursePoints;
 
   static String get graduationTitleGuidance =>
       'Graduation headline: max $graduationTitle characters so it fits the layout.';
@@ -304,7 +305,9 @@ class _PosterEditorViewState extends State<PosterEditorView> {
                             subtitle: controller.subtitle.value,
                             scheduleCaption: schedSlot,
                             venue: controller.venue.value,
-                            coursePoints: controller.coursePoints.toList(),
+                            coursePoints: controller.coursePoints
+                                .take(_PosterCopyLimits.englishCoursePointsMax)
+                                .toList(),
                             phoneNumber: controller.phoneNumber.value,
                             image: img,
                             logoImage: logo,
@@ -1129,84 +1132,97 @@ class _PosterEditorViewState extends State<PosterEditorView> {
   }
 
   Widget _buildCoursePointsSection() {
-    return Obx(() => Container(
-      padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(10),
-        color: Colors.white,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.checklist, size: 18, color: Colors.orange),
-              SizedBox(width: 8.w),
-              Text("Course Points:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.sp)),
-            ],
-          ),
-          SizedBox(height: 10.h),
-          
-          // Display existing points
-          ...controller.coursePoints.asMap().entries.map((entry) {
-            int idx = entry.key;
-            String point = entry.value;
-            return Padding(
-              padding: EdgeInsets.only(bottom: 8.h),
-              child: Row(
+    return Obx(() {
+      final atMax =
+          controller.coursePoints.length >= _PosterCopyLimits.englishCoursePointsMax;
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 10.h),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black12),
+          borderRadius: BorderRadius.circular(10),
+          color: Colors.white,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.checklist, size: 18, color: Colors.orange),
+                SizedBox(width: 8.w),
+                Text(
+                  "Course Points (${controller.coursePoints.length}/${_PosterCopyLimits.englishCoursePointsMax}):",
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.sp),
+                ),
+              ],
+            ),
+            SizedBox(height: 10.h),
+
+            // Display existing points
+            ...controller.coursePoints.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final point = entry.value;
+              return Padding(
+                padding: EdgeInsets.only(bottom: 8.h),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8.r),
+                        ),
+                        child: Text(point, style: TextStyle(fontSize: 12.sp)),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    IconButton(
+                      icon: Icon(Icons.delete, color: Colors.red, size: 20.sp),
+                      onPressed: () => controller.removeCoursePoint(idx),
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            // Add new point (hidden once max reached)
+            if (!atMax)
+              Row(
                 children: [
                   Expanded(
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(8.r),
+                    child: TextField(
+                      controller: coursePointController,
+                      decoration: const InputDecoration(
+                        hintText: "Add course point...",
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        border: OutlineInputBorder(),
                       ),
-                      child: Text(point, style: TextStyle(fontSize: 12.sp)),
                     ),
                   ),
                   SizedBox(width: 8.w),
-                  IconButton(
-                    icon: Icon(Icons.delete, color: Colors.red, size: 20.sp),
-                    onPressed: () => controller.removeCoursePoint(idx),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (coursePointController.text.trim().isNotEmpty) {
+                        controller.addCoursePoint(coursePointController.text);
+                        coursePointController.clear();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 12.h),
+                    ),
+                    child: const Text("Add", style: TextStyle(color: Colors.white)),
                   ),
                 ],
+              )
+            else
+              Text(
+                "Maximum ${_PosterCopyLimits.englishCoursePointsMax} course points reached.",
+                style: TextStyle(fontSize: 11.sp, color: Colors.black54),
               ),
-            );
-          }),
-          
-          // Add new point
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: coursePointController,
-                  decoration: const InputDecoration(
-                    hintText: "Add course point...",
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              SizedBox(width: 8.w),
-              ElevatedButton(
-                onPressed: () {
-                  if (coursePointController.text.trim().isNotEmpty) {
-                    controller.addCoursePoint(coursePointController.text);
-                    coursePointController.clear();
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 12.h),
-                ),
-                child: const Text("Add", style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ));
+          ],
+        ),
+      );
+    });
   }
 }
