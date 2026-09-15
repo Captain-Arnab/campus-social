@@ -184,17 +184,23 @@ class AppBranding {
     double verticalInset = 4,
     BoxFit fit = BoxFit.contain,
     BorderRadius? borderRadius,
+    bool onPrimaryBackground = false,
   }) {
     return SizedBox(
       width: outerWidth,
       height: outerHeight,
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalInset, vertical: verticalInset),
-        child: Center(
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalInset,
+          vertical: verticalInset,
+        ),
+        child: Align(
+          alignment: Alignment.centerLeft,
           child: AppLogoLockup(
             size: (outerHeight - verticalInset * 2).clamp(24.0, 48.0),
             gap: gap,
             borderRadius: borderRadius?.topLeft.x ?? 8,
+            onPrimaryBackground: onPrimaryBackground,
           ),
         ),
       ),

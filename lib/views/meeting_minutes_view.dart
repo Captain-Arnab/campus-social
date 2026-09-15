@@ -186,14 +186,57 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
       final data = ApiService.parseResponseBody(r.data);
       if (data?['status'] == 'success') {
         if (!mounted) return;
-        SweetAlertHelper.showSuccess(
-          context,
-          'Submitted',
-          data?['message']?.toString() ?? 'Meeting minutes submitted.',
-          onConfirm: () {
-            Get.back(result: true);
-          },
-        );
+
+        final autoPublished = _truthy(data?['auto_published']);
+        final pendingApproval = data?.containsKey('pending_approval') == true
+            ? _truthy(data?['pending_approval'])
+            : !autoPublished;
+
+        final fileUrl = (data?['file_url'] ?? '').toString().trim();
+        final filePath = (data?['file_path'] ?? '').toString().trim();
+        final apiMsg = data?['message']?.toString().trim();
+
+        if (autoPublished || !pendingApproval) {
+          // Organizer auto-publish — treat as immediately approved/visible.
+          setState(() {
+            _status = 'approved';
+            _existingContent = text;
+            _error = null;
+            if (fileUrl.isNotEmpty) _fileUrl = fileUrl;
+            if (filePath.isNotEmpty) _filePath = filePath;
+            _submittedAt = DateTime.now().toIso8601String();
+            _attachment = null;
+          });
+          SweetAlertHelper.showSuccess(
+            context,
+            'Minutes published',
+            (apiMsg != null && apiMsg.isNotEmpty) ? apiMsg : 'Minutes published',
+            onConfirm: () {
+              Get.back(result: true);
+            },
+          );
+        } else {
+          // Editor (or other) — still awaiting approval.
+          setState(() {
+            _status = 'pending';
+            _existingContent = text;
+            _error = null;
+            if (fileUrl.isNotEmpty) _fileUrl = fileUrl;
+            if (filePath.isNotEmpty) _filePath = filePath;
+            _submittedAt = DateTime.now().toIso8601String();
+            _attachment = null;
+          });
+          SweetAlertHelper.showSuccess(
+            context,
+            'Submitted',
+            (apiMsg != null && apiMsg.isNotEmpty)
+                ? apiMsg
+                : 'Meeting minutes submitted and awaiting approval.',
+            onConfirm: () {
+              Get.back(result: true);
+            },
+          );
+        }
       } else {
         if (!mounted) return;
         SweetAlertHelper.showError(
@@ -207,6 +250,12 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
     }
   }
 
+  static bool _truthy(dynamic v) {
+    if (v == true || v == 1) return true;
+    final s = v?.toString().trim().toLowerCase();
+    return s == '1' || s == 'true' || s == 'yes';
+  }
+
   Color _statusColor(String s) {
     switch (s) {
       case 'approved':
@@ -216,6 +265,18 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
       case 'pending':
       default:
         return Colors.amber.shade800;
+    }
+  }
+
+  IconData _statusIcon(String s) {
+    switch (s) {
+      case 'approved':
+        return Icons.check_circle_outline;
+      case 'rejected':
+        return Icons.cancel_outlined;
+      case 'pending':
+      default:
+        return Icons.pending_actions;
     }
   }
 
@@ -297,7 +358,7 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.pending_actions,
+                            _statusIcon(_status!),
                             color: _statusColor(_status!),
                             size: 22,
                           ),

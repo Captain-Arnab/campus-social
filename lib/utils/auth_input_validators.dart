@@ -70,31 +70,50 @@ class AuthInputValidators {
     return msg;
   }
 
-  static const String otpReenterHint =
-      'Invalid OTP. Please enter it again.';
+  static const String otpWrongHint =
+      'Wrong entered OTP. Please enter the correct OTP.';
 
-  /// True when the API message means the OTP session is dead (must resend).
-  static bool otpRequiresResend(String? apiMessage) {
+  static const String otpExpiredHint =
+      'OTP expired. Request a new code.';
+
+  /// Client-side OTP validity window (matches SMS copy: valid for 10 minutes).
+  static const Duration otpValidity = Duration(minutes: 10);
+
+  /// True when attempts are exhausted / account OTP locked (must resend / wait).
+  static bool otpAttemptsExhausted(String? apiMessage) {
     final lower = (apiMessage ?? '').toLowerCase();
+    if (lower.contains('0 attempts') ||
+        lower.contains('no attempts') ||
+        lower.contains('attempts left: 0') ||
+        lower.contains('(0 attempts')) {
+      return true;
+    }
     final attemptsExhausted = lower.contains('attempt') &&
         (lower.contains('exceed') ||
+            lower.contains('exhaust') ||
             lower.contains('limit') ||
-            lower.contains('max'));
-    return lower.contains('expir') ||
-        lower.contains('too many') ||
+            lower.contains('max') ||
+            lower.contains('used up') ||
+            lower.contains('no more'));
+    return lower.contains('too many') ||
         attemptsExhausted ||
         lower.contains('blocked') ||
         lower.contains('locked');
   }
 
-  /// Wrong OTP → re-enter; expired / locked → keep server guidance to resend.
-  static String friendlyOtpError(String? apiMessage) {
-    final msg = (apiMessage ?? '').trim();
-    if (otpRequiresResend(msg)) {
-      return msg.isNotEmpty
-          ? msg
-          : 'OTP has expired. Please request a new one.';
-    }
-    return otpReenterHint;
+  /// API / client signal that a fresh OTP is required (expired window).
+  static bool otpSessionExpired(String? apiMessage, {DateTime? sentAt}) {
+    if (otpTimedOut(sentAt)) return true;
+    final lower = (apiMessage ?? '').toLowerCase();
+    // Retry messages like "Invalid OTP... (4 attempts left)" are NOT expired.
+    if (RegExp(r'\d+\s*attempts?\s*left').hasMatch(lower)) return false;
+    return lower.contains('expir') ||
+        (lower.contains('request a new') && lower.contains('otp'));
+  }
+
+  /// Prefer client timer for "expired" when API wording is ambiguous.
+  static bool otpTimedOut(DateTime? sentAt, {DateTime? now}) {
+    if (sentAt == null) return false;
+    return (now ?? DateTime.now()).difference(sentAt) >= otpValidity;
   }
 }

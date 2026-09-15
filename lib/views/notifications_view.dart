@@ -294,16 +294,7 @@ class _NotificationTile extends StatelessWidget {
                     if (notification.body != null &&
                         notification.body!.isNotEmpty) ...[
                       SizedBox(height: 4.h),
-                      Text(
-                        notification.body!,
-                        style: TextStyle(
-                          fontSize: 13.sp,
-                          color: Colors.grey[700],
-                          height: 1.3,
-                        ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      _ExpandableNotificationBody(text: notification.body!),
                     ],
                     SizedBox(height: 6.h),
                     Text(
@@ -326,6 +317,62 @@ class _NotificationTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Collapsed to 3 lines; long minutes bodies can expand in-place.
+class _ExpandableNotificationBody extends StatefulWidget {
+  final String text;
+
+  const _ExpandableNotificationBody({required this.text});
+
+  @override
+  State<_ExpandableNotificationBody> createState() =>
+      _ExpandableNotificationBodyState();
+}
+
+class _ExpandableNotificationBodyState
+    extends State<_ExpandableNotificationBody> {
+  bool _expanded = false;
+
+  /// Roughly past ~3 lines of inbox card copy.
+  bool get _canExpand => widget.text.trim().length > 140;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.text,
+          style: TextStyle(
+            fontSize: 13.sp,
+            color: Colors.grey[700],
+            height: 1.3,
+          ),
+          maxLines: _expanded ? null : 3,
+          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        ),
+        if (_canExpand) ...[
+          SizedBox(height: 2.h),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 2.h),
+              child: Text(
+                _expanded ? 'Show less' : 'Show more',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.accent,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

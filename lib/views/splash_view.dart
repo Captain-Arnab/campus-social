@@ -88,16 +88,32 @@ class _OnboardingViewState extends State<OnboardingView> {
         child: SafeArea(
           child: Column(
             children: [
-              // Header
+              // Header — logo flexes so Skip never causes horizontal overflow
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildLogo(),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: _buildLogo(),
+                      ),
+                    ),
                     TextButton(
                       onPressed: _finishOnboarding,
-                      child: Text("Skip", style: TextStyle(color: Colors.white, fontSize: 16.sp, fontWeight: FontWeight.w600)),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        "Skip",
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -129,23 +145,27 @@ class _OnboardingViewState extends State<OnboardingView> {
       valueListenable: AppBranding.logoUrlNotifier,
       builder: (_, u, __) {
         final hasAdmin = u != null && u.isNotEmpty;
-        final w = hasAdmin ? 188.w : 128.w;
-        final h = hasAdmin ? 76.w : 70.w;
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
-            width: w,
-            height: h,
-            child: AppBranding.boundedDualLogos(
-              outerWidth: w,
-              outerHeight: h,
-              gap: 12,
-              horizontalInset: 4,
-              verticalInset: 3,
-              fit: BoxFit.contain,
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
+        final h = hasAdmin ? 44.h : 40.h;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final maxW = constraints.maxWidth;
+            // Leave a little slack so dual lockup + Skip never overflows.
+            final w = maxW.isFinite && maxW > 0 ? maxW : 160.w;
+            return SizedBox(
+              width: w,
+              height: h,
+              child: AppBranding.boundedDualLogos(
+                outerWidth: w,
+                outerHeight: h,
+                gap: 6,
+                horizontalInset: 0,
+                verticalInset: 2,
+                fit: BoxFit.contain,
+                borderRadius: BorderRadius.circular(8),
+                onPrimaryBackground: true,
+              ),
+            );
+          },
         );
       },
     );

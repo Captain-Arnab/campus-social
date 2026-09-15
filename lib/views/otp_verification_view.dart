@@ -31,7 +31,7 @@ class OtpVerificationView extends StatefulWidget {
 class _OtpVerificationViewState extends State<OtpVerificationView> {
   final AuthController controller = Get.find<AuthController>();
   final TextEditingController otpController = TextEditingController();
-  int remainingSeconds = 300; // 5 minutes
+  int remainingSeconds = 600; // 10 minutes
   
   @override
   void initState() {
@@ -171,7 +171,7 @@ class _OtpVerificationViewState extends State<OtpVerificationView> {
                         widget.loginIsStudent!,
                       );
                       if (sent && mounted) {
-                        setState(() => remainingSeconds = 300);
+                        setState(() => remainingSeconds = 600);
                       }
                     }
                   : null,

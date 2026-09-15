@@ -9,6 +9,9 @@ import 'content_cropped_logo.dart';
 /// Both logos share the same **slot height**. Widths follow each logo's ink
 /// aspect after whitespace is cropped (university assets are often tall canvases
 /// with a short crest band — equal square + [BoxFit.contain] made them a sliver).
+///
+/// When the parent offers a finite max width smaller than the natural lockup,
+/// [size] is scaled down so the [Row] never overflows.
 class AppLogoLockup extends StatelessWidget {
   /// Shared slot height (logical pixels).
   final double size;
@@ -56,11 +59,20 @@ class AppLogoLockup extends StatelessWidget {
 
   double get height => size;
 
-  /// MiCampus asset is ~1.9:1 landscape with high ink fill → wider than tall.
-  double get _miCampusWidth => size * 1.85;
+  static double _miCampusWidthFor(double slot) => slot * 1.85;
 
-  /// After cropping, uni crest is ~3.2:1; cap width so app bars stay compact.
-  double get _uniWidth => (size * 2.35).clamp(size * 1.6, size * 2.6);
+  static double _uniWidthFor(double slot) =>
+      (slot * 2.35).clamp(slot * 1.6, slot * 2.6);
+
+  static double _naturalWidth({
+    required double slot,
+    required double gap,
+    required bool hasAdmin,
+  }) {
+    final mi = _miCampusWidthFor(slot);
+    if (!hasAdmin) return mi;
+    return mi + gap + 1 + gap + _uniWidthFor(slot);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,45 +86,74 @@ class AppLogoLockup extends StatelessWidget {
       builder: (context, adminUrl, _) {
         final hasAdmin = adminUrl != null && adminUrl.isNotEmpty;
 
-        return SizedBox(
-          height: size,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              ContentCroppedLogo(
-                assetPath: 'assets/images/logo.jpeg',
-                width: _miCampusWidth,
-                height: size,
-                fit: BoxFit.contain,
-                borderRadius: br,
-                placeholder: SizedBox(width: _miCampusWidth, height: size),
-                errorWidget: Icon(
-                  Icons.event_rounded,
-                  color: onPrimaryBackground ? Colors.white : AppColors.accent,
-                  size: size * 0.72,
-                ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            var slot = size;
+            var g = gap;
+            final maxW = constraints.maxWidth;
+            if (maxW.isFinite && maxW > 0) {
+              final natural = _naturalWidth(
+                slot: slot,
+                gap: g,
+                hasAdmin: hasAdmin,
+              );
+              if (natural > maxW) {
+                // Slight under-scale avoids sub-pixel RenderFlex overflows.
+                final scale = (maxW / natural) * 0.98;
+                slot = size * scale;
+                g = gap * scale;
+              }
+            }
+
+            return SizedBox(
+              height: slot,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  ContentCroppedLogo(
+                    assetPath: 'assets/images/logo.jpeg',
+                    width: _miCampusWidthFor(slot),
+                    height: slot,
+                    fit: BoxFit.contain,
+                    borderRadius: br,
+                    placeholder: SizedBox(
+                      width: _miCampusWidthFor(slot),
+                      height: slot,
+                    ),
+                    errorWidget: Icon(
+                      Icons.event_rounded,
+                      color: onPrimaryBackground
+                          ? Colors.white
+                          : AppColors.accent,
+                      size: slot * 0.72,
+                    ),
+                  ),
+                  if (hasAdmin) ...[
+                    SizedBox(width: g),
+                    Container(
+                      width: 1,
+                      height: slot * 0.58,
+                      color: dividerColor,
+                    ),
+                    SizedBox(width: g),
+                    ContentCroppedLogo(
+                      networkUrl: adminUrl,
+                      width: _uniWidthFor(slot),
+                      height: slot,
+                      fit: BoxFit.contain,
+                      borderRadius: br,
+                      placeholder: SizedBox(
+                        width: _uniWidthFor(slot),
+                        height: slot,
+                      ),
+                      errorWidget: const SizedBox.shrink(),
+                    ),
+                  ],
+                ],
               ),
-              if (hasAdmin) ...[
-                SizedBox(width: gap),
-                Container(
-                  width: 1,
-                  height: size * 0.58,
-                  color: dividerColor,
-                ),
-                SizedBox(width: gap),
-                ContentCroppedLogo(
-                  networkUrl: adminUrl,
-                  width: _uniWidth,
-                  height: size,
-                  fit: BoxFit.contain,
-                  borderRadius: br,
-                  placeholder: SizedBox(width: _uniWidth, height: size),
-                  errorWidget: const SizedBox.shrink(),
-                ),
-              ],
-            ],
-          ),
+            );
+          },
         );
       },
     );
