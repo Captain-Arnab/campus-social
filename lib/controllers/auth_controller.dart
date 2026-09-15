@@ -77,6 +77,9 @@ class AuthController extends GetxController {
   var sentOtp = ''.obs;
   var otpSentTime = DateTime.now().obs;
 
+  /// After a wrong-OTP failure, UI should clear the field so the user can re-enter.
+  bool otpReentryNeeded = false;
+
   /// API `field` from the last failed register call
   /// (`email`, `mobile_number`, `roll_number`, `employee_id`).
   final registerErrorField = RxnString();
@@ -204,7 +207,7 @@ class AuthController extends GetxController {
       SweetAlertHelper.showError(
         Get.context,
         "Invalid OTP",
-        AuthInputValidators.loginCredentialsHint,
+        AuthInputValidators.otpReenterHint,
       );
       return false;
     }
@@ -332,7 +335,8 @@ class AuthController extends GetxController {
   }
 
   /// [otp]: when non-empty, backend uses SMS OTP (requires [byMobile] true). Otherwise [password] is used.
-  Future<void> loginWithIdentifier(
+  /// Returns true on successful login.
+  Future<bool> loginWithIdentifier(
     String identifier,
     String emailOrPhone,
     bool isStudent,
@@ -340,6 +344,8 @@ class AuthController extends GetxController {
     String password = '',
     String? otp,
   }) async {
+    final usedOtp = otp != null && otp.trim().isNotEmpty;
+    otpReentryNeeded = false;
     _pendingLogin = _PendingLogin(
       identifier: identifier,
       emailOrPhone: emailOrPhone,
@@ -352,7 +358,7 @@ class AuthController extends GetxController {
     try {
       debugPrint(
         '[Auth] login start byMobile=$byMobile isStudent=$isStudent '
-        'hasOtp=${otp != null && otp.isNotEmpty}',
+        'hasOtp=$usedOtp',
       );
       final response = await ApiService.loginWithIdentifier(
         identifier,
@@ -367,13 +373,13 @@ class AuthController extends GetxController {
       debugPrint('[Auth] login response statusCode=${response.statusCode} data=$data');
       if (data == null) {
         _showRequestFailure("Error", "No response from server", onRetry: _retryLogin);
-        return;
+        return false;
       }
 
       final parsed = ApiService.parseResponseBody(data);
       if (parsed == null) {
         _showRequestFailure("Error", "Invalid response format", onRetry: _retryLogin);
-        return;
+        return false;
       }
 
       if (parsed['status']?.toString() == 'success') {
@@ -381,7 +387,7 @@ class AuthController extends GetxController {
         String userId = userIdRaw?.toString() ?? '';
         if (userId.isEmpty) {
           _showRequestFailure("Error", "Login response missing user_id", onRetry: _retryLogin);
-          return;
+          return false;
         }
         String name = parsed['user_name']?.toString() ?? "User";
         String token = parsed['token']?.toString() ?? "";
@@ -415,20 +421,32 @@ class AuthController extends GetxController {
           loadingMessage: 'Loading MiCampus...',
         );
         // Skip if logout (or another login) already invalidated this session.
-        if (sessionEpoch != _authSessionEpoch) return;
-        if (!(await PrefService.isLoggedIn())) return;
+        if (sessionEpoch != _authSessionEpoch) return false;
+        if (!(await PrefService.isLoggedIn())) return false;
         SweetAlertHelper.showSuccess(Get.context, "Success", "Welcome back, $name!");
+        return true;
       } else {
-        // Show the server message as-is (e.g. wrong credentials).
         final apiMsg = parsed['message']?.toString().trim();
-        final errorMsg = (apiMsg != null && apiMsg.isNotEmpty)
-            ? apiMsg
-            : AuthInputValidators.loginCredentialsHint;
-        _showRequestFailure("Login Failed", errorMsg, onRetry: _retryLogin);
+        // Wrong OTP: let the user re-enter the same code — do not push resend.
+        final errorMsg = usedOtp
+            ? AuthInputValidators.friendlyOtpError(apiMsg)
+            : ((apiMsg != null && apiMsg.isNotEmpty)
+                ? apiMsg
+                : AuthInputValidators.loginCredentialsHint);
+        _showRequestFailure(
+          usedOtp ? "Invalid OTP" : "Login Failed",
+          errorMsg,
+          onRetry: usedOtp ? null : _retryLogin,
+        );
+        otpReentryNeeded = usedOtp &&
+            !AuthInputValidators.otpRequiresResend(apiMsg);
+        return false;
       }
     } catch (e, st) {
       debugPrint("Login error: $e\n$st");
+      otpReentryNeeded = false;
       _showRequestFailure("Error", e.toString(), error: e, onRetry: _retryLogin);
+      return false;
     } finally {
       isLoading.value = false;
     }
@@ -537,6 +555,7 @@ class AuthController extends GetxController {
     required String otp,
   }) async {
     forgotPasswordError.value = null;
+    otpReentryNeeded = false;
     isLoading.value = true;
     try {
       final response = await ApiService.verifyForgotPasswordOtp(
@@ -559,13 +578,16 @@ class AuthController extends GetxController {
         forgotResetToken.value = token;
         return true;
       }
-      final err = data['message']?.toString() ?? 'Invalid OTP';
+      final apiMsg = data['message']?.toString();
+      final err = AuthInputValidators.friendlyOtpError(apiMsg);
       forgotPasswordError.value = err;
-      _showRequestFailure('Error', err);
+      otpReentryNeeded = !AuthInputValidators.otpRequiresResend(apiMsg);
+      _showRequestFailure('Invalid OTP', err);
       return false;
     } catch (e, st) {
       debugPrint('Forgot password verify OTP error: $e\n$st');
       forgotPasswordError.value = e.toString();
+      otpReentryNeeded = false;
       _showRequestFailure('Error', e.toString(), error: e);
       return false;
     } finally {

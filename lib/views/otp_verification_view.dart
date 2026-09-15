@@ -120,6 +120,9 @@ class _OtpVerificationViewState extends State<OtpVerificationView> {
                 inactiveColor: Colors.grey[300]!,
               ),
               enableActiveFill: true,
+              onChanged: (_) {
+                if (mounted) setState(() {});
+              },
               onCompleted: (value) {
                 _verifyOtp();
               },
@@ -189,7 +192,11 @@ class _OtpVerificationViewState extends State<OtpVerificationView> {
   void _verifyOtp() {
     if (controller.verifyOtp(otpController.text)) {
       widget.onVerified();
+      return;
     }
+    // Clear so the user can re-enter without waiting on Resend.
+    otpController.clear();
+    if (mounted) setState(() {});
   }
   
   @override
