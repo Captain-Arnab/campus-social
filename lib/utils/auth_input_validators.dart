@@ -69,4 +69,32 @@ class AuthInputValidators {
     }
     return msg;
   }
+
+  static const String otpReenterHint =
+      'Invalid OTP. Please enter it again.';
+
+  /// True when the API message means the OTP session is dead (must resend).
+  static bool otpRequiresResend(String? apiMessage) {
+    final lower = (apiMessage ?? '').toLowerCase();
+    final attemptsExhausted = lower.contains('attempt') &&
+        (lower.contains('exceed') ||
+            lower.contains('limit') ||
+            lower.contains('max'));
+    return lower.contains('expir') ||
+        lower.contains('too many') ||
+        attemptsExhausted ||
+        lower.contains('blocked') ||
+        lower.contains('locked');
+  }
+
+  /// Wrong OTP → re-enter; expired / locked → keep server guidance to resend.
+  static String friendlyOtpError(String? apiMessage) {
+    final msg = (apiMessage ?? '').trim();
+    if (otpRequiresResend(msg)) {
+      return msg.isNotEmpty
+          ? msg
+          : 'OTP has expired. Please request a new one.';
+    }
+    return otpReenterHint;
+  }
 }

@@ -26,6 +26,7 @@ class _LoginViewState extends State<LoginView> {
   final TextEditingController emailPhoneCtrl = TextEditingController();
   final TextEditingController otpCtrl = TextEditingController();
   final TextEditingController passCtrl = TextEditingController();
+  final FocusNode otpFocus = FocusNode();
 
   bool _obscurePassword = true;
   bool _isStudent = true;
@@ -40,6 +41,14 @@ class _LoginViewState extends State<LoginView> {
     controller.isSendingLoginOtp.value = false;
   }
 
+  void _prepareOtpReentry() {
+    otpCtrl.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      otpFocus.requestFocus();
+    });
+  }
+
   Future<void> _onLogin() async {
     if (!_validateLogin()) return;
     final id = identifierCtrl.text.trim();
@@ -48,7 +57,7 @@ class _LoginViewState extends State<LoginView> {
         : emailPhoneCtrl.text.trim();
     final otp = otpCtrl.text.trim();
     if (_loginByMobile && otp.length == 6) {
-      await controller.loginWithIdentifier(
+      final ok = await controller.loginWithIdentifier(
         id,
         contact,
         _isStudent,
@@ -56,6 +65,8 @@ class _LoginViewState extends State<LoginView> {
         password: '',
         otp: otp,
       );
+      if (!mounted) return;
+      if (!ok && controller.otpReentryNeeded) _prepareOtpReentry();
     } else {
       await controller.loginWithIdentifier(
         id,
@@ -153,11 +164,17 @@ class _LoginViewState extends State<LoginView> {
               SizedBox(height: 12.h),
               AuthTextField(
                 controller: otpCtrl,
+                focusNode: otpFocus,
                 label: 'OTP (6 digits)',
                 prefixIcon: Icons.pin_outlined,
                 keyboardType: TextInputType.number,
                 maxLength: 6,
                 inputFormatters: AuthInputValidators.otp6Digits,
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                'Wrong code? Enter it again — resend only if it expired.',
+                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
               ),
               SizedBox(height: 8.h),
               Text(
@@ -327,6 +344,7 @@ class _LoginViewState extends State<LoginView> {
     identifierCtrl.dispose();
     emailPhoneCtrl.dispose();
     otpCtrl.dispose();
+    otpFocus.dispose();
     passCtrl.dispose();
     super.dispose();
   }

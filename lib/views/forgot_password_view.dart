@@ -26,6 +26,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
   final otpCtrl = TextEditingController();
   final passCtrl = TextEditingController();
   final confirmPassCtrl = TextEditingController();
+  final FocusNode otpFocus = FocusNode();
 
   int _currentStep = 0;
   bool _obscurePassword = true;
@@ -39,6 +40,14 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
     super.initState();
     controller.clearForgotPasswordState();
     controller.isLoading.value = false;
+  }
+
+  void _prepareOtpReentry() {
+    otpCtrl.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      otpFocus.requestFocus();
+    });
   }
 
   Future<void> _requestOtp() async {
@@ -66,7 +75,11 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
       identifier: identifierCtrl.text.trim(),
       otp: otp,
     );
-    if (!mounted || !ok) return;
+    if (!mounted) return;
+    if (!ok) {
+      if (controller.otpReentryNeeded) _prepareOtpReentry();
+      return;
+    }
     _goToStep(2);
   }
 
@@ -114,6 +127,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
     _pageController.dispose();
     identifierCtrl.dispose();
     otpCtrl.dispose();
+    otpFocus.dispose();
     passCtrl.dispose();
     confirmPassCtrl.dispose();
     super.dispose();
@@ -287,11 +301,17 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
           _inlineError(),
           AuthTextField(
             controller: otpCtrl,
+            focusNode: otpFocus,
             label: 'OTP (6 digits)',
             prefixIcon: Icons.pin_outlined,
             keyboardType: TextInputType.number,
             maxLength: 6,
             inputFormatters: AuthInputValidators.otp6Digits,
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            'Wrong code? Enter it again — resend only if it expired.',
+            style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
           ),
           SizedBox(height: 16.h),
           _ForgotOtpResendButton(
