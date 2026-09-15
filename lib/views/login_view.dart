@@ -42,6 +42,7 @@ class _LoginViewState extends State<LoginView> {
   }
 
   void _prepareOtpReentry() {
+    // Keep the red field error; only clear the wrong digits for re-typing.
     otpCtrl.clear();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -130,6 +131,7 @@ class _LoginViewState extends State<LoginView> {
                 _loginByMobile = val;
                 emailPhoneCtrl.clear();
                 otpCtrl.clear();
+                controller.otpFieldError.value = null;
               }),
               options: const [
                 (value: false, label: 'Email', icon: Icons.email_outlined),
@@ -162,14 +164,22 @@ class _LoginViewState extends State<LoginView> {
                 onSend: _onSendLoginOtp,
               ),
               SizedBox(height: 12.h),
-              AuthTextField(
-                controller: otpCtrl,
-                focusNode: otpFocus,
-                label: 'OTP (6 digits)',
-                prefixIcon: Icons.pin_outlined,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                inputFormatters: AuthInputValidators.otp6Digits,
+              Obx(
+                () => AuthTextField(
+                  controller: otpCtrl,
+                  focusNode: otpFocus,
+                  label: 'OTP (6 digits)',
+                  prefixIcon: Icons.pin_outlined,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  inputFormatters: AuthInputValidators.otp6Digits,
+                  errorText: controller.otpFieldError.value,
+                  onChanged: (_) {
+                    if (controller.otpFieldError.value != null) {
+                      controller.otpFieldError.value = null;
+                    }
+                  },
+                ),
               ),
               SizedBox(height: 8.h),
               Text(

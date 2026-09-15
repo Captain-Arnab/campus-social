@@ -80,6 +80,12 @@ class AuthController extends GetxController {
   /// After a wrong-OTP failure, UI should clear the field so the user can re-enter.
   bool otpReentryNeeded = false;
 
+  /// Inline OTP field error (wrong code). Null when no field-level OTP error.
+  final otpFieldError = RxnString();
+
+  /// True when a login/forgot OTP was successfully sent this session.
+  bool _otpWasSent = false;
+
   /// API `field` from the last failed register call
   /// (`email`, `mobile_number`, `roll_number`, `employee_id`).
   final registerErrorField = RxnString();
@@ -164,6 +170,9 @@ class AuthController extends GetxController {
       }
       if (data['status'] == 'success') {
         final msg = data['message']?.toString() ?? "OTP sent";
+        otpSentTime.value = DateTime.now();
+        _otpWasSent = true;
+        otpFieldError.value = null;
         SweetAlertHelper.showSuccess(Get.context, "OTP", msg);
         return true;
       }
@@ -192,25 +201,24 @@ class AuthController extends GetxController {
 
   //Verify OTP
   bool verifyOtp(String enteredOtp) {
-    // Check if OTP is expired (5 minutes)
-    final now = DateTime.now();
-    final difference = now.difference(otpSentTime.value);
-    
-    if (difference.inMinutes > 5) {
-      SweetAlertHelper.showError(Get.context, "Expired", "OTP has expired. Please request a new one.");
-      return false;
-    }
-    
-    if (OtpService.verifyOtp(enteredOtp, sentOtp.value)) {
-      return true;
-    } else {
+    if (AuthInputValidators.otpTimedOut(otpSentTime.value)) {
+      otpFieldError.value = null;
       SweetAlertHelper.showError(
         Get.context,
-        "Invalid OTP",
-        AuthInputValidators.otpReenterHint,
+        "Expired",
+        AuthInputValidators.otpExpiredHint,
       );
       return false;
     }
+
+    if (OtpService.verifyOtp(enteredOtp, sentOtp.value)) {
+      otpFieldError.value = null;
+      return true;
+    }
+
+    otpFieldError.value = AuthInputValidators.otpWrongHint;
+    otpReentryNeeded = true;
+    return false;
   }
 
   // Updated Register with all fields
@@ -346,6 +354,7 @@ class AuthController extends GetxController {
   }) async {
     final usedOtp = otp != null && otp.trim().isNotEmpty;
     otpReentryNeeded = false;
+    otpFieldError.value = null;
     _pendingLogin = _PendingLogin(
       identifier: identifier,
       emailOrPhone: emailOrPhone,
@@ -427,19 +436,14 @@ class AuthController extends GetxController {
         return true;
       } else {
         final apiMsg = parsed['message']?.toString().trim();
-        // Wrong OTP: let the user re-enter the same code — do not push resend.
-        final errorMsg = usedOtp
-            ? AuthInputValidators.friendlyOtpError(apiMsg)
-            : ((apiMsg != null && apiMsg.isNotEmpty)
-                ? apiMsg
-                : AuthInputValidators.loginCredentialsHint);
-        _showRequestFailure(
-          usedOtp ? "Invalid OTP" : "Login Failed",
-          errorMsg,
-          onRetry: usedOtp ? null : _retryLogin,
-        );
-        otpReentryNeeded = usedOtp &&
-            !AuthInputValidators.otpRequiresResend(apiMsg);
+        if (usedOtp) {
+          _handleOtpVerifyFailure(apiMsg);
+        } else {
+          final errorMsg = (apiMsg != null && apiMsg.isNotEmpty)
+              ? apiMsg
+              : AuthInputValidators.loginCredentialsHint;
+          _showRequestFailure("Login Failed", errorMsg, onRetry: _retryLogin);
+        }
         return false;
       }
     } catch (e, st) {
@@ -465,6 +469,33 @@ class AuthController extends GetxController {
     ));
   }
 
+  /// Wrong OTP → inline field error only. Expired / locked → SweetAlert.
+  ///
+  /// Backend often returns "OTP expired" for a wrong code; trust [otpSentTime]
+  /// for true expiry instead of the API wording alone.
+  void _handleOtpVerifyFailure(String? apiMsg) {
+    final timedOut =
+        _otpWasSent && AuthInputValidators.otpTimedOut(otpSentTime.value);
+    if (timedOut) {
+      otpFieldError.value = null;
+      otpReentryNeeded = false;
+      _showRequestFailure('OTP expired', AuthInputValidators.otpExpiredHint);
+      return;
+    }
+    if (AuthInputValidators.otpHardLocked(apiMsg)) {
+      otpFieldError.value = null;
+      otpReentryNeeded = false;
+      final msg = (apiMsg != null && apiMsg.trim().isNotEmpty)
+          ? apiMsg.trim()
+          : AuthInputValidators.otpExpiredHint;
+      _showRequestFailure('OTP', msg);
+      return;
+    }
+    // Wrong code — red field error, no popup (even if API said "expired").
+    otpFieldError.value = AuthInputValidators.otpWrongHint;
+    otpReentryNeeded = true;
+  }
+
   var isSendingForgotOtp = false.obs;
 
   /// Inline / step error from the last forgot-password API call.
@@ -481,11 +512,14 @@ class AuthController extends GetxController {
     forgotOtpMasked.value = null;
     forgotResetToken.value = null;
     isSendingForgotOtp.value = false;
+    otpFieldError.value = null;
+    otpReentryNeeded = false;
   }
 
   /// Step 1 — request OTP. Returns true on success.
   Future<bool> requestForgotPasswordOtp(String identifier) async {
     forgotPasswordError.value = null;
+    otpFieldError.value = null;
     isLoading.value = true;
     try {
       final response = await ApiService.requestForgotPasswordOtp(identifier);
@@ -499,6 +533,7 @@ class AuthController extends GetxController {
         forgotOtpChannel.value = data['channel']?.toString();
         forgotOtpMasked.value = data['masked']?.toString();
         otpSentTime.value = DateTime.now();
+        _otpWasSent = true;
         return true;
       }
       final err = data['message']?.toString() ?? 'Failed to send OTP';
@@ -531,6 +566,8 @@ class AuthController extends GetxController {
         forgotOtpChannel.value = data['channel']?.toString();
         forgotOtpMasked.value = data['masked']?.toString();
         otpSentTime.value = DateTime.now();
+        _otpWasSent = true;
+        otpFieldError.value = null;
         final msg = data['message']?.toString() ?? 'OTP resent';
         SweetAlertHelper.showSuccess(Get.context, 'OTP', msg);
         return true;
@@ -555,6 +592,7 @@ class AuthController extends GetxController {
     required String otp,
   }) async {
     forgotPasswordError.value = null;
+    otpFieldError.value = null;
     otpReentryNeeded = false;
     isLoading.value = true;
     try {
@@ -579,10 +617,16 @@ class AuthController extends GetxController {
         return true;
       }
       final apiMsg = data['message']?.toString();
-      final err = AuthInputValidators.friendlyOtpError(apiMsg);
-      forgotPasswordError.value = err;
-      otpReentryNeeded = !AuthInputValidators.otpRequiresResend(apiMsg);
-      _showRequestFailure('Invalid OTP', err);
+      _handleOtpVerifyFailure(apiMsg);
+      if (otpReentryNeeded) {
+        // Wrong OTP — red on the OTP field only (no duplicate step banner).
+        forgotPasswordError.value = null;
+      } else {
+        forgotPasswordError.value =
+            (apiMsg != null && apiMsg.trim().isNotEmpty)
+                ? apiMsg.trim()
+                : AuthInputValidators.otpExpiredHint;
+      }
       return false;
     } catch (e, st) {
       debugPrint('Forgot password verify OTP error: $e\n$st');

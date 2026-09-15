@@ -59,7 +59,7 @@ class OtpService {
             "password": smsPassword,
             "mobile": phone,
             "message":
-                "Your MiCampusl verification code is: $otp. Valid for 5 minutes.",
+                "Your MiCampusl verification code is: $otp. Valid for 10 minutes.",
             "senderid": "MICMPS", // Update with your DLT approved sender ID
           },
         );

@@ -70,31 +70,31 @@ class AuthInputValidators {
     return msg;
   }
 
-  static const String otpReenterHint =
-      'Invalid OTP. Please enter it again.';
+  static const String otpWrongHint =
+      'Wrong entered OTP. Please enter the correct OTP.';
 
-  /// True when the API message means the OTP session is dead (must resend).
-  static bool otpRequiresResend(String? apiMessage) {
+  static const String otpExpiredHint =
+      'OTP expired. Request a new code.';
+
+  /// Client-side OTP validity window (matches SMS copy: valid for 10 minutes).
+  static const Duration otpValidity = Duration(minutes: 10);
+
+  /// True when attempts are exhausted / account OTP locked (must resend / wait).
+  static bool otpHardLocked(String? apiMessage) {
     final lower = (apiMessage ?? '').toLowerCase();
     final attemptsExhausted = lower.contains('attempt') &&
         (lower.contains('exceed') ||
             lower.contains('limit') ||
             lower.contains('max'));
-    return lower.contains('expir') ||
-        lower.contains('too many') ||
+    return lower.contains('too many') ||
         attemptsExhausted ||
         lower.contains('blocked') ||
         lower.contains('locked');
   }
 
-  /// Wrong OTP → re-enter; expired / locked → keep server guidance to resend.
-  static String friendlyOtpError(String? apiMessage) {
-    final msg = (apiMessage ?? '').trim();
-    if (otpRequiresResend(msg)) {
-      return msg.isNotEmpty
-          ? msg
-          : 'OTP has expired. Please request a new one.';
-    }
-    return otpReenterHint;
+  /// Prefer client timer for "expired". Backend often mislabels wrong OTP as expired.
+  static bool otpTimedOut(DateTime? sentAt, {DateTime? now}) {
+    if (sentAt == null) return false;
+    return (now ?? DateTime.now()).difference(sentAt) >= otpValidity;
   }
 }
