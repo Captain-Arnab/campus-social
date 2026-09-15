@@ -125,13 +125,12 @@ class NotificationService {
 
     final notification = message.notification;
 
-    // Resolve display title/body from notification payload OR data payload
+    // Resolve display title/body from notification payload OR data payload.
+    // Minutes notifications may put the long text in content / minutes_content.
     final displayTitle = notification?.title
         ?? message.data['title']?.toString()
         ?? 'Notification';
-    final displayBody = notification?.body
-        ?? message.data['body']?.toString()
-        ?? '';
+    final displayBody = _resolveNotificationBody(notification?.body, message.data);
 
     // Show as a proper heads-up notification
     _localNotif.show(
@@ -146,13 +145,19 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
+          styleInformation: displayBody.length > 80
+              ? BigTextStyleInformation(displayBody, contentTitle: displayTitle)
+              : null,
         ),
       ),
       payload: _buildPayloadString(message.data),
     );
 
-    // Also show a GetX snackbar for in-app awareness
-    _showInAppSnackbar(displayTitle, displayBody);
+    // Snackbar stays short; full text is in the system notification / inbox.
+    final snackBody = displayBody.length > 140
+        ? '${displayBody.substring(0, 137)}...'
+        : displayBody;
+    _showInAppSnackbar(displayTitle, snackBody);
 
     // Refresh inbox so unread badge updates immediately
     _refreshInbox();
@@ -211,6 +216,24 @@ class NotificationService {
     final type = data['type']?.toString() ?? '';
     final eventId = data['event_id']?.toString() ?? '';
     return '$type|$eventId';
+  }
+
+  /// Prefer FCM notification body, then data.body / content / minutes_content.
+  static String _resolveNotificationBody(
+    String? notificationBody,
+    Map<String, dynamic> data,
+  ) {
+    final candidates = <String?>[
+      notificationBody,
+      data['body']?.toString(),
+      data['content']?.toString(),
+      data['minutes_content']?.toString(),
+    ];
+    for (final c in candidates) {
+      final t = c?.trim();
+      if (t != null && t.isNotEmpty) return t;
+    }
+    return '';
   }
 
   // ── FCM token format guard ────────────────────────────────────────────────

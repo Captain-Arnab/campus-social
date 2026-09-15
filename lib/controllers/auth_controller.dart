@@ -469,30 +469,37 @@ class AuthController extends GetxController {
     ));
   }
 
-  /// Wrong OTP → inline field error only. Expired / locked → SweetAlert.
-  ///
-  /// Backend often returns "OTP expired" for a wrong code; trust [otpSentTime]
-  /// for true expiry instead of the API wording alone.
+  /// Wrong OTP → inline field error with API message (attempts left).
+  /// Exhausted attempts / expired window → SweetAlert (fresh OTP needed).
   void _handleOtpVerifyFailure(String? apiMsg) {
-    final timedOut =
-        _otpWasSent && AuthInputValidators.otpTimedOut(otpSentTime.value);
-    if (timedOut) {
+    final msg = (apiMsg ?? '').trim();
+    final sentAt = _otpWasSent ? otpSentTime.value : null;
+
+    if (AuthInputValidators.otpAttemptsExhausted(msg)) {
       otpFieldError.value = null;
       otpReentryNeeded = false;
-      _showRequestFailure('OTP expired', AuthInputValidators.otpExpiredHint);
+      _showRequestFailure(
+        'OTP',
+        msg.isNotEmpty
+            ? msg
+            : 'Too many attempts. Please request a new OTP.',
+      );
       return;
     }
-    if (AuthInputValidators.otpHardLocked(apiMsg)) {
+
+    if (AuthInputValidators.otpSessionExpired(msg, sentAt: sentAt)) {
       otpFieldError.value = null;
       otpReentryNeeded = false;
-      final msg = (apiMsg != null && apiMsg.trim().isNotEmpty)
-          ? apiMsg.trim()
-          : AuthInputValidators.otpExpiredHint;
-      _showRequestFailure('OTP', msg);
+      _showRequestFailure(
+        'OTP expired',
+        msg.isNotEmpty ? msg : AuthInputValidators.otpExpiredHint,
+      );
       return;
     }
-    // Wrong code — red field error, no popup (even if API said "expired").
-    otpFieldError.value = AuthInputValidators.otpWrongHint;
+
+    // Retryable wrong OTP — show API text as-is on the field (no popup).
+    otpFieldError.value =
+        msg.isNotEmpty ? msg : AuthInputValidators.otpWrongHint;
     otpReentryNeeded = true;
   }
 
