@@ -25,6 +25,8 @@ class MeetingMinutesView extends StatefulWidget {
 
 class _MeetingMinutesViewState extends State<MeetingMinutesView> {
   final _contentCtrl = TextEditingController();
+  final _promoCtrl = TextEditingController();
+  final _liveCtrl = TextEditingController();
   PlatformFile? _attachment;
   bool _loading = true;
   bool _saving = false;
@@ -47,6 +49,8 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
   @override
   void dispose() {
     _contentCtrl.dispose();
+    _promoCtrl.dispose();
+    _liveCtrl.dispose();
     super.dispose();
   }
 
@@ -99,6 +103,8 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
         }
         final content = (record['content'] ?? record['minutes'] ?? '').toString();
         final status = (record['status'] ?? '').toString().toLowerCase();
+        final promo = (record['promotional_link'] ?? '').toString().trim();
+        final live = (record['live_stream_link'] ?? '').toString().trim();
         setState(() {
           _error = null;
           _existingContent = content;
@@ -109,6 +115,8 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
               .toString()
               .trim();
           if (content.isNotEmpty) _contentCtrl.text = content;
+          if (promo.isNotEmpty) _promoCtrl.text = promo;
+          if (live.isNotEmpty) _liveCtrl.text = live;
         });
         return;
       }
@@ -182,6 +190,8 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
         eventId: eid,
         content: text,
         attachment: file,
+        promotionalLink: _promoCtrl.text.trim(),
+        liveStreamLink: _liveCtrl.text.trim(),
       );
       final data = ApiService.parseResponseBody(r.data);
       if (data?['status'] == 'success') {
@@ -404,6 +414,36 @@ class _MeetingMinutesViewState extends State<MeetingMinutesView> {
                       labelText: 'Minutes content',
                       hintText: 'Record decisions, attendees, action items…',
                       alignLabelWithHint: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                  TextField(
+                    controller: _promoCtrl,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      labelText: 'Promotional Link (optional)',
+                      hintText: 'https://…',
+                      prefixIcon: const Icon(Icons.campaign_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 12.h),
+                  TextField(
+                    controller: _liveCtrl,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      labelText: 'Live Stream Link (optional)',
+                      hintText: 'https://…',
+                      prefixIcon: const Icon(Icons.live_tv_outlined),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

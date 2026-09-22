@@ -501,10 +501,21 @@ class ApiService {
     }
   }
 
-  /// GET single event by id (includes editor_ids, pending_edit, winners, volunteer_list, participant_list)
+  /// GET single event by id (includes editor_ids, pending_edit, winners,
+  /// volunteer_list, participant_list, and `my_registration` when [user_id] is sent).
+  /// Always passes logged-in `user_id` so backend can populate my_registration.
   static Future<Response> getEventById(int eventId) async {
     try {
-      final response = await _dio.get("events.php", queryParameters: {"id": eventId});
+      final query = <String, dynamic>{"id": eventId};
+      final userId = await PrefService.getUserId();
+      if (userId != null && userId.trim().isNotEmpty) {
+        query['user_id'] = userId.trim();
+      }
+      final response = await _dio.get(
+        "events.php",
+        queryParameters: query,
+        options: await _getAuthOptions(),
+      );
       _rememberServerTime(response);
       return response;
     } on DioException catch (e) {
@@ -686,6 +697,300 @@ class ApiService {
         statusCode: 0,
         data: _networkErrorBody(e),
       );
+    }
+  }
+
+  /// Paid attend/participate: confirm payment intent.
+  /// [role] must be `attend` or `participate`.
+  static Future<Response> confirmEventPaymentIntent({
+    required String role,
+    required String eventId,
+    required String userId,
+    String? departmentClass,
+  }) async {
+    final endpoint = role == 'participate' ? 'participant.php' : 'attend.php';
+    try {
+      final body = <String, dynamic>{
+        'event_id': int.tryParse(eventId) ?? eventId,
+        'user_id': int.tryParse(userId) ?? userId,
+      };
+      if (role == 'participate' &&
+          departmentClass != null &&
+          departmentClass.trim().isNotEmpty) {
+        body['department_class'] = departmentClass.trim();
+      }
+      return await _dio.post(
+        endpoint,
+        queryParameters: const {'action': 'confirm_intent'},
+        data: body,
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: endpoint),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Paid attend/participate: verify payment (mock or real).
+  /// [simulate] is `success` | `failure` for mock gateway only.
+  static Future<Response> verifyEventPayment({
+    required String role,
+    required String eventId,
+    required String userId,
+    required String orderId,
+    String? simulate,
+  }) async {
+    final endpoint = role == 'participate' ? 'participant.php' : 'attend.php';
+    try {
+      final body = <String, dynamic>{
+        'event_id': int.tryParse(eventId) ?? eventId,
+        'user_id': int.tryParse(userId) ?? userId,
+        'order_id': orderId,
+      };
+      if (simulate != null && simulate.trim().isNotEmpty) {
+        body['simulate'] = simulate.trim();
+      }
+      return await _dio.post(
+        endpoint,
+        queryParameters: const {'action': 'verify_payment'},
+        data: body,
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: endpoint),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// Single entry for paid registration. Checks `mock_gateway` from confirm_intent
+  /// so real Razorpay can be swapped in later without changing call sites.
+  ///
+  /// [runCheckout] completes payment UX and returns:
+  /// - mock: `{ 'simulate': 'success'|'failure' }`
+  /// - real (future): gateway fields needed by verify_payment
+  /// Return null if the user cancels checkout.
+  static Future<Map<String, dynamic>> processEventPayment({
+    required String role,
+    required String eventId,
+    required String userId,
+    String? departmentClass,
+    required Future<Map<String, dynamic>?> Function(
+      Map<String, dynamic> confirmData,
+    ) runCheckout,
+  }) async {
+    final confirmRes = await confirmEventPaymentIntent(
+      role: role,
+      eventId: eventId,
+      userId: userId,
+      departmentClass: departmentClass,
+    );
+    final confirmData = parseResponseBody(confirmRes.data) ?? {};
+    if (confirmData['status']?.toString() != 'success') {
+      return confirmData.isEmpty
+          ? {
+              'status': 'error',
+              'message': responseErrorHint(confirmRes),
+            }
+          : confirmData;
+    }
+
+    final orderId = confirmData['order_id']?.toString() ?? '';
+    if (orderId.isEmpty) {
+      return {
+        'status': 'error',
+        'message': 'Payment order missing from server',
+      };
+    }
+
+    final checkout = await runCheckout(confirmData);
+    if (checkout == null) {
+      return {
+        'status': 'cancelled',
+        'message': 'Payment cancelled',
+        'order_id': orderId,
+      };
+    }
+
+    final mock = confirmData['mock_gateway'] == true ||
+        confirmData['mock_gateway'] == 1 ||
+        confirmData['mock_gateway']?.toString() == '1';
+
+    final verifyRes = await verifyEventPayment(
+      role: role,
+      eventId: eventId,
+      userId: userId,
+      orderId: orderId,
+      simulate: mock ? checkout['simulate']?.toString() : null,
+    );
+    final verifyData = parseResponseBody(verifyRes.data) ?? {};
+    if (verifyData.isEmpty) {
+      return {
+        'status': 'error',
+        'message': responseErrorHint(verifyRes),
+        'order_id': orderId,
+      };
+    }
+    return verifyData;
+  }
+
+  /// Volunteer committees for an event (`volunteers.php?action=list_committees`).
+  static Future<Response> listVolunteerCommittees(String eventId) async {
+    try {
+      return await _dio.get(
+        'volunteers.php',
+        queryParameters: {
+          'action': 'list_committees',
+          'event_id': eventId,
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'volunteers.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  // --- User portfolio / social links ---
+
+  static Future<Response> addUserLink({
+    required String userId,
+    required String url,
+    required String label,
+  }) async {
+    try {
+      return await _dio.post(
+        'user_links.php',
+        queryParameters: const {'action': 'add'},
+        data: {
+          'user_id': int.tryParse(userId) ?? userId,
+          'url': url.trim(),
+          'label': label.trim(),
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'user_links.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  static Future<Response> deleteUserLink({
+    required String userId,
+    required int linkId,
+  }) async {
+    try {
+      return await _dio.post(
+        'user_links.php',
+        queryParameters: const {'action': 'delete'},
+        data: {
+          'id': linkId,
+          'user_id': int.tryParse(userId) ?? userId,
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'user_links.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  // --- Faculty admin event approvals ---
+
+  static Future<Response> listPendingAdminEvents(String userId) async {
+    try {
+      return await _dio.get(
+        'admin_events.php',
+        queryParameters: {
+          'action': 'list_pending',
+          'user_id': userId,
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'admin_events.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  static Future<Response> listPendingAdminEdits(String userId) async {
+    try {
+      return await _dio.get(
+        'admin_events.php',
+        queryParameters: {
+          'action': 'list_pending_edits',
+          'user_id': userId,
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'admin_events.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  static Future<Response> adminEventAction({
+    required String action,
+    required String userId,
+    required String eventId,
+    String? reason,
+    String? rescheduleDate,
+    String? newDate,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'action': action,
+        'user_id': int.tryParse(userId) ?? userId,
+        'event_id': int.tryParse(eventId) ?? eventId,
+      };
+      if (reason != null && reason.trim().isNotEmpty) {
+        body['reason'] = reason.trim();
+      }
+      if (rescheduleDate != null && rescheduleDate.trim().isNotEmpty) {
+        body['reschedule_date'] = rescheduleDate.trim();
+      }
+      if (newDate != null && newDate.trim().isNotEmpty) {
+        body['new_date'] = newDate.trim();
+      }
+      return await _dio.post(
+        'admin_events.php',
+        data: body,
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'admin_events.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
     }
   }
 
@@ -1496,11 +1801,13 @@ class ApiService {
     }
   }
 
-  /// Meeting minutes — submit text + optional attachment.
+  /// Meeting minutes — submit text + optional attachment + optional links.
   static Future<Response> submitMeetingMinutes({
     required int eventId,
     required String content,
     File? attachment,
+    String? promotionalLink,
+    String? liveStreamLink,
   }) async {
     try {
       final auth = await _getAuthOptions();
@@ -1513,6 +1820,10 @@ class ApiService {
         'event_id': eventId.toString(),
         'content': content,
       };
+      final promo = promotionalLink?.trim() ?? '';
+      final live = liveStreamLink?.trim() ?? '';
+      if (promo.isNotEmpty) map['promotional_link'] = promo;
+      if (live.isNotEmpty) map['live_stream_link'] = live;
       final form = FormData.fromMap(map);
       if (attachment != null && await attachment.exists()) {
         form.files.add(

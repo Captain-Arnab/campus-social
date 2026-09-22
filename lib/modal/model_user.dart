@@ -1,19 +1,50 @@
+class ModelUserLink {
+  final int? id;
+  final String url;
+  final String label;
+
+  const ModelUserLink({this.id, required this.url, required this.label});
+
+  factory ModelUserLink.fromJson(Map json) {
+    return ModelUserLink(
+      id: int.tryParse(json['id']?.toString() ?? ''),
+      url: (json['url'] ?? '').toString().trim(),
+      label: (json['label'] ?? '').toString().trim(),
+    );
+  }
+
+  /// Chip text: label, else host from URL.
+  String get displayLabel {
+    if (label.isNotEmpty) return label;
+    try {
+      final u = Uri.parse(url.startsWith('http') ? url : 'https://$url');
+      return u.host.isNotEmpty ? u.host : url;
+    } catch (_) {
+      return url;
+    }
+  }
+}
+
 class ModelUser {
   String? id;
   String? fullName;
   String? email;
   String? phone;
   String? image;
-  String? bio; // Added for Profile/About section
-  String? interests; // Added for Interests section
+  String? bio;
+  String? interests;
   String? departmentClass;
   String? institutionId;
   String? institutionName;
-  bool? isAdmin; // Admin can grant edit permissions, upload certificates
+  bool? isAdmin;
   /// From API `is_student` (1 = student).
   bool? isStudent;
   String? rollNumber;
   String? empNumber;
+  String? linkedSubadminId;
+  List<String> adminPrivileges;
+  bool canApproveEvents;
+  List<ModelUserLink> links;
 
   ModelUser({
     this.id,
@@ -30,15 +61,20 @@ class ModelUser {
     this.isStudent,
     this.rollNumber,
     this.empNumber,
+    this.linkedSubadminId,
+    this.adminPrivileges = const [],
+    this.canApproveEvents = false,
+    this.links = const [],
   });
 
-  // Maps the JSON keys from your PHP API to Dart properties
-  ModelUser.fromJson(Map<String, dynamic> json) {
+  ModelUser.fromJson(Map<String, dynamic> json)
+      : adminPrivileges = const [],
+        canApproveEvents = false,
+        links = const [] {
     id = json['id']?.toString();
     fullName = json['full_name'];
     email = json['email'];
     phone = json['phone'];
-    // API returns 'profile_pic', model uses 'image'
     image = json['profile_pic'] ?? json['image'];
     bio = json['bio'];
     interests = json['interests'];
@@ -58,6 +94,28 @@ class ModelUser {
     isStudent = isStudRaw == 1 || isStudRaw == true || isStudRaw == '1';
     rollNumber = json['roll_number']?.toString();
     empNumber = json['emp_number']?.toString();
+
+    final linked = json['linked_subadmin_id']?.toString().trim();
+    linkedSubadminId =
+        (linked != null && linked.isNotEmpty && linked != 'null') ? linked : null;
+
+    final priv = json['admin_privileges'];
+    if (priv is List) {
+      adminPrivileges = priv.map((e) => e.toString()).toList();
+    }
+
+    final can = json['can_approve_events'];
+    canApproveEvents =
+        can == true || can == 1 || can?.toString() == '1';
+
+    final rawLinks = json['links'];
+    if (rawLinks is List) {
+      links = rawLinks
+          .whereType<Map>()
+          .map((e) => ModelUserLink.fromJson(e))
+          .where((l) => l.url.isNotEmpty)
+          .toList();
+    }
   }
 
   static String? _parseInstitutionName(Map<String, dynamic> json) {
@@ -75,7 +133,6 @@ class ModelUser {
     return null;
   }
 
-  // Converts the object back to JSON for API requests like updateProfile
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['id'] = id;
@@ -94,6 +151,12 @@ class ModelUser {
     }
     data['roll_number'] = rollNumber;
     data['emp_number'] = empNumber;
+    data['linked_subadmin_id'] = linkedSubadminId;
+    data['admin_privileges'] = adminPrivileges;
+    data['can_approve_events'] = canApproveEvents;
+    data['links'] = links
+        .map((l) => {'id': l.id, 'url': l.url, 'label': l.label})
+        .toList();
     return data;
   }
 }

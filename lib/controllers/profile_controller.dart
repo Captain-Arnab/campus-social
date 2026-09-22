@@ -189,6 +189,56 @@ class ProfileController extends GetxController {
     }
   }
 
+  /// Returns null on success, or an error message from the server.
+  Future<String?> addProfileLink({required String url, String label = ''}) async {
+    final userId = await PrefService.getUserId();
+    if (userId == null || userId.isEmpty) {
+      return 'Please log in again.';
+    }
+    try {
+      final response = await ApiService.addUserLink(
+        userId: userId,
+        url: url.trim(),
+        label: label.trim(),
+      );
+      final data = response.data;
+      if (data is Map && data['status'] == 'success') {
+        await loadProfile();
+        return null;
+      }
+      if (data is Map) {
+        return data['message']?.toString() ?? 'Could not add link.';
+      }
+      return 'Could not add link.';
+    } catch (e) {
+      debugPrint('addProfileLink: $e');
+      return 'Connection failed.';
+    }
+  }
+
+  /// Returns null on success, or an error message.
+  Future<String?> deleteProfileLink(int linkId) async {
+    final userId = await PrefService.getUserId();
+    if (userId == null || userId.isEmpty) {
+      return 'Please log in again.';
+    }
+    try {
+      final response = await ApiService.deleteUserLink(userId: userId, linkId: linkId);
+      final data = response.data;
+      if (data is Map && data['status'] == 'success') {
+        await loadProfile();
+        return null;
+      }
+      if (data is Map) {
+        return data['message']?.toString() ?? 'Could not delete link.';
+      }
+      return 'Could not delete link.';
+    } catch (e) {
+      debugPrint('deleteProfileLink: $e');
+      return 'Connection failed.';
+    }
+  }
+
   Future<bool> updateProfile(String name, String bio, String interests, File? image, {String? departmentClass}) async {
     isLoading.value = true;
     try {

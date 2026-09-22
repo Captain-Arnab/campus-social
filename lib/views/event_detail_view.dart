@@ -27,6 +27,9 @@ import '../utils/registration_deadline_helper.dart';
 import '../utils/winner_display_helper.dart';
 import '../utils/winner_feed_helper.dart';
 import '../theme/app_theme.dart';
+import '../data/event_payment_cache.dart';
+import '../utils/event_fee_helper.dart';
+import '../widgets/event_payment_flow.dart';
 
 List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
   if (ev is! Map) return [];
@@ -95,6 +98,8 @@ class _EventDetailViewState extends State<EventDetailView> {
   String? _minutesFileUrl;
   String? _minutesFilePath;
   String? _minutesSubmittedAt;
+  String? _minutesPromoLink;
+  String? _minutesLiveLink;
   bool _closingEvent = false;
 
   @override
@@ -115,6 +120,9 @@ class _EventDetailViewState extends State<EventDetailView> {
     final full = await controller.fetchEventById(id);
     if (full != null && mounted) {
       setState(() => _event = full);
+      // my_registration from GET is source of truth for paid-lock (survives restart).
+      // Drop any optimistic flag once a fresh GET has arrived.
+      EventPaymentCache.clearOptimisticForEvent(full['id']?.toString() ?? '');
       // Merge winners: keep event payload if API returns empty list (avoid unlocking attendance by mistake).
       List<dynamic> winners = [];
       if (full['winners'] is List && (full['winners'] as List).isNotEmpty) {
@@ -150,6 +158,8 @@ class _EventDetailViewState extends State<EventDetailView> {
             _minutesFileUrl = null;
             _minutesFilePath = null;
             _minutesSubmittedAt = null;
+            _minutesPromoLink = null;
+            _minutesLiveLink = null;
           });
         } else {
           final st = (record['status'] ?? '').toString().toLowerCase();
@@ -160,6 +170,16 @@ class _EventDetailViewState extends State<EventDetailView> {
             _minutesFilePath = (record['file_path'] ?? '').toString().trim();
             _minutesSubmittedAt =
                 (record['created_at'] ?? record['updated_at'] ?? '').toString().trim();
+            _minutesPromoLink =
+                (record['promotional_link'] ?? '').toString().trim();
+            _minutesLiveLink =
+                (record['live_stream_link'] ?? '').toString().trim();
+            if (_minutesPromoLink != null && _minutesPromoLink!.isEmpty) {
+              _minutesPromoLink = null;
+            }
+            if (_minutesLiveLink != null && _minutesLiveLink!.isEmpty) {
+              _minutesLiveLink = null;
+            }
           });
         }
       }
@@ -171,6 +191,8 @@ class _EventDetailViewState extends State<EventDetailView> {
           _minutesFileUrl = null;
           _minutesFilePath = null;
           _minutesSubmittedAt = null;
+          _minutesPromoLink = null;
+          _minutesLiveLink = null;
         });
       }
     }
@@ -749,6 +771,15 @@ class _EventDetailViewState extends State<EventDetailView> {
       SweetAlertHelper.showWarning(context, 'Registration closed', 'Registration for this event has closed.');
       return;
     }
+    final map = _event is Map ? _event as Map : null;
+    if (EventFeeHelper.isDisabled(map, 'participate')) {
+      SweetAlertHelper.showWarning(
+        context,
+        'Not Available',
+        EventFeeHelper.disabledMessage,
+      );
+      return;
+    }
     showParticipateRegistrationSheet(
       context,
       eventId: _event['id'].toString(),
@@ -757,6 +788,7 @@ class _EventDetailViewState extends State<EventDetailView> {
       eventSnapshot: _event,
       userIsStudent: userIsStudent,
       switchFromVolunteer: isRoleSwitch,
+      onPaidSuccess: () => _applyPaidRegistrationLocally('participate'),
       onSwitchSuccess: () => _loadFullEvent(),
     );
   }
@@ -772,6 +804,15 @@ class _EventDetailViewState extends State<EventDetailView> {
     }
     if (isEventRegistrationClosed(_event)) {
       SweetAlertHelper.showWarning(context, 'Registration closed', 'Registration for this event has closed.');
+      return;
+    }
+    final map = _event is Map ? _event as Map : null;
+    if (EventFeeHelper.isDisabled(map, 'volunteer')) {
+      SweetAlertHelper.showWarning(
+        context,
+        'Not Available',
+        EventFeeHelper.disabledMessage,
+      );
       return;
     }
     showDialog(
@@ -1308,6 +1349,24 @@ class _EventDetailViewState extends State<EventDetailView> {
                               ),
                             ),
                           ],
+                          if (_minutesPromoLink != null &&
+                              _minutesPromoLink!.isNotEmpty) ...[
+                            SizedBox(height: 10.h),
+                            _minutesExternalLinkTile(
+                              icon: Icons.campaign_outlined,
+                              label: 'Promotional link',
+                              url: _minutesPromoLink!,
+                            ),
+                          ],
+                          if (_minutesLiveLink != null &&
+                              _minutesLiveLink!.isNotEmpty) ...[
+                            SizedBox(height: 8.h),
+                            _minutesExternalLinkTile(
+                              icon: Icons.live_tv_outlined,
+                              label: 'Live stream',
+                              url: _minutesLiveLink!,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1337,20 +1396,57 @@ class _EventDetailViewState extends State<EventDetailView> {
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: color),
                             ),
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.description_outlined, color: color, size: 24),
-                                SizedBox(width: 12.w),
-                                Expanded(
-                                  child: Text(
-                                    label,
-                                    style: TextStyle(
-                                      color: color,
-                                      fontSize: 13.sp,
-                                      fontWeight: FontWeight.w700,
+                                Row(
+                                  children: [
+                                    Icon(Icons.description_outlined, color: color, size: 24),
+                                    SizedBox(width: 12.w),
+                                    Expanded(
+                                      child: Text(
+                                        label,
+                                        style: TextStyle(
+                                          color: color,
+                                          fontSize: 13.sp,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ),
+                                if (_minutesContent != null &&
+                                    _minutesContent!.trim().isNotEmpty) ...[
+                                  SizedBox(height: 10.h),
+                                  Text(
+                                    _minutesContent!,
+                                    style: TextStyle(
+                                      fontSize: 13.sp,
+                                      color: AppColors.navyMuted,
+                                      height: 1.4,
+                                    ),
+                                    maxLines: 6,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                                if (_minutesPromoLink != null &&
+                                    _minutesPromoLink!.isNotEmpty) ...[
+                                  SizedBox(height: 8.h),
+                                  _minutesExternalLinkTile(
+                                    icon: Icons.campaign_outlined,
+                                    label: 'Promotional link',
+                                    url: _minutesPromoLink!,
+                                  ),
+                                ],
+                                if (_minutesLiveLink != null &&
+                                    _minutesLiveLink!.isNotEmpty) ...[
+                                  SizedBox(height: 6.h),
+                                  _minutesExternalLinkTile(
+                                    icon: Icons.live_tv_outlined,
+                                    label: 'Live stream',
+                                    url: _minutesLiveLink!,
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -1840,38 +1936,71 @@ class _EventDetailViewState extends State<EventDetailView> {
                         final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                             (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                         final regClosed = isEventRegistrationClosed(_event);
-                        final canLeaveAttend = attending && _isApprovedEvent();
+                        final eventMap = _event is Map ? _event as Map : null;
+                        final attendDisabled =
+                            EventFeeHelper.isDisabled(eventMap, 'attend');
+                        final attendPaid = _isPaidLocked('attend');
+                        final canLeaveAttend =
+                            attending && _isApprovedEvent() && !attendPaid;
                         final canSwitchToAttend = _isApprovedEvent() &&
                             !attending &&
                             (volunteering || participating) &&
-                            !regClosed;
+                            !regClosed &&
+                            !attendDisabled;
                         final canJoin = _isApprovedEvent() &&
                             !attending &&
                             !volunteering &&
                             !participating &&
-                            !regClosed;
+                            !regClosed &&
+                            !attendDisabled;
+                        String attendLabel;
+                        if (attending && attendPaid) {
+                          attendLabel = 'Paid';
+                        } else if (canLeaveAttend) {
+                          attendLabel = 'Leave Event';
+                        } else if (attendDisabled) {
+                          attendLabel = 'Unavailable';
+                        } else if (canSwitchToAttend) {
+                          attendLabel = EventFeeHelper.isWithFee(eventMap, 'attend')
+                              ? '→ Attend — ${EventFeeHelper.formatFee(EventFeeHelper.feeAmount(eventMap, 'attend'))}'
+                              : '→ Attend';
+                        } else if (regClosed) {
+                          attendLabel = 'Closed';
+                        } else if (EventFeeHelper.isWithFee(eventMap, 'attend')) {
+                          attendLabel = EventFeeHelper.joinButtonLabel(
+                            event: eventMap,
+                            role: 'attend',
+                            freeLabel: 'Join',
+                            regClosed: false,
+                          );
+                        } else {
+                          attendLabel = 'Join';
+                        }
                         return ElevatedButton(
-                          onPressed: canLeaveAttend
-                              ? () async {
-                                  final data = await controller.leaveEvent(eid);
-                                  _applyLeaveResponseToEvent(data);
+                          onPressed: (attending && attendPaid)
+                              ? () {
+                                  SweetAlertHelper.showWarning(
+                                    context,
+                                    'Paid registration',
+                                    'This registration is paid and cannot be changed or cancelled',
+                                  );
                                 }
-                              : canSwitchToAttend
-                                  ? () async {
-                                      await controller.joinEvent(
-                                        eid,
-                                        organizerId: _event['organizer_id']?.toString(),
-                                        eventSnapshot: _event,
-                                        userIsStudent: isStudent,
+                              : attendDisabled
+                                  ? () {
+                                      SweetAlertHelper.showWarning(
+                                        context,
+                                        'Not Available',
+                                        EventFeeHelper.disabledMessage,
                                       );
-                                      await _loadFullEvent();
                                     }
-                                  : canJoin
-                                      ? () => controller.joinEvent(
-                                            eid,
-                                            organizerId: _event['organizer_id']?.toString(),
-                                            eventSnapshot: _event,
-                                            userIsStudent: isStudent,
+                                  : (canLeaveAttend ||
+                                          canSwitchToAttend ||
+                                          canJoin)
+                                      ? () => _handleAttendAction(
+                                            canLeave: canLeaveAttend,
+                                            canSwitch: canSwitchToAttend,
+                                            canJoin: canJoin,
+                                            isStudent: isStudent,
                                           )
                                       : null,
                           style: ElevatedButton.styleFrom(
@@ -1891,21 +2020,25 @@ class _EventDetailViewState extends State<EventDetailView> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                canLeaveAttend
-                                    ? Icons.logout
-                                    : (canSwitchToAttend
-                                        ? Icons.swap_horiz
-                                        : (regClosed ? Icons.event_busy : Icons.check_circle)),
+                                (attending && attendPaid)
+                                    ? Icons.lock_outline
+                                    : canLeaveAttend
+                                        ? Icons.logout
+                                        : (canSwitchToAttend
+                                            ? Icons.swap_horiz
+                                            : (regClosed || attendDisabled
+                                                ? Icons.event_busy
+                                                : Icons.check_circle)),
                                 size: 18,
                               ),
                               SizedBox(height: 4.h),
                               Text(
-                                canLeaveAttend
-                                    ? 'Leave Event'
-                                    : (canSwitchToAttend
-                                        ? '→ Attend'
-                                        : (regClosed ? 'Closed' : 'Join')),
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                attendLabel,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                ),
                               ),
                             ],
                           ),
@@ -1925,15 +2058,46 @@ class _EventDetailViewState extends State<EventDetailView> {
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                           final regClosed = isEventRegistrationClosed(_event);
+                          final eventMap = _event is Map ? _event as Map : null;
+                          final volDisabled =
+                              EventFeeHelper.isDisabled(eventMap, 'volunteer');
                           final canLeaveVolunteer = volunteering && _isApprovedEvent();
                           final canSwitchToVolunteer = _isApprovedEvent() &&
                               !volunteering &&
                               (attending || participating) &&
-                              !regClosed;
+                              !regClosed &&
+                              !volDisabled &&
+                              !_isPaidLocked('attend') &&
+                              !_isPaidLocked('participate');
                           final canJoinVolunteer =
-                              _isApprovedEvent() && !attending && !volunteering && !participating && !regClosed;
+                              _isApprovedEvent() &&
+                              !attending &&
+                              !volunteering &&
+                              !participating &&
+                              !regClosed &&
+                              !volDisabled;
+                          String volLabel;
+                          if (canLeaveVolunteer) {
+                            volLabel = 'Leave';
+                          } else if (volDisabled) {
+                            volLabel = 'Unavailable';
+                          } else if (canSwitchToVolunteer) {
+                            volLabel = '→ Volunteer';
+                          } else if (regClosed) {
+                            volLabel = 'Closed';
+                          } else {
+                            volLabel = 'Volunteer';
+                          }
                           return OutlinedButton(
-                            onPressed: canLeaveVolunteer
+                            onPressed: volDisabled
+                                ? () {
+                                    SweetAlertHelper.showWarning(
+                                      context,
+                                      'Not Available',
+                                      EventFeeHelper.disabledMessage,
+                                    );
+                                  }
+                                : canLeaveVolunteer
                                 ? () async {
                                     final data = await controller.leaveVolunteer(eid);
                                     _applyLeaveResponseToEvent(data);
@@ -1962,17 +2126,16 @@ class _EventDetailViewState extends State<EventDetailView> {
                                       ? Icons.logout
                                       : (canSwitchToVolunteer
                                           ? Icons.swap_horiz
-                                          : (regClosed ? Icons.event_busy : Icons.volunteer_activism)),
+                                          : (regClosed || volDisabled
+                                              ? Icons.event_busy
+                                              : Icons.volunteer_activism)),
                                   size: 18,
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  canLeaveVolunteer
-                                      ? 'Leave'
-                                      : (canSwitchToVolunteer
-                                          ? '→ Volunteer'
-                                          : (regClosed ? 'Closed' : 'Volunteer')),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                  volLabel,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
                                 ),
                               ],
                             ),
@@ -1991,15 +2154,66 @@ class _EventDetailViewState extends State<EventDetailView> {
                           final participating = controller.participatingList.any((e) => e['id'].toString() == eid) ||
                               (userId != null && EventParticipationRules.userInParticipantList(_event, userId));
                           final regClosed = isEventRegistrationClosed(_event);
-                          final canLeaveParticipant = participating && _isApprovedEvent();
+                          final eventMap = _event is Map ? _event as Map : null;
+                          final partDisabled =
+                              EventFeeHelper.isDisabled(eventMap, 'participate');
+                          final partPaid = _isPaidLocked('participate');
+                          final canLeaveParticipant =
+                              participating && _isApprovedEvent() && !partPaid;
                           final canSwitchToParticipant = _isApprovedEvent() &&
                               !participating &&
                               (attending || volunteering) &&
-                              !regClosed;
+                              !regClosed &&
+                              !partDisabled &&
+                              !_isPaidLocked('attend');
                           final canJoinParticipant =
-                              _isApprovedEvent() && !attending && !volunteering && !participating && !regClosed;
+                              _isApprovedEvent() &&
+                              !attending &&
+                              !volunteering &&
+                              !participating &&
+                              !regClosed &&
+                              !partDisabled;
+                          String partLabel;
+                          if (participating && partPaid) {
+                            partLabel = 'Paid';
+                          } else if (canLeaveParticipant) {
+                            partLabel = 'Leave';
+                          } else if (partDisabled) {
+                            partLabel = 'Unavailable';
+                          } else if (canSwitchToParticipant) {
+                            partLabel = EventFeeHelper.isWithFee(eventMap, 'participate')
+                                ? '→ Participate — ${EventFeeHelper.formatFee(EventFeeHelper.feeAmount(eventMap, 'participate'))}'
+                                : '→ Participate';
+                          } else if (regClosed) {
+                            partLabel = 'Closed';
+                          } else if (EventFeeHelper.isWithFee(eventMap, 'participate')) {
+                            partLabel = EventFeeHelper.joinButtonLabel(
+                              event: eventMap,
+                              role: 'participate',
+                              freeLabel: 'Participate',
+                              regClosed: false,
+                            );
+                          } else {
+                            partLabel = 'Participate';
+                          }
                           return OutlinedButton(
-                            onPressed: canLeaveParticipant
+                            onPressed: (participating && partPaid)
+                                ? () {
+                                    SweetAlertHelper.showWarning(
+                                      context,
+                                      'Paid registration',
+                                      'This registration is paid and cannot be changed or cancelled',
+                                    );
+                                  }
+                                : partDisabled
+                                    ? () {
+                                        SweetAlertHelper.showWarning(
+                                          context,
+                                          'Not Available',
+                                          EventFeeHelper.disabledMessage,
+                                        );
+                                      }
+                                    : canLeaveParticipant
                                 ? () async {
                                     final data = await controller.leaveParticipant(eid);
                                     _applyLeaveResponseToEvent(data);
@@ -2026,21 +2240,22 @@ class _EventDetailViewState extends State<EventDetailView> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  canLeaveParticipant
+                                  (participating && partPaid)
+                                      ? Icons.lock_outline
+                                      : canLeaveParticipant
                                       ? Icons.logout
                                       : (canSwitchToParticipant
                                           ? Icons.swap_horiz
-                                          : (regClosed ? Icons.event_busy : Icons.groups)),
+                                          : (regClosed || partDisabled
+                                              ? Icons.event_busy
+                                              : Icons.groups)),
                                   size: 18,
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  canLeaveParticipant
-                                      ? 'Leave'
-                                      : (canSwitchToParticipant
-                                          ? '→ Participate'
-                                          : (regClosed ? 'Closed' : 'Participate')),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                  partLabel,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
                                 ),
                               ],
                             ),
@@ -2067,6 +2282,122 @@ class _EventDetailViewState extends State<EventDetailView> {
         color: AppColors.navy,
       ),
     );
+  }
+
+  Widget _minutesExternalLinkTile({
+    required IconData icon,
+    required String label,
+    required String url,
+  }) {
+    return InkWell(
+      onTap: () async {
+        final raw = url.trim();
+        final href = raw.startsWith('http') ? raw : 'https://$raw';
+        final u = Uri.tryParse(href);
+        if (u == null) return;
+        await launchUrl(u, mode: LaunchMode.externalApplication);
+      },
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppColors.accent),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w600,
+                color: AppColors.accent,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+          const Icon(Icons.open_in_new, size: 14, color: AppColors.textSecondary),
+        ],
+      ),
+    );
+  }
+
+  bool _isPaidLocked(String role) {
+    // Source of truth: my_registration.payment_status from event GET.
+    // Null my_registration → not registered → unlocked (normal join options).
+    final eid = _event['id']?.toString() ?? '';
+    final map = _event is Map ? _event as Map : null;
+    return EventPaymentCache.isPaidLocked(
+      eventId: eid,
+      role: role,
+      event: map,
+    );
+  }
+
+  /// Instant UI lock after verify_payment, then refetch so my_registration matches GET.
+  void _applyPaidRegistrationLocally(String role) {
+    if (_event is! Map) return;
+    final map = Map<String, dynamic>.from(
+      (_event as Map).map((k, v) => MapEntry(k.toString(), v)),
+    );
+    EventPaymentCache.mergePaidIntoEvent(map, role);
+    setState(() => _event = map);
+  }
+
+  Future<void> _handleAttendAction({
+    required bool canLeave,
+    required bool canSwitch,
+    required bool canJoin,
+    required bool isStudent,
+  }) async {
+    final map = _event is Map
+        ? Map<String, dynamic>.from(
+            (_event as Map).map((k, v) => MapEntry(k.toString(), v)),
+          )
+        : <String, dynamic>{};
+    final eid = map['id']?.toString() ?? '';
+
+    if (EventFeeHelper.isDisabled(map, 'attend')) {
+      SweetAlertHelper.showWarning(
+        context,
+        'Not Available',
+        EventFeeHelper.disabledMessage,
+      );
+      return;
+    }
+
+    if (canLeave) {
+      if (_isPaidLocked('attend')) {
+        SweetAlertHelper.showWarning(
+          context,
+          'Paid registration',
+          'This registration is paid and cannot be changed or cancelled',
+        );
+        return;
+      }
+      final data = await Get.find<EventController>().leaveEvent(eid);
+      _applyLeaveResponseToEvent(data);
+      return;
+    }
+
+    if (canSwitch || canJoin) {
+      if (EventFeeHelper.isWithFee(map, 'attend')) {
+        await EventPaymentFlow.start(
+          context: context,
+          event: map,
+          role: 'attend',
+          onSuccess: () {
+            _applyPaidRegistrationLocally('attend');
+            _loadFullEvent();
+          },
+        );
+        if (mounted) setState(() {});
+        return;
+      }
+      await Get.find<EventController>().joinEvent(
+        eid,
+        organizerId: map['organizer_id']?.toString(),
+        eventSnapshot: map,
+        userIsStudent: isStudent,
+      );
+      if (canSwitch) await _loadFullEvent();
+    }
   }
 
   Widget _buildPlaceholder() => Container(

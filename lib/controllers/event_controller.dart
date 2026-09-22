@@ -608,6 +608,7 @@ Future<void> fetchHostedEvents({bool forceRefresh = false}) async {
               'registration_open',
               'registration_closed',
               'server_time',
+              'my_registration',
             ]) {
               if (body.containsKey(key) && !map.containsKey(key)) {
                 map[key] = body[key];

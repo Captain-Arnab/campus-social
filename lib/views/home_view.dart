@@ -22,7 +22,9 @@ import 'favorites_view.dart';
 import 'notifications_view.dart';
 import 'winners_view.dart';
 import 'edit_profile_view.dart';
+import 'admin_approvals_view.dart';
 import 'volunteer_dialog.dart';
+import '../modal/model_user.dart';
 import '../data/api_service.dart';
 import '../data/app_branding.dart';
 import '../data/app_bootstrap.dart';
@@ -2175,6 +2177,196 @@ class _EventListWidgetState extends State<_EventListWidget> with AutomaticKeepAl
 
 // --- PROFILE TAB ---
 
+String _profileLinkLaunchUrl(String raw) {
+  final t = raw.trim();
+  if (t.startsWith('http://') || t.startsWith('https://')) return t;
+  return 'https://$t';
+}
+
+Future<void> _openUserProfileLink(BuildContext context, String url) async {
+  final uri = Uri.tryParse(_profileLinkLaunchUrl(url));
+  if (uri == null) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid link URL')),
+      );
+    }
+    return;
+  }
+  try {
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open link')),
+      );
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open link')),
+      );
+    }
+  }
+}
+
+Future<void> _showAddProfileLinkDialog(BuildContext context, ProfileController controller) async {
+  final urlCtrl = TextEditingController();
+  final labelCtrl = TextEditingController();
+  var saving = false;
+
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (dialogContext, setLocal) {
+          return AlertDialog(
+            title: const Text('Add link'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: urlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'URL (required)',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                ),
+                SizedBox(height: 12.h),
+                TextField(
+                  controller: labelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Label (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        if (urlCtrl.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            const SnackBar(content: Text('URL is required')),
+                          );
+                          return;
+                        }
+                        setLocal(() => saving = true);
+                        final err = await controller.addProfileLink(
+                          url: urlCtrl.text,
+                          label: labelCtrl.text,
+                        );
+                        if (!dialogContext.mounted) return;
+                        setLocal(() => saving = false);
+                        if (err != null) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(content: Text(err)),
+                          );
+                          return;
+                        }
+                        Navigator.pop(ctx);
+                      },
+                child: saving
+                    ? SizedBox(
+                        width: 18.w,
+                        height: 18.w,
+                        child: const CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  urlCtrl.dispose();
+  labelCtrl.dispose();
+}
+
+Future<void> _confirmDeleteProfileLink(
+  BuildContext context,
+  ProfileController controller,
+  ModelUserLink link,
+) async {
+  if (link.id == null) return;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Remove link'),
+      content: Text('Remove "${link.displayLabel}"?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text('Remove', style: TextStyle(color: AppColors.error)),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  final err = await controller.deleteProfileLink(link.id!);
+  if (err != null && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+  }
+}
+
+Widget _profileLinkChip(
+  BuildContext context,
+  ProfileController controller,
+  ModelUserLink link,
+) {
+  return Material(
+    color: const Color(0xFFFF5F15).withValues(alpha: 0.08),
+    borderRadius: BorderRadius.circular(20),
+    child: InkWell(
+      onTap: () => _openUserProfileLink(context, link.url),
+      onLongPress: () => _confirmDeleteProfileLink(context, controller, link),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: EdgeInsets.only(left: 12.w, top: 8.h, bottom: 8.h, right: 4.w),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.link, size: 16, color: Color(0xFFFF5F15)),
+            SizedBox(width: 6.w),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 200.w),
+              child: Text(
+                link.displayLabel,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFFFF5F15),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            if (link.id != null)
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: Icon(Icons.close, size: 18, color: Colors.grey[600]),
+                onPressed: () => _confirmDeleteProfileLink(context, controller, link),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _ProfileTab extends StatelessWidget {
   const _ProfileTab();
 
@@ -2661,6 +2853,124 @@ class _ProfileTab extends StatelessWidget {
                       ],
                     ),
                   ),
+
+                  SizedBox(height: 20.h),
+
+                  // Profile links
+                  Container(
+                    margin: EdgeInsets.symmetric(horizontal: 20.w),
+                    padding: EdgeInsets.all(24.w),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 20,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.link_outlined, color: Color(0xFFFF5F15), size: 20),
+                            ),
+                            SizedBox(width: 12.w),
+                            Text(
+                              'Links',
+                              style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.black87),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 16.h),
+                        if (user.links.isNotEmpty)
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: user.links
+                                .map((link) => _profileLinkChip(context, controller, link))
+                                .toList(),
+                          )
+                        else
+                          Text(
+                            'No links yet. Add a portfolio or social URL.',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 14.sp,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        SizedBox(height: 14.h),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: user.links.length >= 5
+                                ? null
+                                : () => _showAddProfileLinkDialog(context, controller),
+                            icon: const Icon(Icons.add_link, size: 18),
+                            label: Text(user.links.length >= 5 ? 'Maximum 5 links' : 'Add Link'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFFF5F15),
+                              side: BorderSide(color: const Color(0xFFFF5F15).withValues(alpha: 0.4)),
+                              padding: EdgeInsets.symmetric(vertical: 12.h),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  if (user.canApproveEvents) ...[
+                    SizedBox(height: 20.h),
+                    Container(
+                      margin: EdgeInsets.symmetric(horizontal: 20.w),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 20,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ListTile(
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.admin_panel_settings_outlined, color: Color(0xFFFF5F15), size: 20),
+                        ),
+                        title: Text(
+                          'Admin approvals',
+                          style: TextStyle(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        subtitle: Text(
+                          'Review pending events and edits',
+                          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                        onTap: () => Get.to(() => const AdminApprovalsView()),
+                      ),
+                    ),
+                  ],
                   
                   SizedBox(height: 100.h),
                 ],

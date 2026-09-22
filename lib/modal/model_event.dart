@@ -1,3 +1,25 @@
+/// Current user's registration on an event (`my_registration` from event GET).
+class MyRegistration {
+  final String? role;
+  final String? paymentStatus;
+
+  const MyRegistration({this.role, this.paymentStatus});
+
+  factory MyRegistration.fromJson(Map json) {
+    return MyRegistration(
+      role: json['role']?.toString().trim(),
+      paymentStatus: json['payment_status']?.toString().trim().toLowerCase(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'role': role,
+        'payment_status': paymentStatus,
+      };
+
+  bool get isPaid => paymentStatus == 'paid';
+}
+
 class ModelEvent {
   String? id;
   String? title;
@@ -17,6 +39,8 @@ class ModelEvent {
   DateTime? registrationDeadline;
   bool? canClose;
   dynamic closeBlockers;
+  /// Present when GET includes `user_id` and the user is registered.
+  MyRegistration? myRegistration;
 
   ModelEvent({
     this.id,
@@ -37,6 +61,7 @@ class ModelEvent {
     this.registrationDeadline,
     this.canClose,
     this.closeBlockers,
+    this.myRegistration,
   });
 
   // Maps JSON from API to Dart object
@@ -72,6 +97,37 @@ class ModelEvent {
       canClose = s == '1' || s == 'true';
     }
     closeBlockers = json['close_blockers'];
+    myRegistration = parseMyRegistration(json['my_registration']);
+  }
+
+  /// Parses `my_registration: { role, payment_status }` from event GET.
+  static MyRegistration? parseMyRegistration(dynamic raw) {
+    if (raw is! Map) return null;
+    final reg = MyRegistration.fromJson(Map<String, dynamic>.from(
+      raw.map((k, v) => MapEntry(k.toString(), v)),
+    ));
+    if ((reg.role == null || reg.role!.isEmpty) &&
+        (reg.paymentStatus == null || reg.paymentStatus!.isEmpty)) {
+      return null;
+    }
+    return reg;
+  }
+
+  /// Whether Leave/Switch for [wantRole] (`attend` / `participate`) is paid-locked.
+  static bool isPaidLockedForRole(MyRegistration? reg, String wantRole) {
+    if (reg == null || !reg.isPaid) return false;
+    final regRole = (reg.role ?? '').toLowerCase();
+    final want = wantRole.trim().toLowerCase();
+    if (want == 'attend') {
+      return regRole == 'attend' ||
+          regRole == 'attendee' ||
+          regRole == 'viewer' ||
+          regRole.isEmpty;
+    }
+    if (want == 'participate') {
+      return regRole == 'participate' || regRole == 'participant';
+    }
+    return false;
   }
 
   // Convert object to JSON for API requests
@@ -95,6 +151,9 @@ class ModelEvent {
     data['registration_deadline'] = registrationDeadline?.toIso8601String();
     data['can_close'] = canClose;
     data['close_blockers'] = closeBlockers;
+    if (myRegistration != null) {
+      data['my_registration'] = myRegistration!.toJson();
+    }
     return data;
   }
 }

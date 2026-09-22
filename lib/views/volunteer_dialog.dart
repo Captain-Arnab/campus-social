@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/event_controller.dart';
+import '../data/api_service.dart';
+import '../utils/event_fee_helper.dart';
 import '../utils/sweetalert_helper.dart';
 
 class VolunteerDialog extends StatefulWidget {
@@ -25,18 +27,61 @@ class VolunteerDialog extends StatefulWidget {
 
 class _VolunteerDialogState extends State<VolunteerDialog> {
   final EventController controller = Get.find<EventController>();
-  final roleCtrl = TextEditingController();
-  final List<String> roles = [
-    "Stage Manager",
-    "Tech Support",
-    "Crowd Management",
-    "Registration",
-    "Catering",
-    "Decoration",
-    "Photography",
-    "Other"
-  ];
+  final List<String> _committees = [];
+  bool _loadingCommittees = true;
+  String? _loadError;
   String? selectedRole;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCommittees();
+  }
+
+  Future<void> _loadCommittees() async {
+    setState(() {
+      _loadingCommittees = true;
+      _loadError = null;
+    });
+    try {
+      final eid = widget.event['id']?.toString() ?? '';
+      final res = await ApiService.listVolunteerCommittees(eid);
+      final data = ApiService.parseResponseBody(res.data);
+      final names = <String>[];
+      final raw = data?['committees'] ?? data?['data'] ?? data?['list'];
+      if (raw is List) {
+        for (final item in raw) {
+          if (item is Map) {
+            final name = (item['name'] ?? item['role'] ?? '').toString().trim();
+            if (name.isNotEmpty) names.add(name);
+          } else if (item is String && item.trim().isNotEmpty) {
+            names.add(item.trim());
+          }
+        }
+      }
+      if (!mounted) return;
+      if (names.isEmpty) {
+        setState(() {
+          _committees.clear();
+          _loadingCommittees = false;
+          _loadError = 'No committees available for this event';
+        });
+        return;
+      }
+      setState(() {
+        _committees
+          ..clear()
+          ..addAll(names);
+        _loadingCommittees = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingCommittees = false;
+        _loadError = 'Could not load committees';
+      });
+    }
+  }
 
   void _closeDialog() {
     Navigator.of(context, rootNavigator: true).pop();
@@ -44,6 +89,20 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final eventMap = widget.event is Map ? widget.event as Map : null;
+    if (EventFeeHelper.isDisabled(eventMap, 'volunteer')) {
+      // Safety: should be blocked before opening; show message if reached.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _closeDialog();
+        SweetAlertHelper.showWarning(
+          context,
+          'Not Available',
+          EventFeeHelper.disabledMessage,
+        );
+      });
+    }
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       elevation: 10,
@@ -55,7 +114,6 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header with close button — title must flex so it doesn't overflow the X.
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -78,8 +136,8 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                         SizedBox(height: 4.h),
                         Text(
                           widget.switchFromParticipant
-                              ? "Choose your volunteer role for this event"
-                              : "Help make this event amazing!",
+                              ? "Choose your volunteer committee for this event"
+                              : "Pick a committee, then join",
                           style: TextStyle(
                             fontSize: 13.sp,
                             color: Colors.grey[600],
@@ -106,13 +164,15 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
 
               SizedBox(height: 24.h),
 
-              // Event Card
               Container(
                 padding: EdgeInsets.all(16.w),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFF5F15).withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.2), width: 1.5),
+                  border: Border.all(
+                    color: const Color(0xFFFF5F15).withValues(alpha: 0.2),
+                    width: 1.5,
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -121,35 +181,21 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                       height: 50.w,
                       decoration: BoxDecoration(
                         color: const Color(0xFFFF5F15),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.event, color: Colors.white),
+                      child: const Icon(Icons.volunteer_activism, color: Colors.white),
                     ),
                     SizedBox(width: 12.w),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Event",
-                            style: TextStyle(
-                              fontSize: 11.sp,
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          SizedBox(height: 4.h),
-                          Text(
-                            widget.event['title'] ?? "Campus Event",
-                            style: TextStyle(
-                              fontSize: 15.sp,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                      child: Text(
+                        (widget.event['title'] ?? 'Event').toString(),
+                        style: TextStyle(
+                          fontSize: 15.sp,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -158,85 +204,78 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
 
               SizedBox(height: 24.h),
 
-              // Role Selection Section — chips stay inside the dialog (no Material dropdown overlay).
               Text(
-                "Select Your Role",
+                "Select Committee",
                 style: TextStyle(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
                 ),
               ),
-
               SizedBox(height: 12.h),
 
-              Wrap(
-                spacing: 8.w,
-                runSpacing: 8.h,
-                children: roles.map((role) {
-                  final selected = selectedRole == role;
-                  return ChoiceChip(
-                    label: Text(
-                      role,
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                        color: selected ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    selected: selected,
-                    onSelected: (_) {
-                      setState(() {
-                        selectedRole = role;
-                        if (role != "Other") {
-                          roleCtrl.clear();
-                        }
-                      });
-                    },
-                    selectedColor: const Color(0xFFFF5F15),
-                    backgroundColor: Colors.grey[100],
-                    checkmarkColor: Colors.white,
-                    side: BorderSide(
-                      color: selected ? const Color(0xFFFF5F15) : Colors.grey[300]!,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-                  );
-                }).toList(),
-              ),
-
-              if (selectedRole == "Other") ...[
-                SizedBox(height: 14.h),
-                TextField(
-                  controller: roleCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration(
-                    labelText: "Specify Your Role",
-                    hintText: "Enter your preferred role",
-                    prefixIcon: const Icon(Icons.create_outlined, color: Color(0xFFFF5F15)),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey[300]!),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey[300]!),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 2),
-                    ),
+              if (_loadingCommittees)
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20.h),
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Color(0xFFFF5F15)),
                   ),
+                )
+              else if (_loadError != null)
+                Column(
+                  children: [
+                    Text(
+                      _loadError!,
+                      style: TextStyle(fontSize: 13.sp, color: Colors.red[700]),
+                      textAlign: TextAlign.center,
+                    ),
+                    TextButton(
+                      onPressed: _loadCommittees,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                )
+              else
+                Wrap(
+                  spacing: 8.w,
+                  runSpacing: 8.h,
+                  children: _committees.map((role) {
+                    final selected = selectedRole == role;
+                    return ChoiceChip(
+                      label: Text(
+                        role,
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.w500,
+                          color: selected ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      selected: selected,
+                      onSelected: (_) => setState(() => selectedRole = role),
+                      selectedColor: const Color(0xFFFF5F15),
+                      backgroundColor: Colors.grey[100],
+                      checkmarkColor: Colors.white,
+                      side: BorderSide(
+                        color: selected
+                            ? const Color(0xFFFF5F15)
+                            : Colors.grey[300]!,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 4.w,
+                        vertical: 2.h,
+                      ),
+                    );
+                  }).toList(),
                 ),
-              ],
 
               SizedBox(height: 24.h),
 
-              // Buttons
               Row(
                 children: [
                   Expanded(
@@ -252,7 +291,10 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                       ),
                       child: Text(
                         "Cancel",
-                        style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -260,7 +302,10 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                   Expanded(
                     child: Obx(
                       () => ElevatedButton(
-                        onPressed: controller.isLoading.value ? null : _submitVolunteer,
+                        onPressed: (_loadingCommittees ||
+                                controller.isLoading.value)
+                            ? null
+                            : _submitVolunteer,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFF5F15),
                           foregroundColor: Colors.white,
@@ -279,7 +324,9 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
                                 ),
                               )
                             : Text(
-                                widget.switchFromParticipant ? "Switch role" : "Submit",
+                                widget.switchFromParticipant
+                                    ? "Switch role"
+                                    : "Submit",
                                 style: TextStyle(
                                   fontSize: 16.sp,
                                   fontWeight: FontWeight.bold,
@@ -300,50 +347,54 @@ class _VolunteerDialogState extends State<VolunteerDialog> {
   void _submitVolunteer() {
     final status = (widget.event['status'] ?? '').toString().toLowerCase();
     if (status != 'approved') {
-      SweetAlertHelper.showWarning(context, "Not Available", "You can volunteer only after admin approval.");
+      SweetAlertHelper.showWarning(
+        context,
+        "Not Available",
+        "You can volunteer only after admin approval.",
+      );
       return;
     }
 
-    if (selectedRole == null || selectedRole!.isEmpty) {
-      SweetAlertHelper.showError(context, "Required", "Please select a role");
+    if (EventFeeHelper.isDisabled(
+      widget.event is Map ? widget.event as Map : null,
+      'volunteer',
+    )) {
+      SweetAlertHelper.showWarning(
+        context,
+        'Not Available',
+        EventFeeHelper.disabledMessage,
+      );
       return;
     }
 
-    String role = selectedRole == "Other" ? roleCtrl.text.trim() : selectedRole!;
-
+    final role = selectedRole?.trim() ?? '';
     if (role.isEmpty) {
-      SweetAlertHelper.showError(context, "Required", "Please specify your role");
+      SweetAlertHelper.showError(context, "Required", "Please select a committee");
       return;
     }
 
     if (widget.switchFromParticipant) {
-      // Close first so the success alert is not dismissed by this pop.
-      // Backend updates the same registration in place via volunteers.php.
       _closeDialog();
-      controller.volunteer(
-        widget.event['id'].toString(),
-        role,
-        "",
-        organizerId: widget.event['organizer_id']?.toString(),
-        eventSnapshot: widget.event,
-        userIsStudent: widget.userIsStudent,
-      ).then((_) => widget.onSwitchSuccess?.call());
+      controller
+          .volunteer(
+            widget.event['id'].toString(),
+            role,
+            "",
+            organizerId: widget.event['organizer_id']?.toString(),
+            eventSnapshot: widget.event,
+            userIsStudent: widget.userIsStudent,
+          )
+          .then((_) => widget.onSwitchSuccess?.call());
       return;
     }
 
     controller.volunteer(
       widget.event['id'].toString(),
       role,
-      "", // Empty contact since DB doesn't store it
+      "",
       organizerId: widget.event['organizer_id']?.toString(),
       eventSnapshot: widget.event,
       userIsStudent: widget.userIsStudent,
     );
-  }
-
-  @override
-  void dispose() {
-    roleCtrl.dispose();
-    super.dispose();
   }
 }

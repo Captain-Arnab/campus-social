@@ -3,7 +3,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import '../controllers/event_controller.dart';
 import '../controllers/profile_controller.dart';
+import '../utils/event_fee_helper.dart';
 import '../utils/sweetalert_helper.dart';
+import 'event_payment_flow.dart';
 
 /// Bottom sheet: required department/class before participant registration (API `department_class`).
 Future<void> showParticipateRegistrationSheet(
@@ -15,7 +17,22 @@ Future<void> showParticipateRegistrationSheet(
   bool? userIsStudent,
   bool switchFromVolunteer = false,
   VoidCallback? onSwitchSuccess,
+  /// Called after a successful paid verify (before/alongside refresh).
+  VoidCallback? onPaidSuccess,
 }) async {
+  final eventMap = eventSnapshot is Map ? Map<String, dynamic>.from(
+    eventSnapshot.map((k, v) => MapEntry(k.toString(), v)),
+  ) : <String, dynamic>{'id': eventId, 'title': eventTitle};
+
+  if (EventFeeHelper.isDisabled(eventMap, 'participate')) {
+    SweetAlertHelper.showWarning(
+      context,
+      'Not Available',
+      EventFeeHelper.disabledMessage,
+    );
+    return;
+  }
+
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -27,10 +44,11 @@ Future<void> showParticipateRegistrationSheet(
         eventId: eventId,
         eventTitle: eventTitle,
         organizerId: organizerId,
-        eventSnapshot: eventSnapshot,
+        eventSnapshot: eventMap,
         userIsStudent: userIsStudent,
         switchFromVolunteer: switchFromVolunteer,
         onSwitchSuccess: onSwitchSuccess,
+        onPaidSuccess: onPaidSuccess,
       );
     },
   );
@@ -41,20 +59,22 @@ class _ParticipateRegistrationContent extends StatefulWidget {
   final String eventId;
   final String eventTitle;
   final String? organizerId;
-  final dynamic eventSnapshot;
+  final Map eventSnapshot;
   final bool? userIsStudent;
   final bool switchFromVolunteer;
   final VoidCallback? onSwitchSuccess;
+  final VoidCallback? onPaidSuccess;
 
   const _ParticipateRegistrationContent({
     required this.sheetContext,
     required this.eventId,
     required this.eventTitle,
+    required this.eventSnapshot,
     this.organizerId,
-    this.eventSnapshot,
     this.userIsStudent,
     this.switchFromVolunteer = false,
     this.onSwitchSuccess,
+    this.onPaidSuccess,
   });
 
   @override
@@ -84,9 +104,55 @@ class _ParticipateRegistrationContentState
     super.dispose();
   }
 
+  Future<void> _onConfirm() async {
+    final d = _deptCtrl.text.trim();
+    if (d.isEmpty) {
+      SweetAlertHelper.showWarning(
+        context,
+        'Required',
+        'Please enter your department or class.',
+      );
+      return;
+    }
+
+    final parentContext = widget.sheetContext;
+    Navigator.pop(context);
+
+    final withFee = EventFeeHelper.isWithFee(widget.eventSnapshot, 'participate');
+    if (withFee) {
+      await EventPaymentFlow.start(
+        context: parentContext,
+        event: widget.eventSnapshot,
+        role: 'participate',
+        departmentClass: d,
+        onSuccess: () {
+          widget.onPaidSuccess?.call();
+          widget.onSwitchSuccess?.call();
+        },
+      );
+      return;
+    }
+
+    final eventController = Get.find<EventController>();
+    await eventController.participate(
+      widget.eventId,
+      d,
+      organizerId: widget.organizerId,
+      eventSnapshot: widget.eventSnapshot,
+      userIsStudent: widget.userIsStudent,
+    );
+    if (widget.switchFromVolunteer) {
+      widget.onSwitchSuccess?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final eventController = Get.find<EventController>();
+    final withFee = EventFeeHelper.isWithFee(widget.eventSnapshot, 'participate');
+    final feeLabel = EventFeeHelper.formatFee(
+      EventFeeHelper.feeAmount(widget.eventSnapshot, 'participate'),
+    );
+
     return Padding(
       padding: EdgeInsets.only(
         left: 20.w,
@@ -99,7 +165,9 @@ class _ParticipateRegistrationContentState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            widget.switchFromVolunteer ? 'Switch to participant' : 'Register as participant',
+            widget.switchFromVolunteer
+                ? 'Switch to participant'
+                : 'Register as participant',
             style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
           ),
           SizedBox(height: 8.h),
@@ -109,6 +177,17 @@ class _ParticipateRegistrationContentState
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
+          if (withFee) ...[
+            SizedBox(height: 10.h),
+            Text(
+              'Fee: $feeLabel — you’ll confirm payment on the next step',
+              style: TextStyle(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFFFF5F15),
+              ),
+            ),
+          ],
           SizedBox(height: 16.h),
           TextField(
             controller: _deptCtrl,
@@ -141,27 +220,12 @@ class _ParticipateRegistrationContentState
                     backgroundColor: const Color(0xFF4CAF50),
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () {
-                    final d = _deptCtrl.text.trim();
-                    if (d.isEmpty) {
-                      SweetAlertHelper.showWarning(context, 'Required', 'Please enter your department or class.');
-                      return;
-                    }
-                    Navigator.pop(context);
-                    // Join and role-switch both hit participant.php; backend updates in place.
-                    eventController.participate(
-                      widget.eventId,
-                      d,
-                      organizerId: widget.organizerId,
-                      eventSnapshot: widget.eventSnapshot,
-                      userIsStudent: widget.userIsStudent,
-                    ).then((_) {
-                      if (widget.switchFromVolunteer) {
-                        widget.onSwitchSuccess?.call();
-                      }
-                    });
-                  },
-                  child: Text(widget.switchFromVolunteer ? 'Switch role' : 'Confirm'),
+                  onPressed: _onConfirm,
+                  child: Text(
+                    withFee
+                        ? 'Continue'
+                        : (widget.switchFromVolunteer ? 'Switch role' : 'Confirm'),
+                  ),
                 ),
               ),
             ],
