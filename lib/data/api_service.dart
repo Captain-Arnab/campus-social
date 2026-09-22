@@ -193,6 +193,24 @@ class ApiService {
     }
   }
 
+  /// GET `institutions.php?action=list`
+  /// Expected: `{ status, institutions: [{ id, name, short_code, logo_url }] }`.
+  static Future<Response> listInstitutions() async {
+    try {
+      return await _dio.get(
+        'institutions.php',
+        queryParameters: const {'action': 'list'},
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'institutions.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
   // Updated Register with all fields
   static Future<Response> register(
     String name,
@@ -205,6 +223,7 @@ class ApiService {
     String? rollNumber,
     String? empNumber, {
     String? departmentClass,
+    required int institutionId,
   }) async {
     try {
       final Map<String, dynamic> data = {
@@ -215,6 +234,7 @@ class ApiService {
         "bio": bio.trim(),
         "interests": interests.trim(),
         "is_student": isStudent ? 1 : 0,
+        "institution_id": institutionId,
       };
       if (departmentClass != null && departmentClass.trim().isNotEmpty) {
         data["department_class"] = departmentClass.trim();

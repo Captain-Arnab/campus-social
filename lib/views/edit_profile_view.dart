@@ -251,6 +251,38 @@ class _EditProfileViewState extends State<EditProfileView> {
                     inputType: TextInputType.name,
                   ),
                   SizedBox(height: 16.h),
+                  Obx(() {
+                    final inst = controller.userData.value.institutionName?.trim();
+                    if (inst == null || inst.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: 16.h),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Institution',
+                          prefixIcon: const Icon(
+                            Icons.account_balance_outlined,
+                            color: Color(0xFFFF5F15),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(radius),
+                          ),
+                          enabled: false,
+                          helperText: 'Set at registration and cannot be changed here',
+                        ),
+                        child: Text(
+                          inst,
+                          style: TextStyle(
+                            fontSize: 15.sp,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
                   _buildTextField(
                     controller: deptClassCtrl,
                     label: "Department / Class",

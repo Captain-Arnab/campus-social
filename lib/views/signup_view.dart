@@ -13,6 +13,13 @@ import '../utils/app_navigation.dart';
 import '../widgets/auth_widgets.dart';
 import 'bootstrap_views.dart';
 
+class _InstitutionOption {
+  final int id;
+  final String name;
+
+  const _InstitutionOption({required this.id, required this.name});
+}
+
 class SignupView extends StatefulWidget {
   const SignupView({super.key});
 
@@ -40,6 +47,12 @@ class _SignupViewState extends State<SignupView> {
   bool _agreeTerms = false;
   bool _isStudent = true;
   int _currentStep = 0;
+
+  List<_InstitutionOption> _institutions = [];
+  int? _selectedInstitutionId;
+  bool _loadingInstitutions = false;
+  bool _institutionsLoadFailed = false;
+  String? _institutionsLoadMessage;
 
   static const _stepLabels = [
     'Role & Identity',
@@ -91,6 +104,7 @@ class _SignupViewState extends State<SignupView> {
   String? _serverEmailError;
   String? _serverPhoneError;
   String? _serverRollEmpError;
+  String? _serverInstitutionError;
   String? _confirmPasswordError;
 
   void _onFieldChanged() {
@@ -105,19 +119,21 @@ class _SignupViewState extends State<SignupView> {
   void _clearServerFieldErrors() {
     if (_serverEmailError == null &&
         _serverPhoneError == null &&
-        _serverRollEmpError == null) {
+        _serverRollEmpError == null &&
+        _serverInstitutionError == null) {
       return;
     }
     setState(() {
       _serverEmailError = null;
       _serverPhoneError = null;
       _serverRollEmpError = null;
+      _serverInstitutionError = null;
     });
   }
 
   /// Jump to the right step and focus the input named by the register API `field`.
   /// API uses `mobile_number` / `employee_id`; request body uses `phone` / `emp_number`.
-  void _applyRegisterFieldError(String field) {
+  void _applyRegisterFieldError(String field, {String? message}) {
     final key = field.toLowerCase().replaceAll('-', '_');
     final isEmail = key == 'email' || key.contains('email');
     final isPhone =
@@ -131,11 +147,13 @@ class _SignupViewState extends State<SignupView> {
         key == 'emp_number' ||
         key == 'employee_number' ||
         key.contains('employee');
+    final isInstitution =
+        key == 'institution_id' || key == 'institution';
 
-    if (!isEmail && !isPhone && !isRoll && !isEmp) return;
+    if (!isEmail && !isPhone && !isRoll && !isEmp && !isInstitution) return;
 
     // Identity conflicts live on step 0; contact conflicts on step 1.
-    final targetStep = (isRoll || isEmp) ? 0 : 1;
+    final targetStep = (isRoll || isEmp || isInstitution) ? 0 : 1;
     if (_currentStep != targetStep) {
       _goToStep(targetStep);
     }
@@ -152,10 +170,16 @@ class _SignupViewState extends State<SignupView> {
       _serverPhoneError = isPhone ? 'Already registered' : null;
       _serverRollEmpError =
           (isRoll || isEmp) ? 'Already registered' : null;
+      _serverInstitutionError = isInstitution
+          ? (message != null && message.trim().isNotEmpty
+              ? message.trim()
+              : 'Please select a valid institution')
+          : null;
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (isInstitution) return;
       if (isEmail) {
         _emailFocusNode.requestFocus();
       } else if (isPhone) {
@@ -166,10 +190,94 @@ class _SignupViewState extends State<SignupView> {
     });
   }
 
+  Future<void> _loadInstitutions() async {
+    if (!mounted) return;
+    setState(() {
+      _loadingInstitutions = true;
+      _institutionsLoadFailed = false;
+      _institutionsLoadMessage = null;
+    });
+
+    try {
+      final response = await ApiService.listInstitutions();
+      final data = ApiService.parseResponseBody(response.data);
+      if (data == null || data['status']?.toString() != 'success') {
+        final msg = data?['message']?.toString().trim();
+        if (!mounted) return;
+        setState(() {
+          _institutions = [];
+          _selectedInstitutionId = null;
+          _loadingInstitutions = false;
+          _institutionsLoadFailed = true;
+          _institutionsLoadMessage = (msg != null && msg.isNotEmpty)
+              ? msg
+              : 'Could not load institutions';
+        });
+        return;
+      }
+
+      final raw = data['institutions'];
+      final parsed = <_InstitutionOption>[];
+      if (raw is List) {
+        for (final item in raw) {
+          if (item is! Map) continue;
+          final id = int.tryParse(item['id']?.toString() ?? '');
+          final name = item['name']?.toString().trim() ?? '';
+          if (id == null || name.isEmpty) continue;
+          parsed.add(_InstitutionOption(id: id, name: name));
+        }
+      }
+
+      if (!mounted) return;
+      if (parsed.isEmpty) {
+        setState(() {
+          _institutions = [];
+          _selectedInstitutionId = null;
+          _loadingInstitutions = false;
+          _institutionsLoadFailed = true;
+          _institutionsLoadMessage = 'No institutions available';
+        });
+        return;
+      }
+
+      // Drop prior selection if it is no longer in the list.
+      final stillValid = _selectedInstitutionId != null &&
+          parsed.any((i) => i.id == _selectedInstitutionId);
+      setState(() {
+        _institutions = parsed;
+        if (!stillValid) _selectedInstitutionId = null;
+        _loadingInstitutions = false;
+        _institutionsLoadFailed = false;
+        _institutionsLoadMessage = null;
+      });
+    } catch (e) {
+      debugPrint('Institutions list failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _institutions = [];
+        _selectedInstitutionId = null;
+        _loadingInstitutions = false;
+        _institutionsLoadFailed = true;
+        _institutionsLoadMessage = 'Could not load institutions';
+      });
+    }
+  }
+
+  void _showInstitutionsLoadError({required VoidCallback onRetry}) {
+    SweetAlertHelper.showErrorWithRetry(
+      context,
+      'Required',
+      _institutionsLoadMessage ??
+          'Could not load institutions. Please try again.',
+      onRetry: onRetry,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _filteredInterests = List.from(_interestOptions);
+    _loadInstitutions();
 
     for (final c in [
       departmentClassCtrl,
@@ -206,7 +314,10 @@ class _SignupViewState extends State<SignupView> {
 
     _registerFieldWorker = ever<String?>(controller.registerErrorField, (field) {
       if (field == null || field.isEmpty) return;
-      _applyRegisterFieldError(field);
+      _applyRegisterFieldError(
+        field,
+        message: controller.registerErrorMessage.value,
+      );
     });
 
     interestSearchCtrl.addListener(() {
@@ -347,8 +458,19 @@ class _SignupViewState extends State<SignupView> {
 
   Future<void> _submit() async {
     if (!_validateStep4()) return;
+    final institutionId = _selectedInstitutionId;
+    if (institutionId == null) {
+      SweetAlertHelper.showError(
+        context,
+        'Required',
+        'Please select your institution',
+      );
+      _goToStep(0);
+      return;
+    }
     _clearServerFieldErrors();
     controller.registerErrorField.value = null;
+    controller.registerErrorMessage.value = null;
 
     debugPrint('=== Registration Data ===');
     debugPrint('Name: ${nameCtrl.text.trim()}');
@@ -361,6 +483,7 @@ class _SignupViewState extends State<SignupView> {
       'Interests: ${_selectedInterests.isEmpty ? 'General' : _selectedInterests.join(', ')}',
     );
     debugPrint('Is Student: $_isStudent');
+    debugPrint('Institution ID: $institutionId');
     debugPrint(
       'Roll/Emp: ${_isStudent ? rollNumberCtrl.text.trim() : empNumberCtrl.text.trim()}',
     );
@@ -376,6 +499,7 @@ class _SignupViewState extends State<SignupView> {
       _isStudent ? rollNumberCtrl.text.trim() : null,
       _isStudent ? null : empNumberCtrl.text.trim(),
       departmentClass: departmentClassCtrl.text.trim(),
+      institutionId: institutionId,
     );
   }
 
@@ -721,7 +845,11 @@ class _SignupViewState extends State<SignupView> {
         final idOk = _isStudent
             ? rollNumberCtrl.text.trim().isNotEmpty
             : empNumberCtrl.text.trim().isNotEmpty;
-        return idOk && departmentClassCtrl.text.trim().isNotEmpty;
+        final deptOk = departmentClassCtrl.text.trim().isNotEmpty;
+        if (_loadingInstitutions) return false;
+        // Keep Next enabled on load failure so validation can show SweetAlert + Retry.
+        if (_institutionsLoadFailed || _institutions.isEmpty) return true;
+        return idOk && deptOk && _selectedInstitutionId != null;
       case 1:
         return nameCtrl.text.trim().isNotEmpty &&
             emailCtrl.text.trim().isNotEmpty &&
@@ -845,6 +973,56 @@ class _SignupViewState extends State<SignupView> {
         ],
       ),
       SizedBox(height: 18.h),
+      if (_loadingInstitutions)
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 12.h),
+          child: const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: AppColors.accent,
+              ),
+            ),
+          ),
+        )
+      else
+        AuthDropdown<int>(
+          value: _selectedInstitutionId,
+          label: 'Institution',
+          hint: 'Select institution',
+          searchHint: 'Search institutions…',
+          prefixIcon: Icons.account_balance_outlined,
+          errorText: _serverInstitutionError,
+          items: _institutions
+              .map((inst) => (value: inst.id, label: inst.name))
+              .toList(),
+          onChanged: _institutions.isEmpty
+              ? null
+              : (val) {
+                  setState(() {
+                    _selectedInstitutionId = val;
+                    _serverInstitutionError = null;
+                  });
+                },
+        ),
+      if (_institutionsLoadFailed) ...[
+        SizedBox(height: 8.h),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _loadingInstitutions ? null : _loadInstitutions,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Retry loading institutions'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.accent,
+              padding: EdgeInsets.symmetric(horizontal: 4.w),
+            ),
+          ),
+        ),
+      ],
+      SizedBox(height: 16.h),
       AuthTextField(
         controller: _isStudent ? rollNumberCtrl : empNumberCtrl,
         focusNode: _rollEmpFocusNode,
@@ -1192,6 +1370,26 @@ class _SignupViewState extends State<SignupView> {
   }
 
   bool _validateStep1() {
+    if (_loadingInstitutions) {
+      SweetAlertHelper.showError(
+        context,
+        'Please wait',
+        'Loading institutions…',
+      );
+      return false;
+    }
+    if (_institutionsLoadFailed || _institutions.isEmpty) {
+      _showInstitutionsLoadError(onRetry: _loadInstitutions);
+      return false;
+    }
+    if (_selectedInstitutionId == null) {
+      SweetAlertHelper.showError(
+        context,
+        'Required',
+        'Please select your institution',
+      );
+      return false;
+    }
     if (_isStudent && rollNumberCtrl.text.trim().isEmpty) {
       SweetAlertHelper.showError(
         context,

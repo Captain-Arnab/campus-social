@@ -56,6 +56,7 @@ class _PendingRegister {
   final String? rollNumber;
   final String? empNumber;
   final String? departmentClass;
+  final int institutionId;
 
   const _PendingRegister({
     required this.name,
@@ -65,6 +66,7 @@ class _PendingRegister {
     required this.bio,
     required this.interests,
     required this.isStudent,
+    required this.institutionId,
     this.rollNumber,
     this.empNumber,
     this.departmentClass,
@@ -87,8 +89,11 @@ class AuthController extends GetxController {
   bool _otpWasSent = false;
 
   /// API `field` from the last failed register call
-  /// (`email`, `mobile_number`, `roll_number`, `employee_id`).
+  /// (`email`, `mobile_number`, `roll_number`, `employee_id`, `institution_id`).
   final registerErrorField = RxnString();
+
+  /// Server `message` paired with [registerErrorField] (for inline field errors).
+  final registerErrorMessage = RxnString();
 
   /// Bumped on logout so a pending post-login "Welcome back" alert cannot fire late.
   int _authSessionEpoch = 0;
@@ -233,6 +238,7 @@ class AuthController extends GetxController {
     String? rollNumber,
     String? empNumber, {
     String? departmentClass,
+    required int institutionId,
   }) async {
     _pendingRegister = _PendingRegister(
       name: name,
@@ -245,6 +251,7 @@ class AuthController extends GetxController {
       rollNumber: rollNumber,
       empNumber: empNumber,
       departmentClass: departmentClass,
+      institutionId: institutionId,
     );
     isLoading.value = true;
     try {
@@ -260,6 +267,7 @@ class AuthController extends GetxController {
         rollNumber,
         empNumber,
         departmentClass: departmentClass,
+        institutionId: institutionId,
       );
       
       final data = response.data;
@@ -275,6 +283,7 @@ class AuthController extends GetxController {
       
       if (data['status'] == 'success') {
         registerErrorField.value = null;
+        registerErrorMessage.value = null;
         // Clear loading before any dialogs/navigation so the shared AuthController
         // is not left with isLoading=true under a stacked login route.
         isLoading.value = false;
@@ -304,6 +313,9 @@ class AuthController extends GetxController {
                 ? data['message'].toString().trim()
                 : "Registration failed";
         final field = data['field']?.toString().trim();
+        // Set message before field so the signup `ever` worker reads it in time.
+        registerErrorMessage.value =
+            (field != null && field.isNotEmpty) ? errorMsg : null;
         registerErrorField.value =
             (field != null && field.isNotEmpty) ? field : null;
         final lower = errorMsg.toLowerCase();
@@ -339,6 +351,7 @@ class AuthController extends GetxController {
       pending.rollNumber,
       pending.empNumber,
       departmentClass: pending.departmentClass,
+      institutionId: pending.institutionId,
     ));
   }
 

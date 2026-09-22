@@ -2358,6 +2358,43 @@ class _ProfileTab extends StatelessWidget {
                             ],
                           ),
                         ),
+                        if (user.institutionName != null &&
+                            user.institutionName!.trim().isNotEmpty) ...[
+                          SizedBox(height: 10.h),
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12.w,
+                              vertical: 6.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.account_balance_outlined,
+                                  size: 14,
+                                  color: Color(0xFF1D4ED8),
+                                ),
+                                SizedBox(width: 6.w),
+                                Flexible(
+                                  child: Text(
+                                    user.institutionName!.trim(),
+                                    style: TextStyle(
+                                      color: const Color(0xFF1E3A8A),
+                                      fontSize: 12.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         if (user.departmentClass != null && user.departmentClass!.trim().isNotEmpty) ...[
                           SizedBox(height: 10.h),
                           Container(

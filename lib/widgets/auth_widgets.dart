@@ -347,6 +347,388 @@ class _AuthTextFieldState extends State<AuthTextField> {
   }
 }
 
+/// Auth-styled searchable dropdown that matches [AuthTextField] chrome.
+/// Expands inline below the field (not a bottom sheet) with a live search filter.
+class AuthDropdown<T> extends StatefulWidget {
+  final T? value;
+  final String label;
+  final String? hint;
+  final IconData prefixIcon;
+  final String? errorText;
+  final List<({T value, String label})> items;
+  final ValueChanged<T?>? onChanged;
+  final String? searchHint;
+
+  const AuthDropdown({
+    super.key,
+    required this.value,
+    required this.label,
+    required this.prefixIcon,
+    required this.items,
+    this.hint,
+    this.errorText,
+    this.onChanged,
+    this.searchHint,
+  });
+
+  @override
+  State<AuthDropdown<T>> createState() => _AuthDropdownState<T>();
+}
+
+class _AuthDropdownState<T> extends State<AuthDropdown<T>>
+    with SingleTickerProviderStateMixin {
+  bool _open = false;
+  final TextEditingController _searchCtrl = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+  late final AnimationController _anim;
+  late final Animation<double> _expand;
+  late final Animation<double> _chevron;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _expand = CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic);
+    _chevron = Tween<double>(begin: 0, end: 0.5).animate(
+      CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic),
+    );
+    _searchCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  String? get _selectedLabel {
+    if (widget.value == null) return null;
+    for (final item in widget.items) {
+      if (item.value == widget.value) return item.label;
+    }
+    return null;
+  }
+
+  List<({T value, String label})> get _filtered {
+    final q = _searchCtrl.text.trim().toLowerCase();
+    if (q.isEmpty) return widget.items;
+    return widget.items
+        .where((i) => i.label.toLowerCase().contains(q))
+        .toList();
+  }
+
+  void _toggle() {
+    if (widget.onChanged == null || widget.items.isEmpty) return;
+    if (_open) {
+      _close();
+    } else {
+      setState(() => _open = true);
+      _anim.forward();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _searchFocus.requestFocus();
+      });
+    }
+  }
+
+  void _close() {
+    _searchFocus.unfocus();
+    _searchCtrl.clear();
+    _anim.reverse().whenComplete(() {
+      if (mounted) setState(() => _open = false);
+    });
+  }
+
+  void _select(({T value, String label}) item) {
+    widget.onChanged?.call(item.value);
+    _close();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasError =
+        widget.errorText != null && widget.errorText!.trim().isNotEmpty;
+    final enabled = widget.onChanged != null && widget.items.isNotEmpty;
+    final focused = _open;
+    final borderColor = hasError
+        ? Colors.red.shade400
+        : (focused ? AppColors.accent : AppColors.border);
+    final borderWidth = (hasError || focused) ? 2.0 : 1.0;
+    final displayText = _selectedLabel;
+    final showHint = displayText == null || displayText.isEmpty;
+    final filtered = _filtered;
+
+    return TapRegion(
+      onTapOutside: (_) {
+        if (_open) _close();
+      },
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.button),
+            boxShadow: focused && !hasError
+                ? [
+                    BoxShadow(
+                      color: AppColors.accent.withValues(alpha: 0.22),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: enabled ? _toggle : null,
+              borderRadius: BorderRadius.circular(AppRadius.button),
+              child: InputDecorator(
+                isEmpty: showHint,
+                decoration: InputDecoration(
+                  labelText: widget.label,
+                  hintText: widget.hint ?? 'Select',
+                  errorText: hasError ? widget.errorText : null,
+                  prefixIcon: Icon(
+                    widget.prefixIcon,
+                    color: hasError ? Colors.red.shade400 : AppColors.accent,
+                  ),
+                  suffixIcon: RotationTransition(
+                    turns: _chevron,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: hasError
+                          ? Colors.red.shade400
+                          : (enabled
+                              ? AppColors.accent
+                              : AppColors.textSecondary),
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: AppColors.surface,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    borderSide: BorderSide(color: borderColor),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    borderSide:
+                        BorderSide(color: borderColor, width: borderWidth),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    borderSide: BorderSide(color: borderColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    borderSide:
+                        BorderSide(color: Colors.red.shade400, width: 2),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    borderSide:
+                        BorderSide(color: Colors.red.shade400, width: 2),
+                  ),
+                  disabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    borderSide: const BorderSide(color: AppColors.border),
+                  ),
+                ),
+                child: Text(
+                  showHint ? '' : displayText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15.sp,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        SizeTransition(
+          sizeFactor: _expand,
+          axisAlignment: -1,
+          child: FadeTransition(
+            opacity: _expand,
+            child: Padding(
+              padding: EdgeInsets.only(top: 8.h),
+              child: Material(
+                color: AppColors.surface,
+                elevation: 6,
+                shadowColor: AppColors.navy.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(AppRadius.button),
+                clipBehavior: Clip.antiAlias,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    border: Border.all(
+                      color: AppColors.accent.withValues(alpha: 0.35),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 8.h),
+                        child: TextField(
+                          controller: _searchCtrl,
+                          focusNode: _searchFocus,
+                          textInputAction: TextInputAction.search,
+                          decoration: InputDecoration(
+                            hintText:
+                                widget.searchHint ?? 'Search institutions…',
+                            isDense: true,
+                            prefixIcon: Icon(
+                              Icons.search_rounded,
+                              size: 20.w,
+                              color: AppColors.accent,
+                            ),
+                            suffixIcon: _searchCtrl.text.isNotEmpty
+                                ? IconButton(
+                                    icon: Icon(
+                                      Icons.close_rounded,
+                                      size: 18.w,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    onPressed: () {
+                                      _searchCtrl.clear();
+                                      _searchFocus.requestFocus();
+                                    },
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: AppColors.surfaceMuted,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12.w,
+                              vertical: 10.h,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.sm),
+                              borderSide: const BorderSide(
+                                color: AppColors.border,
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.sm),
+                              borderSide: const BorderSide(
+                                color: AppColors.border,
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.sm),
+                              borderSide: const BorderSide(
+                                color: AppColors.accent,
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxHeight: 200.h),
+                        child: filtered.isEmpty
+                            ? Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  16.w,
+                                  8.h,
+                                  16.w,
+                                  16.h,
+                                ),
+                                child: Text(
+                                  'No institutions match your search',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13.sp,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              )
+                            : ListView.separated(
+                                shrinkWrap: true,
+                                padding: EdgeInsets.only(bottom: 8.h),
+                                itemCount: filtered.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  indent: 16.w,
+                                  endIndent: 16.w,
+                                  color: Colors.grey[200],
+                                ),
+                                itemBuilder: (context, index) {
+                                  final item = filtered[index];
+                                  final isSelected =
+                                      item.value == widget.value;
+                                  return InkWell(
+                                    onTap: () => _select(item),
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 14.w,
+                                        vertical: 12.h,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            widget.prefixIcon,
+                                            size: 20.w,
+                                            color: isSelected
+                                                ? AppColors.accent
+                                                : AppColors.textSecondary,
+                                          ),
+                                          SizedBox(width: 12.w),
+                                          Expanded(
+                                            child: Text(
+                                              item.label,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 14.sp,
+                                                fontWeight: isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w400,
+                                                color: AppColors.navy,
+                                              ),
+                                            ),
+                                          ),
+                                          if (isSelected)
+                                            Icon(
+                                              Icons.check_circle_rounded,
+                                              size: 18.w,
+                                              color: AppColors.accent,
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+      ),
+    );
+  }
+}
+
 class AuthPrimaryButton extends StatefulWidget {
   final String label;
   final VoidCallback? onPressed;
