@@ -34,7 +34,7 @@ class ModelUser {
   String? bio;
   String? interests;
   String? departmentClass;
-  String? institutionId;
+  int? institutionId;
   String? institutionName;
   bool? isAdmin;
   /// From API `is_student` (1 = student).
@@ -79,14 +79,10 @@ class ModelUser {
     bio = json['bio'];
     interests = json['interests'];
     departmentClass = json['department_class']?.toString();
-    final idRaw = json['institution_id']?.toString().trim();
-    institutionId = (idRaw != null && idRaw.isNotEmpty) ? idRaw : null;
+    institutionId = _parseInt(json['institution_id']);
     final nestedInst = json['institution'];
     if (institutionId == null && nestedInst is Map) {
-      final nestedId = nestedInst['id']?.toString().trim();
-      if (nestedId != null && nestedId.isNotEmpty) {
-        institutionId = nestedId;
-      }
+      institutionId = _parseInt(nestedInst['id']);
     }
     institutionName = _parseInstitutionName(json);
     isAdmin = json['is_admin'] == 1 || json['is_admin'] == true;
@@ -116,6 +112,13 @@ class ModelUser {
           .where((l) => l.url.isNotEmpty)
           .toList();
     }
+  }
+
+  /// Accepts an int, or a numeric string (older PHP/mysqli responses stringify ints).
+  static int? _parseInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString().trim() ?? '');
   }
 
   static String? _parseInstitutionName(Map<String, dynamic> json) {

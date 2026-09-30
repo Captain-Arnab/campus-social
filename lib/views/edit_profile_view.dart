@@ -252,10 +252,8 @@ class _EditProfileViewState extends State<EditProfileView> {
                   ),
                   SizedBox(height: 16.h),
                   Obx(() {
-                    final inst = controller.userData.value.institutionName?.trim();
-                    if (inst == null || inst.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
+                    final raw = controller.userData.value.institutionName?.trim();
+                    final hasInst = raw != null && raw.isNotEmpty;
                     return Padding(
                       padding: EdgeInsets.only(bottom: 16.h),
                       child: InputDecorator(
@@ -274,10 +272,11 @@ class _EditProfileViewState extends State<EditProfileView> {
                           helperText: 'Set at registration and cannot be changed here',
                         ),
                         child: Text(
-                          inst,
+                          hasInst ? raw : 'Not set',
                           style: TextStyle(
                             fontSize: 15.sp,
-                            color: Colors.black87,
+                            color: hasInst ? Colors.black87 : Colors.grey,
+                            fontStyle: hasInst ? FontStyle.normal : FontStyle.italic,
                           ),
                         ),
                       ),

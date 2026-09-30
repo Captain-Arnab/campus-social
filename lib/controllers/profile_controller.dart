@@ -82,7 +82,9 @@ class ProfileController extends GetxController {
     _refreshDisplayName();
   }
 
-  Future<void> loadProfile() async {
+  /// [silent] refreshes data without swapping the profile tab for the full-screen
+  /// loader (used after small edits like adding/removing links while a dialog is open).
+  Future<void> loadProfile({bool silent = false}) async {
     String? userId = await PrefService.getUserId();
     if (userId == null) {
       debugPrint("✗ User ID not found in preferences");
@@ -92,9 +94,10 @@ class ProfileController extends GetxController {
     final seq = ++_loadSeq;
     final expectedUserId = userId;
 
-    await seedFromSession(userId: userId);
-    
-    isLoading.value = true;
+    if (!silent) {
+      await seedFromSession(userId: userId);
+      isLoading.value = true;
+    }
     try {
       debugPrint("📱 Loading profile for user: $userId");
       final response = await ApiService.getUserProfile(userId);
@@ -139,7 +142,7 @@ class ProfileController extends GetxController {
     } catch (e) {
       debugPrint("✗ Profile fetch error: $e");
     } finally {
-      isLoading.value = false;
+      if (!silent) isLoading.value = false;
     }
   }
 
@@ -203,7 +206,7 @@ class ProfileController extends GetxController {
       );
       final data = response.data;
       if (data is Map && data['status'] == 'success') {
-        await loadProfile();
+        await loadProfile(silent: true);
         return null;
       }
       if (data is Map) {
@@ -226,7 +229,7 @@ class ProfileController extends GetxController {
       final response = await ApiService.deleteUserLink(userId: userId, linkId: linkId);
       final data = response.data;
       if (data is Map && data['status'] == 'success') {
-        await loadProfile();
+        await loadProfile(silent: true);
         return null;
       }
       if (data is Map) {
