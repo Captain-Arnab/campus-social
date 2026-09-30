@@ -7,6 +7,7 @@ class PrefService {
   static const String _isLoggedInKey = "is_logged_in";
   static const String _isStudentKey = "is_student";
   static const String _onboardingDoneKey = "onboarding_completed";
+  static const String _foodPickupPointKey = "food_pickup_point";
 
   static Future<void> saveUserSession(
     String userId,
@@ -71,5 +72,16 @@ class PrefService {
   static Future<void> setOnboardingCompleted() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_onboardingDoneKey, true);
+  }
+
+  /// Food ordering pickup preference (`main_gate` | `hostel_gate`).
+  static Future<String?> getFoodPickupPoint() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_foodPickupPointKey);
+  }
+
+  static Future<void> setFoodPickupPoint(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_foodPickupPointKey, value);
   }
 }

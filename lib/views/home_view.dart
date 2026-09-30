@@ -44,6 +44,8 @@ import '../widgets/app_calendar_theme.dart';
 import '../widgets/campus_app_bar.dart';
 import '../widgets/participate_registration_sheet.dart';
 import '../utils/event_participation_rules.dart';
+import '../modules/food_ordering/screens/food_home_screen.dart';
+import '../modules/food_ordering/widgets/coming_soon_overlay.dart';
 
 /// Decode network posters at a capped pixel width for smoother lists/carousel (same on-screen layout).
 int _eventPosterCacheWidth(BuildContext context, double widthFraction) {
@@ -82,6 +84,10 @@ void _openEditProfile() {
     prepare: AppBootstrap.prepareEditProfile,
     loadingMessage: 'Loading profile...',
   );
+}
+
+void _openNotifications() {
+  Get.to(() => const NotificationsView(), transition: Transition.rightToLeft);
 }
 
 /// Readable date/venue on cards when poster or API uses placeholder text.
@@ -126,7 +132,7 @@ class HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<HomeView> {
-  /// Visual bottom-nav index: 0 Explore, 1 My Events, 3 Notifications, 4 Profile (2 = Host action).
+  /// Visual bottom-nav index: 0 Explore, 1 My Events, 3 Food (coming soon), 4 Profile (2 = Host action).
   late int _navIndex;
   late List<Widget> _tabs;
 
@@ -159,7 +165,7 @@ class _HomeViewState extends State<HomeView> {
       _tabs = [
         const _ExploreTab(),
         _MyEventsTab(key: ValueKey('my_events_$idx'), initialIndex: idx),
-        const NotificationsView(asTab: true),
+        const FoodComingSoonOverlay(child: FoodHomeScreen()),
         const _ProfileTab(),
       ];
     });
@@ -176,7 +182,7 @@ class _HomeViewState extends State<HomeView> {
     _tabs = [
       const _ExploreTab(),
       _MyEventsTab(key: ValueKey('my_events_$myIdx'), initialIndex: myIdx),
-      const NotificationsView(asTab: true),
+      const FoodComingSoonOverlay(child: FoodHomeScreen()),
       const _ProfileTab(),
     ];
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -678,6 +684,20 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                   ),
                 ),
               ),
+              Obx(() {
+                final unread = Get.isRegistered<InboxNotificationController>()
+                    ? Get.find<InboxNotificationController>().unreadCount.value
+                    : 0;
+                return IconButton(
+                  tooltip: 'Notifications',
+                  onPressed: _openNotifications,
+                  icon: Badge(
+                    isLabelVisible: unread > 0,
+                    label: Text(unread > 99 ? '99+' : '$unread'),
+                    child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 26),
+                  ),
+                );
+              }),
               IconButton(
                 tooltip: 'Search',
                 icon: const Icon(Icons.search_rounded, color: Colors.white, size: 26),
@@ -2695,6 +2715,57 @@ class _ProfileTab extends StatelessWidget {
                     ),
                   ),
                   
+                  SizedBox(height: 20.h),
+
+                  // Food ordering pickup preference (coming soon)
+                  Container(
+                    margin: EdgeInsets.symmetric(horizontal: 20.w),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 20,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ListTile(
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
+                      leading: Opacity(
+                        opacity: 0.4,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.place_outlined, color: Color(0xFFFF5F15), size: 20),
+                        ),
+                      ),
+                      title: Opacity(
+                        opacity: 0.4,
+                        child: Text(
+                          'Pickup Preference',
+                          style: TextStyle(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                      subtitle: Opacity(
+                        opacity: 0.4,
+                        child: Text(
+                          'Main Gate or Hostel Gate for food orders',
+                          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                        ),
+                      ),
+                      trailing: const ComingSoonBadge(large: true),
+                    ),
+                  ),
+
                   SizedBox(height: 20.h),
                   
                   // Interests Section
