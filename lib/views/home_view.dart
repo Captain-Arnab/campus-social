@@ -2206,85 +2206,333 @@ Future<void> _openUserProfileLink(BuildContext context, String url) async {
 }
 
 Future<void> _showAddProfileLinkDialog(BuildContext context, ProfileController controller) async {
-  final urlCtrl = TextEditingController();
-  final labelCtrl = TextEditingController();
-  var saving = false;
-
-  await showDialog<void>(
+  FocusManager.instance.primaryFocus?.unfocus();
+  final added = await showModalBottomSheet<bool>(
     context: context,
-    builder: (ctx) {
-      return StatefulBuilder(
-        builder: (dialogContext, setLocal) {
-          return AlertDialog(
-            title: const Text('Add link'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: urlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'URL (required)',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                ),
-                SizedBox(height: 12.h),
-                TextField(
-                  controller: labelCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Label (optional)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: saving
-                    ? null
-                    : () async {
-                        if (urlCtrl.text.trim().isEmpty) {
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
-                            const SnackBar(content: Text('URL is required')),
-                          );
-                          return;
-                        }
-                        setLocal(() => saving = true);
-                        final err = await controller.addProfileLink(
-                          url: urlCtrl.text,
-                          label: labelCtrl.text,
-                        );
-                        if (!dialogContext.mounted) return;
-                        setLocal(() => saving = false);
-                        if (err != null) {
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
-                            SnackBar(content: Text(err)),
-                          );
-                          return;
-                        }
-                        Navigator.pop(ctx);
-                      },
-                child: saving
-                    ? SizedBox(
-                        width: 18.w,
-                        height: 18.w,
-                        child: const CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Save'),
-              ),
-            ],
-          );
-        },
-      );
-    },
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _AddProfileLinkSheet(controller: controller),
   );
-  urlCtrl.dispose();
-  labelCtrl.dispose();
+  if (added == true && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Link added')),
+    );
+  }
+}
+
+class _AddProfileLinkSheet extends StatefulWidget {
+  final ProfileController controller;
+
+  const _AddProfileLinkSheet({required this.controller});
+
+  @override
+  State<_AddProfileLinkSheet> createState() => _AddProfileLinkSheetState();
+}
+
+class _AddProfileLinkSheetState extends State<_AddProfileLinkSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _urlCtrl = TextEditingController();
+  final _labelCtrl = TextEditingController();
+  bool _saving = false;
+  String? _serverError;
+
+  @override
+  void initState() {
+    super.initState();
+    _urlCtrl.addListener(_onChanged);
+    _labelCtrl.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    _labelCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (!mounted) return;
+    setState(() => _serverError = null);
+  }
+
+  String? _validateUrl(String? value) {
+    final v = value?.trim() ?? '';
+    if (v.isEmpty) return 'Please enter a URL';
+    if (v.contains(' ')) return 'URL cannot contain spaces';
+    final uri = Uri.tryParse(_profileLinkLaunchUrl(v));
+    if (uri == null || !uri.host.contains('.') || uri.host.startsWith('.') || uri.host.endsWith('.')) {
+      return 'Enter a valid link, e.g. github.com/username';
+    }
+    return null;
+  }
+
+  Future<void> _submit() async {
+    if (_saving) return;
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _saving = true;
+      _serverError = null;
+    });
+    final err = await widget.controller.addProfileLink(
+      url: _urlCtrl.text,
+      label: _labelCtrl.text,
+    );
+    if (!mounted) return;
+    if (err != null) {
+      setState(() {
+        _saving = false;
+        _serverError = err;
+      });
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  InputDecoration _fieldDecoration({
+    required String label,
+    required String hint,
+    required IconData icon,
+  }) {
+    OutlineInputBorder border(Color color, [double width = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: color, width: width),
+        );
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14.sp),
+      prefixIcon: Icon(icon, color: AppColors.accent, size: 20),
+      filled: true,
+      fillColor: AppColors.cream,
+      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+      border: border(AppColors.border),
+      enabledBorder: border(AppColors.border),
+      focusedBorder: border(AppColors.accent, 1.6),
+      errorBorder: border(AppColors.error),
+      focusedErrorBorder: border(AppColors.error, 1.6),
+      floatingLabelStyle: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final previewUrl = _urlCtrl.text.trim();
+    final preview = ModelUserLink(url: previewUrl, label: _labelCtrl.text.trim());
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(24.w, 12.h, 24.w, 20.h),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40.w,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 20.h),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [AppColors.accent, AppColors.accentLight],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.add_link, color: Colors.white, size: 22),
+                      ),
+                      SizedBox(width: 14.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Add a link',
+                              style: TextStyle(
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: 2.h),
+                            Text(
+                              'Portfolio, GitHub, LinkedIn or any website',
+                              style: TextStyle(fontSize: 12.5.sp, color: AppColors.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 24.h),
+                  TextFormField(
+                    controller: _urlCtrl,
+                    enabled: !_saving,
+                    autofocus: true,
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.next,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    validator: _validateUrl,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    decoration: _fieldDecoration(
+                      label: 'Link URL',
+                      hint: 'e.g. github.com/username',
+                      icon: Icons.language,
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  TextFormField(
+                    controller: _labelCtrl,
+                    enabled: !_saving,
+                    maxLength: 40,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _submit(),
+                    decoration: _fieldDecoration(
+                      label: 'Label (optional)',
+                      hint: 'e.g. My Portfolio',
+                      icon: Icons.label_outline,
+                    ),
+                  ),
+                  if (previewUrl.isNotEmpty && _validateUrl(previewUrl) == null) ...[
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Preview',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.link, size: 16, color: AppColors.accent),
+                            SizedBox(width: 6.w),
+                            ConstrainedBox(
+                              constraints: BoxConstraints(maxWidth: 220.w),
+                              child: Text(
+                                preview.displayLabel,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.accent,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (_serverError != null) ...[
+                    SizedBox(height: 14.h),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Text(
+                              _serverError!,
+                              style: TextStyle(color: AppColors.error, fontSize: 13.sp),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: 22.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.textSecondary,
+                            side: const BorderSide(color: AppColors.border),
+                            padding: EdgeInsets.symmetric(vertical: 14.h),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: _saving ? null : _submit,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.accent,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.6),
+                            disabledForegroundColor: Colors.white,
+                            elevation: 0,
+                            padding: EdgeInsets.symmetric(vertical: 14.h),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          icon: _saving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.check_rounded, size: 20),
+                          label: Text(
+                            _saving ? 'Saving...' : 'Save link',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 Future<void> _confirmDeleteProfileLink(
