@@ -501,6 +501,27 @@ class ApiService {
     }
   }
 
+  /// Admin-curated featured events for the Explore carousel (may be empty).
+  static Future<Response> getFeaturedEvents() async {
+    try {
+      final response = await _dio.get(
+        "events.php",
+        queryParameters: const {"action": "list", "featured": 1},
+        options: Options(receiveTimeout: const Duration(seconds: 20), sendTimeout: const Duration(seconds: 15)),
+      );
+      _rememberServerTime(response);
+      return response;
+    } on DioException catch (e) {
+      final fallback = e.response;
+      if (fallback != null) _rememberServerTime(fallback);
+      return fallback ?? Response(
+        requestOptions: RequestOptions(path: 'events.php'),
+        statusCode: 0,
+        data: _networkErrorBody(e),
+      );
+    }
+  }
+
   /// GET single event by id (includes editor_ids, pending_edit, winners,
   /// volunteer_list, participant_list, and `my_registration` when [user_id] is sent).
   /// Always passes logged-in `user_id` so backend can populate my_registration.
@@ -856,6 +877,49 @@ class ApiService {
       return e.response ??
           Response(
             requestOptions: RequestOptions(path: 'volunteers.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  // --- Shared interest catalog ---
+
+  /// GET interests.php?action=list → `{status, data: [{name}] | [String]}`.
+  static Future<Response> getInterestCatalog() async {
+    try {
+      return await _dio.get(
+        'interests.php',
+        queryParameters: const {'action': 'list'},
+        options: Options(receiveTimeout: const Duration(seconds: 12)),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'interests.php'),
+            statusCode: 0,
+            data: _networkErrorBody(e),
+          );
+    }
+  }
+
+  /// POST interests.php?action=add `{name, user_id?}`; server dedupes case-insensitively.
+  static Future<Response> addInterestToCatalog(String name) async {
+    try {
+      final userId = await PrefService.getUserId();
+      return await _dio.post(
+        'interests.php',
+        queryParameters: const {'action': 'add'},
+        data: {
+          'name': name.trim(),
+          if (userId != null && userId.isNotEmpty) 'user_id': int.tryParse(userId) ?? userId,
+        },
+        options: await _getAuthOptions(),
+      );
+    } on DioException catch (e) {
+      return e.response ??
+          Response(
+            requestOptions: RequestOptions(path: 'interests.php'),
             statusCode: 0,
             data: _networkErrorBody(e),
           );

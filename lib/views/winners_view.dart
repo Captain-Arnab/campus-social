@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:intl/intl.dart';
 import '../data/app_bootstrap.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_navigation.dart';
@@ -12,7 +13,7 @@ import '../widgets/app_loading_screen.dart';
 import '../widgets/event_poster_image.dart';
 import 'event_detail_view.dart';
 
-/// Full-screen list of winners by event (past + closed events).
+/// Full-screen list of winners by event (closed + ended approved events).
 class WinnersView extends StatefulWidget {
   const WinnersView({super.key});
 
@@ -21,8 +22,9 @@ class WinnersView extends StatefulWidget {
 }
 
 class _WinnersViewState extends State<WinnersView> {
-  List<dynamic> _events = [];
-  final Map<int, List<dynamic>> _winnersByEvent = {};
+  static const int _limit = 200;
+
+  List<WinnerEventGroup> _groups = [];
   bool _loading = true;
   String? _error;
 
@@ -31,16 +33,12 @@ class _WinnersViewState extends State<WinnersView> {
     setState(() {
       _loading = true;
       _error = null;
-      _winnersByEvent.clear();
     });
     try {
-      final result = await WinnerFeedHelper.loadEventsWithWinners();
+      final rows = await WinnerFeedHelper.loadWinners(limit: _limit);
       if (!mounted) return;
       setState(() {
-        _events = result.events;
-        _winnersByEvent
-          ..clear()
-          ..addAll(result.winnersByEvent);
+        _groups = WinnerFeedHelper.groupByEvent(rows);
         _loading = false;
       });
     } catch (e) {
@@ -62,14 +60,6 @@ class _WinnersViewState extends State<WinnersView> {
 
   @override
   Widget build(BuildContext context) {
-    final eventsWithWinners = _events.where((e) {
-      final idRaw = e is Map ? e['id'] : null;
-      final id = idRaw is int ? idRaw : int.tryParse(idRaw?.toString() ?? '');
-      if (id == null) return false;
-      final w = _winnersByEvent[id];
-      return w != null && w.isNotEmpty;
-    }).toList();
-
     return Scaffold(
       backgroundColor: AppColors.cream,
       appBar: AppBar(
@@ -110,7 +100,7 @@ class _WinnersViewState extends State<WinnersView> {
                     ],
                   ),
                 )
-              : eventsWithWinners.isEmpty
+              : _groups.isEmpty
                   ? Center(
                       child: Text(
                         'No events with winners yet.',
@@ -129,18 +119,12 @@ class _WinnersViewState extends State<WinnersView> {
                           parent: AlwaysScrollableScrollPhysics(),
                         ),
                         cacheExtent: 300,
-                        itemCount: eventsWithWinners.length,
+                        itemCount: _groups.length,
                         itemBuilder: (context, index) {
-                          final e = eventsWithWinners[index];
-                          final idRaw = e['id'];
-                          final id = idRaw is int
-                              ? idRaw
-                              : int.tryParse(idRaw?.toString() ?? '');
-                          final winners =
-                              id != null ? _winnersByEvent[id]! : <dynamic>[];
+                          final e = _groups[index].event;
                           return _WinnerEventCard(
                             event: e,
-                            winners: winners,
+                            winners: _groups[index].winners,
                             onTap: () => AppNavigation.to(
                               () => EventDetailView(event: e),
                               prepare: (ctx) =>
@@ -171,13 +155,9 @@ class _WinnerEventCard extends StatelessWidget {
     final title = event is Map
         ? (event['title']?.toString() ?? 'Event')
         : 'Event';
-    final endDateRaw =
-        event is Map ? (event['event_end_date']?.toString() ?? '') : '';
-    final startDate =
-        event is Map ? (event['event_date']?.toString() ?? '') : '';
-    final date = (endDateRaw.isNotEmpty && endDateRaw != '0000-00-00 00:00:00')
-        ? '$startDate → $endDateRaw'
-        : startDate;
+    final startRaw = event is Map ? (event['event_date']?.toString() ?? '') : '';
+    final start = DateTime.tryParse(startRaw.replaceAll(' ', 'T'));
+    final date = start != null ? DateFormat('d MMM yyyy').format(start) : startRaw;
     final venue = event is Map ? (event['venue']?.toString() ?? '') : '';
     final category =
         event is Map ? (event['category']?.toString() ?? '') : '';
@@ -277,11 +257,9 @@ class _WinnerEventCard extends StatelessWidget {
               ),
               SizedBox(height: 8.h),
               ...winners.map<Widget>((w) {
-                final posRaw = w is Map ? w['position'] : null;
-                final pos = posRaw is int
-                    ? posRaw
-                    : int.tryParse(posRaw?.toString() ?? '') ?? 0;
+                final pos = winnerPosition(w);
                 final name = winnerDisplayName(w);
+                final affiliation = winnerAffiliation(w);
                 return Padding(
                   padding: EdgeInsets.only(bottom: 8.h),
                   child: Row(
@@ -289,24 +267,48 @@ class _WinnerEventCard extends StatelessWidget {
                       WinnerAvatar(winner: w, position: pos, size: 40),
                       SizedBox(width: 12.w),
                       Expanded(
-                        child: Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            color: AppColors.navy,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                color: AppColors.navy,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (affiliation.isNotEmpty)
+                              Text(
+                                affiliation,
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: AppColors.textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
                         ),
                       ),
                       if (pos > 0)
-                        Text(
-                          '#$pos',
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w700,
-                            color: pos == 1 ? AppColors.gold : AppColors.textSecondary,
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                          decoration: BoxDecoration(
+                            color: winnerMedalColor(pos).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            winnerPositionLabel(pos),
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w700,
+                              color: pos <= 3
+                                  ? winnerMedalColor(pos)
+                                  : AppColors.textSecondary,
+                            ),
                           ),
                         ),
                     ],
@@ -337,13 +339,18 @@ class _EventThumb extends StatelessWidget {
         height: 64.w,
         child: url != null && url.isNotEmpty
             ? EventPosterImage.fromUrl(url, category: category)
-            : ColoredBox(
-                color: AppColors.categoryColor(category).withValues(alpha: 0.15),
-                child: Icon(
-                  AppColors.categoryIcon(category),
-                  color: AppColors.categoryColor(category),
-                ),
-              ),
+            : category.isEmpty
+                ? ColoredBox(
+                    color: AppColors.gold.withValues(alpha: 0.15),
+                    child: const Icon(Icons.emoji_events_rounded, color: AppColors.gold),
+                  )
+                : ColoredBox(
+                    color: AppColors.categoryColor(category).withValues(alpha: 0.15),
+                    child: Icon(
+                      AppColors.categoryIcon(category),
+                      color: AppColors.categoryColor(category),
+                    ),
+                  ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../controllers/auth_controller.dart';
 import '../data/api_service.dart';
+import '../data/interest_catalog.dart';
 import '../theme/app_theme.dart';
 import '../utils/auth_input_validators.dart';
 import '../utils/sweetalert_helper.dart';
@@ -62,36 +63,7 @@ class _SignupViewState extends State<SignupView> {
   ];
 
   final List<String> _selectedInterests = [];
-  final List<String> _interestOptions = [
-    'IT/Tech',
-    'Coding',
-    'Open Source',
-    'Cultural',
-    'Dance',
-    'Art',
-    'Sports',
-    'Fitness',
-    'Cricket',
-    'Football',
-    'Basketball',
-    'Social',
-    'Volunteering',
-    'Photography',
-    'Academic',
-    'Literature',
-    'Debate',
-    'Music',
-    'Singing',
-    'Entertainment',
-    'Drama',
-    'Fashion',
-    'History',
-    'Swimming',
-    'Wrestling',
-    'Astronomy',
-    'Physics',
-    'Gaming'
-  ];
+  List<String> _interestOptions = List.of(InterestCatalog.current);
 
   List<String> _filteredInterests = [];
   bool _showSuggestions = false;
@@ -277,6 +249,13 @@ class _SignupViewState extends State<SignupView> {
   void initState() {
     super.initState();
     _filteredInterests = List.from(_interestOptions);
+    InterestCatalog.load().then((list) {
+      if (!mounted) return;
+      setState(() {
+        _interestOptions = list;
+        if (interestSearchCtrl.text.isEmpty) _filteredInterests = List.from(list);
+      });
+    });
     _loadInstitutions();
 
     for (final c in [
@@ -488,6 +467,7 @@ class _SignupViewState extends State<SignupView> {
       'Roll/Emp: ${_isStudent ? rollNumberCtrl.text.trim() : empNumberCtrl.text.trim()}',
     );
 
+    unawaited(InterestCatalog.contribute(_selectedInterests));
     controller.register(
       nameCtrl.text.trim(),
       emailCtrl.text.trim(),

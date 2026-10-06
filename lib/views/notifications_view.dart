@@ -137,6 +137,8 @@ class _NotificationTile extends StatelessWidget {
     switch (type) {
       case 'event_created':
         return Icons.celebration;
+      case 'new_event_published':
+        return Icons.campaign;
       case 'event_approved':
       case 'event_approved_notify':
         return Icons.check_circle;
@@ -158,6 +160,7 @@ class _NotificationTile extends StatelessWidget {
   Color _colorForType(String? type) {
     switch (type) {
       case 'event_created':
+      case 'new_event_published':
         return const Color(0xFFFF5F15);
       case 'event_approved':
       case 'event_approved_notify':
