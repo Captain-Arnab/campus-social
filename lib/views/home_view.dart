@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -38,7 +37,7 @@ import '../widgets/winner_photos_carousel.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_empty_state.dart';
 import '../widgets/event_list_skeleton.dart';
-import '../widgets/pressable_scale.dart';
+import '../widgets/expandable_text.dart';
 import '../widgets/ticket_event_card.dart';
 import '../widgets/app_calendar_theme.dart';
 import '../widgets/campus_app_bar.dart';
@@ -245,8 +244,6 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
   late final EventController controller;
   final TextEditingController searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
-  /// Category filter for "Live today" only (featured carousel ignores this).
-  String liveTodayCategory = "All";
   /// Category + date range for upcoming list (and search bar).
   String browseCategory = "All";
   _BrowseDatePreset _browsePreset = _BrowseDatePreset.any;
@@ -255,6 +252,8 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
   final List<String> categories = ["All", "IT/Tech", "Cultural", "Sports", "Academic", "Social"];
   List<Map<String, dynamic>> _adPosts = [];
   List<Map<String, dynamic>> _winnerPhotos = [];
+  bool _winnerPhotosLoading = true;
+  List<Map<String, dynamic>> _featuredEvents = [];
   Timer? _exploreSearchDebounce;
 
   @override
@@ -263,11 +262,33 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
   Future<void> _refreshData() async {
     await Future.wait([
       controller.fetchLiveEventCatalog(),
+      _loadFeaturedEvents(),
       _loadAdPosts(),
       _loadWinnerPhotos(),
       AppBranding.refresh(),
     ]);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadFeaturedEvents() async {
+    try {
+      final r = await ApiService.getFeaturedEvents();
+      final m = ApiService.responseDataMap(r.data);
+      if (m == null || m['status']?.toString() != 'success') return;
+      final list = m['data'];
+      if (list is! List) return;
+      final next = <Map<String, dynamic>>[];
+      for (final e in list) {
+        if (e is Map<String, dynamic>) {
+          next.add(e);
+        } else if (e is Map) {
+          next.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
+        }
+      }
+      if (mounted) setState(() => _featuredEvents = next);
+    } catch (e, st) {
+      debugPrint('[Explore] featured events load failed: $e\n$st');
+    }
   }
 
   Future<void> _loadAdPosts() async {
@@ -291,12 +312,13 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
 
   Future<void> _loadWinnerPhotos() async {
     try {
-      final next = await WinnerFeedHelper.loadCarouselPhotos(limit: 20);
+      final next = await WinnerFeedHelper.loadWinners(limit: 20);
       debugPrint('[Explore] winner carousel items=${next.length}');
       if (mounted) setState(() => _winnerPhotos = next);
     } catch (e, st) {
       debugPrint('[Explore] winner carousel load failed: $e\n$st');
-      if (mounted) setState(() => _winnerPhotos = []);
+    } finally {
+      if (mounted) setState(() => _winnerPhotosLoading = false);
     }
   }
 
@@ -309,6 +331,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
     if (controller.liveEventCatalog.isEmpty && !controller.isLoading.value) {
       unawaited(controller.fetchLiveEventCatalog());
     }
+    unawaited(_loadFeaturedEvents());
     unawaited(_loadAdPosts());
     unawaited(_loadWinnerPhotos());
   }
@@ -327,6 +350,12 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
     final d = DateTime.tryParse(s.replaceAll(' ', 'T'));
     if (d == null) return null;
     return DateTime(d.year, d.month, d.day);
+  }
+
+  DateTime? _eventStart(dynamic event) {
+    final s = (event is Map ? event['event_date'] : null)?.toString();
+    if (s == null || s.isEmpty) return null;
+    return DateTime.tryParse(s.replaceAll(' ', 'T'));
   }
 
   bool _exploreApproved(dynamic e) {
@@ -535,7 +564,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
     }
     if (v.isNotEmpty) parts.add(v);
     if (org.isNotEmpty) parts.add(org);
-    return parts.join(' Â· ');
+    return parts.join(' \u00B7 ');
   }
 
   Widget _buildExploreSearchResultsPanel() {
@@ -650,8 +679,15 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
       child: Obx(() {
         final catalog = List<dynamic>.from(controller.liveEventCatalog);
         final loading = controller.isLoading.value;
-        final liveTodayFiltered =
-            catalog.where(_isLiveTodayEvent).where((e) => _categoryMatch(e, liveTodayCategory)).toList();
+        final liveToday = catalog.where(_isLiveTodayEvent).toList()
+          ..sort((a, b) {
+            final sa = _eventStart(a);
+            final sb = _eventStart(b);
+            if (sa == null && sb == null) return 0;
+            if (sa == null) return 1;
+            if (sb == null) return -1;
+            return sa.compareTo(sb);
+          });
         final upcomingFiltered = catalog
             .where(_isUpcomingFutureDay)
             .where((e) => _categoryMatch(e, browseCategory))
@@ -779,7 +815,7 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
             child: _UpcomingRemindersSection(),
           ),
 
-          // Featured Events Slider (never filtered by category, date, or search)
+          // Admin-curated featured events (never filtered by category, date, or search); hidden when empty
           SliverToBoxAdapter(
             child: () {
               if (loading && catalog.isEmpty) {
@@ -788,8 +824,8 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                   child: const EventListSkeleton(count: 2),
                 );
               }
-              if (catalog.isEmpty) return const SizedBox.shrink();
-              final featuredEvents = catalog.take(5).toList();
+              final featuredEvents = _featuredEvents;
+              if (featuredEvents.isEmpty) return const SizedBox.shrink();
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -850,57 +886,20 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
           SliverToBoxAdapter(
             child: ColoredBox(
               color: AppColors.cream,
-              child: WinnerPhotosCarousel(photos: _winnerPhotos),
-            ),
-          ),
-
-          // Winners — single entry (removed from app bar)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20.w, 4.h, 20.w, 8.h),
-              child: PressableScale(
-                onTap: _openWinners,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
-                    boxShadow: AppShadows.card,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: EdgeInsets.all(10.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.gold.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(AppRadius.chip),
-                        ),
-                        child: Icon(Icons.emoji_events_rounded, color: AppColors.gold, size: 26.sp),
-                      ),
-                      SizedBox(width: 14.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Winners', style: Theme.of(context).textTheme.titleMedium),
-                            SizedBox(height: 2.h),
-                            Text(
-                              'See who won past campus events',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right_rounded, color: AppColors.accent),
-                    ],
-                  ),
-                ),
+              child: WinnerPhotosCarousel(
+                photos: _winnerPhotos,
+                loading: _winnerPhotosLoading,
+                onWinnerTap: (w) => _openEventDetail({
+                  'id': w['event_id'],
+                  'title': w['event_name'],
+                  'event_date': w['event_date'],
+                }),
+                onSeeAll: _openWinners,
               ),
             ),
           ),
 
-          // Live today (category filter only) + browse filters + upcoming
+          // Live today (flat, by start time) + browse filters + upcoming
           SliverToBoxAdapter(
             child: loading && catalog.isEmpty
                 ? const SizedBox.shrink()
@@ -915,32 +914,15 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                           style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
                         ),
                       ),
-                      SizedBox(height: 4.h),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 20.w),
-                        child: Text(
-                          "Filter by event type",
-                          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
-                        ),
-                      ),
-                      SizedBox(height: 8.h),
-                      _exploreCategoryChips(
-                        selected: liveTodayCategory,
-                        onSelect: (c) => setState(() => liveTodayCategory = c),
-                      ),
                       SizedBox(height: 10.h),
-                      if (liveTodayFiltered.isEmpty)
+                      if (liveToday.isEmpty)
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 20.w),
-                          child: AppEmptyState(
+                          child: const AppEmptyState(
                             icon: Icons.event_busy_rounded,
                             accentColor: AppColors.teal,
-                            headline: catalog.where(_isLiveTodayEvent).isEmpty
-                                ? 'Nothing live right now'
-                                : 'No events for this type today',
-                            supporting: catalog.where(_isLiveTodayEvent).isEmpty
-                                ? 'Check back soon or browse upcoming events below.'
-                                : 'Try another category or check upcoming events.',
+                            headline: 'Nothing live right now',
+                            supporting: 'Check back soon or browse upcoming events below.',
                           ),
                         )
                       else
@@ -949,12 +931,12 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                           child: ListView.separated(
                             padding: EdgeInsets.symmetric(horizontal: 20.w),
                             scrollDirection: Axis.horizontal,
-                            itemCount: liveTodayFiltered.length,
+                            itemCount: liveToday.length,
                             separatorBuilder: (_, __) => SizedBox(width: 16.w),
                             itemBuilder: (context, i) => RepaintBoundary(
                               child: Align(
                                 alignment: Alignment.topCenter,
-                                child: _AllEventCard(event: liveTodayFiltered[i]),
+                                child: _AllEventCard(event: liveToday[i]),
                               ),
                             ),
                           ),
@@ -1106,7 +1088,7 @@ class _AllEventCard extends StatelessWidget {
     try {
       final userId = await PrefService.getUserId();
       if (userId == null) {
-        debugPrint("âŒ No user ID found");
+        debugPrint("❌ No user ID found");
         return {'success': false};
       }
 
@@ -1124,8 +1106,8 @@ class _AllEventCard extends StatelessWidget {
       final bool userIsStudent = userIsStudentInt == 1;
       final bool organizerIsStudent = organizerIsStudentInt == 1;
 
-      debugPrint("ðŸ‘¤ User is student: $userIsStudent (raw: $userIsStudentValue, converted: $userIsStudentInt)");
-      debugPrint("ðŸŽ¯ Organizer is student: $organizerIsStudent (raw: $organizerIsStudentValue, converted: $organizerIsStudentInt)");
+      debugPrint("👤 User is student: $userIsStudent (raw: $userIsStudentValue, converted: $userIsStudentInt)");
+      debugPrint("🎯 Organizer is student: $organizerIsStudent (raw: $organizerIsStudentValue, converted: $organizerIsStudentInt)");
 
       return {
         'success': true,
@@ -1135,7 +1117,7 @@ class _AllEventCard extends StatelessWidget {
         'isOrganizer': EventParticipationRules.isUserEventOrganizer(event, userId),
       };
     } catch (e) {
-      debugPrint("âŒ Error checking join gates: $e");
+      debugPrint("❌ Error checking join gates: $e");
       return {'success': false};
     }
   }
@@ -2562,67 +2544,72 @@ Future<void> _confirmDeleteProfileLink(
   }
 }
 
-Widget _profileLinkChip(
+Widget _profileLinkRow(
   BuildContext context,
   ProfileController controller,
   ModelUserLink link,
 ) {
-  return Material(
-    color: const Color(0xFFFF5F15).withValues(alpha: 0.08),
-    borderRadius: BorderRadius.circular(20),
-    child: InkWell(
-      onTap: () => _openUserProfileLink(context, link.url),
-      onLongPress: () => _confirmDeleteProfileLink(context, controller, link),
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: EdgeInsets.only(left: 12.w, top: 8.h, bottom: 8.h, right: 4.w),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFFF5F15).withValues(alpha: 0.25)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.link, size: 16, color: Color(0xFFFF5F15)),
-            SizedBox(width: 6.w),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 200.w),
-              child: Text(
-                link.displayLabel,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFFFF5F15),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            if (link.id != null)
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                icon: Icon(Icons.close, size: 18, color: Colors.grey[600]),
-                onPressed: () => _confirmDeleteProfileLink(context, controller, link),
-              ),
-          ],
-        ),
-      ),
-    ),
+  final canDelete = link.id != null;
+  return _ProfileRow(
+    icon: Icons.link_rounded,
+    title: link.displayLabel,
+    subtitle: link.url,
+    onTap: () => _openUserProfileLink(context, link.url),
+    onLongPress: canDelete ? () => _confirmDeleteProfileLink(context, controller, link) : null,
+    trailing: canDelete
+        ? IconButton(
+            tooltip: 'Remove link',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close_rounded, size: 20, color: AppColors.textSecondary),
+            onPressed: () => _confirmDeleteProfileLink(context, controller, link),
+          )
+        : const Icon(Icons.open_in_new_rounded, size: 18, color: AppColors.textSecondary),
   );
 }
 
 class _ProfileTab extends StatelessWidget {
   const _ProfileTab();
 
+  static const int _maxLinks = 5;
+
   Future<void> _refreshProfile() async {
     final ProfileController controller = Get.find<ProfileController>();
     final EventController eventController = AppBootstrap.ensureEventController();
-    
+
     await Future.wait([
       controller.loadProfile(),
       eventController.fetchHostedEvents(),
       eventController.fetchFavorites(),
     ]);
+  }
+
+  void _confirmLogout(BuildContext context, AuthController authController) {
+    ArtSweetAlert.show(
+      context: context,
+      title: const Text("Logout"),
+      content: const Text("Are you sure you want to logout?"),
+      type: ArtAlertType.warning,
+      actions: [
+        ArtAlertButton(
+          onPressed: () => Navigator.pop(context),
+          backgroundColor: Colors.grey,
+          child: const Text("Cancel"),
+        ),
+        ArtAlertButton(
+          onPressed: () {
+            Navigator.pop(context);
+            // Fire-and-forget; AuthController shows "Logging out..." loader.
+            unawaited(authController.logout());
+          },
+          backgroundColor: AppColors.accent,
+          child: const Text("Yes"),
+        ),
+      ],
+    );
+  }
+
+  void _openMyActivityFromProfile(BuildContext context, int myEventsTabIndex) {
+    context.findAncestorStateOfType<_HomeViewState>()?.openMyActivityTab(myEventsTabIndex);
   }
 
   @override
@@ -2637,8 +2624,43 @@ class _ProfileTab extends StatelessWidget {
         if (controller.isLoading.value) {
           return const AppLoadingScreen(message: 'Loading profile...');
         }
-        
+
         final user = controller.userData.value;
+        final bio = user.bio?.trim() ?? '';
+        // "General" is the placeholder saved when no interests are picked.
+        final interests = (user.interests ?? '')
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (interests.length == 1 && interests.first == 'General') interests.clear();
+        final idNumber = (user.isStudent == true ? user.rollNumber : user.empNumber)?.trim() ?? '';
+        final detailRows = <Widget>[
+          if ((user.email ?? '').trim().isNotEmpty)
+            _ProfileRow(icon: Icons.mail_outline_rounded, label: 'Email', title: user.email!.trim()),
+          if ((user.phone ?? '').trim().isNotEmpty)
+            _ProfileRow(icon: Icons.phone_outlined, label: 'Phone', title: user.phone!.trim()),
+          if ((user.institutionName ?? '').trim().isNotEmpty)
+            _ProfileRow(
+              icon: Icons.account_balance_outlined,
+              label: 'Institution',
+              title: user.institutionName!.trim(),
+            ),
+          if ((user.departmentClass ?? '').trim().isNotEmpty)
+            _ProfileRow(
+              icon: Icons.school_outlined,
+              label: 'Department / Class',
+              title: user.departmentClass!.trim(),
+            ),
+          if (idNumber.isNotEmpty && idNumber != 'null')
+            _ProfileRow(
+              icon: Icons.badge_outlined,
+              label: user.isStudent == true ? 'Roll number' : 'Employee ID',
+              title: idNumber,
+            ),
+        ];
+        final atMaxLinks = user.links.length >= _maxLinks;
+
         return RefreshIndicator(
           onRefresh: _refreshProfile,
           color: AppColors.accent,
@@ -2646,661 +2668,593 @@ class _ProfileTab extends StatelessWidget {
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             cacheExtent: 300,
             slivers: [
-            SliverAppBar(
-              expandedHeight: 56.h,
-              floating: false,
-              pinned: true,
-              elevation: 0,
-              scrolledUnderElevation: CampusAppBarTokens.scrolledUnderElevation,
-              shadowColor: CampusAppBarTokens.shadowColor,
-              surfaceTintColor: Colors.transparent,
-              backgroundColor: AppColors.accent,
-              leadingWidth: 200,
-              leading: CampusSliverAppBar.logoLeading(),
-              flexibleSpace: FlexibleSpaceBar(
-                background: Container(
-                  decoration: CampusAppBarTokens.gradientDecoration(),
-                ),
-              ),
-              shape: CampusAppBarTokens.shape,
-              systemOverlayStyle: SystemUiOverlayStyle.light,
-              actions: [
-                const IconButton(
-                  icon: Icon(Icons.edit_outlined, color: Colors.white, size: 22),
-                  onPressed: _openEditProfile,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.logout_outlined, color: Colors.white, size: 22),
-                  onPressed: () {
-                    ArtSweetAlert.show(
-                      context: context,
-                      title: const Text("Logout"),
-                      content: const Text("Are you sure you want to logout?"),
-                      type: ArtAlertType.warning,
-                      actions: [
-                        ArtAlertButton(
-                          onPressed: () => Navigator.pop(context),
-                          backgroundColor: Colors.grey,
-                          child: const Text("Cancel"),
-                        ),
-                        ArtAlertButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            // Fire-and-forget; AuthController shows "Logging out..." loader.
-                            unawaited(authController.logout());
-                          },
-                          backgroundColor: AppColors.accent,
-                          child: const Text("Yes"),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
-              SliverToBoxAdapter(
-                child: Column(
-                  children: [
-                    SizedBox(height: 10.h),
-                    
-                    // Profile Card - existing code
-                    Container(
-                      margin: EdgeInsets.symmetric(horizontal: 20.w),
-                      padding: EdgeInsets.all(24.w),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 20,
-                            offset: const Offset(0, 4)
-                          )
-                        ]
-                      ),
-                      child: Column(
-                        children: [
-                        // Avatar with gradient border
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8)
-                              )
-                            ]
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            padding: const EdgeInsets.all(3),
-                            child: CircleAvatar(
-                              radius: 50.w,
-                              backgroundColor: Colors.grey[100],
-                              backgroundImage: user.image != null && user.image!.isNotEmpty 
-                                ? appNetworkImageProvider("${Constant.uploadsBaseUrl}profiles/${user.image}") 
-                                : null,
-                              child: user.image == null || user.image!.isEmpty 
-                                ? Icon(Icons.person, size: 50.w, color: const Color(0xFFFF5F15)) 
-                                : null,
-                            ),
-                          ),
-                        ),
-                        
-                        SizedBox(height: 16.h),
-                        
-                        Text(
-                          controller.displayNameObs.value,
-                          style: TextStyle(
-                            fontSize: 22.sp, 
-                            fontWeight: FontWeight.bold, 
-                            color: Colors.black87
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        
-                        SizedBox(height: 8.h),
-                        
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF5F15).withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.email_outlined, size: 14, color: Color(0xFFFF5F15)),
-                              SizedBox(width: 6.w),
-                              Flexible(
-                                child: Text(
-                                  user.email ?? "", 
-                                  style: TextStyle(
-                                    color: const Color(0xFFFF5F15), 
-                                    fontSize: 12.sp,
-                                    fontWeight: FontWeight.w600
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (user.institutionName != null &&
-                            user.institutionName!.trim().isNotEmpty) ...[
-                          SizedBox(height: 10.h),
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12.w,
-                              vertical: 6.h,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.account_balance_outlined,
-                                  size: 14,
-                                  color: Color(0xFF1D4ED8),
-                                ),
-                                SizedBox(width: 6.w),
-                                Flexible(
-                                  child: Text(
-                                    user.institutionName!.trim(),
-                                    style: TextStyle(
-                                      color: const Color(0xFF1E3A8A),
-                                      fontSize: 12.sp,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        if (user.departmentClass != null && user.departmentClass!.trim().isNotEmpty) ...[
-                          SizedBox(height: 10.h),
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.school_outlined, size: 14, color: Colors.green.shade800),
-                                SizedBox(width: 6.w),
-                                Flexible(
-                                  child: Text(
-                                    user.departmentClass!.trim(),
-                                    style: TextStyle(
-                                      color: Colors.green.shade900,
-                                      fontSize: 12.sp,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+              CampusSliverAppBar(
+                automaticallyImplyLeading: false,
+                leadingWidth: 200,
+                leading: CampusSliverAppBar.logoLeading(),
+                expandedHeight: kToolbarHeight + 112.h,
+                actions: const [
+                  IconButton(
+                    tooltip: 'Edit profile',
+                    icon: Icon(Icons.edit_outlined, color: Colors.white, size: 22),
+                    onPressed: _openEditProfile,
                   ),
-                  
-                  SizedBox(height: 20.h),
-                  
-                  // Stats Card
-                    Container(
-                      margin: EdgeInsets.symmetric(horizontal: 20.w),
-                      padding: EdgeInsets.all(20.w),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 20,
-                            offset: const Offset(0, 4)
-                          )
-                        ]
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildStatItem(
-                            Icons.event_rounded,
-                            eventController.hostedList.length.toString(),
-                            "Hosted",
-                            onTap: () => _openMyActivityFromProfile(context, 1),
-                          ),
-                          _buildDivider(),
-                          _buildStatItem(
-                            Icons.people_rounded,
-                            eventController.attendingList.length.toString(),
-                            "Viewing",
-                            onTap: () => _openMyActivityFromProfile(context, 0),
-                          ),
-                          _buildDivider(),
-                          _buildStatItem(
-                            Icons.volunteer_activism,
-                            eventController.volunteeringList.length.toString(),
-                            "Volunteer",
-                            onTap: () => _openMyActivityFromProfile(context, 3),
-                          ),
-                          _buildDivider(),
-                          _buildStatItem(
-                            Icons.groups,
-                            eventController.participatingList.length.toString(),
-                            "Participate",
-                            onTap: () => _openMyActivityFromProfile(context, 4),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  SizedBox(height: 20.h),
-                  
-                  // About Me Section
-                  Container(
-                    margin: EdgeInsets.symmetric(horizontal: 20.w),
-                    padding: EdgeInsets.all(24.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 20,
-                          offset: const Offset(0, 4)
-                        )
-                      ]
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.person_outline, color: Color(0xFFFF5F15), size: 20),
-                            ),
-                            SizedBox(width: 12.w),
-                            Text("About Me", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
-                          ],
-                        ),
-                        SizedBox(height: 16.h),
-                        Text(
-                          user.bio ?? "No biodata added yet. Tap edit to add one!", 
-                          style: TextStyle(
-                            color: user.bio != null ? Colors.grey[700] : Colors.grey[400],
-                            height: 1.5,
-                            fontSize: 14.sp,
-                            fontStyle: user.bio != null ? FontStyle.normal : FontStyle.italic,
-                          )
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  SizedBox(height: 20.h),
-
-                  // Food ordering pickup preference (coming soon)
-                  Container(
-                    margin: EdgeInsets.symmetric(horizontal: 20.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 20,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ListTile(
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
-                      leading: Opacity(
-                        opacity: 0.4,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.place_outlined, color: Color(0xFFFF5F15), size: 20),
-                        ),
-                      ),
-                      title: Opacity(
-                        opacity: 0.4,
-                        child: Text(
-                          'Pickup Preference',
-                          style: TextStyle(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ),
-                      subtitle: Opacity(
-                        opacity: 0.4,
-                        child: Text(
-                          'Main Gate or Hostel Gate for food orders',
-                          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
-                        ),
-                      ),
-                      trailing: const ComingSoonBadge(large: true),
-                    ),
-                  ),
-
-                  SizedBox(height: 20.h),
-                  
-                  // Interests Section
-                  Container(
-                    margin: EdgeInsets.symmetric(horizontal: 20.w),
-                    padding: EdgeInsets.all(24.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 20,
-                          offset: const Offset(0, 4)
-                        )
-                      ]
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.interests_outlined, color: Color(0xFFFF5F15), size: 20),
-                            ),
-                            SizedBox(width: 12.w),
-                            Text("Interests", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.black87)),
-                          ],
-                        ),
-                        SizedBox(height: 16.h),
-                        user.interests != null && user.interests!.isNotEmpty
-                          ? Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: user.interests!.split(',')
-                                .map((e) => Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        const Color(0xFFFF5F15).withValues(alpha: 0.1),
-                                        const Color(0xFFFF9068).withValues(alpha: 0.1)
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: const Color(0xFFFF5F15).withValues(alpha: 0.2),
-                                      width: 1
-                                    )
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFFFF5F15),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      SizedBox(width: 6.w),
-                                      Text(
-                                        e.trim(),
-                                        style: const TextStyle(
-                                          color: Color(0xFFFF5F15),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ))
-                                .toList(),
-                            )
-                          : Text(
-                              "No interests added yet. Tap edit to add some!",
-                              style: TextStyle(
-                                color: Colors.grey[400],
-                                fontSize: 14.sp,
-                                fontStyle: FontStyle.italic,
-                              )
-                            ),
-                      ],
-                    ),
-                  ),
-
-                  SizedBox(height: 20.h),
-
-                  // Profile links
-                  Container(
-                    margin: EdgeInsets.symmetric(horizontal: 20.w),
-                    padding: EdgeInsets.all(24.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 20,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.link_outlined, color: Color(0xFFFF5F15), size: 20),
-                            ),
-                            SizedBox(width: 12.w),
-                            Text(
-                              'Links',
-                              style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 16.h),
-                        if (user.links.isNotEmpty)
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: user.links
-                                .map((link) => _profileLinkChip(context, controller, link))
-                                .toList(),
-                          )
-                        else
-                          Text(
-                            'No links yet. Add a portfolio or social URL.',
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontSize: 14.sp,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        SizedBox(height: 14.h),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: user.links.length >= 5
-                                ? null
-                                : () => _showAddProfileLinkDialog(context, controller),
-                            icon: const Icon(Icons.add_link, size: 18),
-                            label: Text(user.links.length >= 5 ? 'Maximum 5 links' : 'Add Link'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFFF5F15),
-                              side: BorderSide(color: const Color(0xFFFF5F15).withValues(alpha: 0.4)),
-                              padding: EdgeInsets.symmetric(vertical: 12.h),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  if (user.canApproveEvents) ...[
-                    SizedBox(height: 20.h),
-                    Container(
-                      margin: EdgeInsets.symmetric(horizontal: 20.w),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 20,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ListTile(
-                        contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
-                        leading: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF5F15).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.admin_panel_settings_outlined, color: Color(0xFFFF5F15), size: 20),
-                        ),
-                        title: Text(
-                          'Admin approvals',
-                          style: TextStyle(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'Review pending events and edits',
-                          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
-                        onTap: () => Get.to(() => const AdminApprovalsView()),
-                      ),
-                    ),
-                  ],
-                  
-                  SizedBox(height: 100.h),
                 ],
+                flexibleSpaceBackground: DecoratedBox(
+                  decoration: CampusAppBarTokens.gradientDecoration(),
+                  child: FlexibleSpaceBar(
+                    collapseMode: CollapseMode.pin,
+                    background: _ProfileHeader(
+                      user: user,
+                      displayName: controller.displayNameObs.value,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ],
-          )
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 110.h),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    _ProfileStatsCard(
+                      stats: [
+                        _ProfileStat('Hosting', eventController.hostedList.length,
+                            () => _openMyActivityFromProfile(context, 1)),
+                        _ProfileStat('Viewing', eventController.attendingList.length,
+                            () => _openMyActivityFromProfile(context, 0)),
+                        _ProfileStat('Volunteering', eventController.volunteeringList.length,
+                            () => _openMyActivityFromProfile(context, 3)),
+                        _ProfileStat('Participating', eventController.participatingList.length,
+                            () => _openMyActivityFromProfile(context, 4)),
+                      ],
+                    ),
+
+                    _ProfileSection(
+                      title: 'About',
+                      child: _ProfileCard(
+                        padding: EdgeInsets.all(16.w),
+                        child: bio.isEmpty
+                            ? const _ProfileEmptyHint(
+                                text: 'Tell others a little about yourself.',
+                                actionLabel: 'Add bio',
+                                onTap: _openEditProfile,
+                              )
+                            : ExpandableText(
+                                bio,
+                                trimLines: 4,
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  height: 1.5,
+                                  color: AppColors.navyMuted,
+                                ),
+                              ),
+                      ),
+                    ),
+
+                    if (detailRows.isNotEmpty)
+                      _ProfileSection(
+                        title: 'Details',
+                        child: _ProfileCard(child: Column(children: _withRowDividers(detailRows))),
+                      ),
+
+                    _ProfileSection(
+                      title: 'Interests',
+                      child: _ProfileCard(
+                        padding: EdgeInsets.all(16.w),
+                        child: interests.isEmpty
+                            ? const _ProfileEmptyHint(
+                                text: 'Add interests to discover events you will like.',
+                                actionLabel: 'Add interests',
+                                onTap: _openEditProfile,
+                              )
+                            : Wrap(
+                                spacing: 8.w,
+                                runSpacing: 8.h,
+                                children: interests.map((e) => _InterestChip(label: e)).toList(),
+                              ),
+                      ),
+                    ),
+
+                    _ProfileSection(
+                      title: 'Links',
+                      trailing: Text(
+                        '${user.links.length}/$_maxLinks',
+                        style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                      ),
+                      child: _ProfileCard(
+                        child: Column(
+                          children: _withRowDividers([
+                            ...user.links.map((link) => _profileLinkRow(context, controller, link)),
+                            _ProfileRow(
+                              icon: Icons.add_rounded,
+                              title: atMaxLinks ? 'Maximum $_maxLinks links added' : 'Add link',
+                              subtitle: user.links.isEmpty ? 'Portfolio, LinkedIn, GitHub…' : null,
+                              color: atMaxLinks ? AppColors.textSecondary : AppColors.accent,
+                              showChevron: false,
+                              onTap: atMaxLinks
+                                  ? null
+                                  : () => _showAddProfileLinkDialog(context, controller),
+                            ),
+                          ]),
+                        ),
+                      ),
+                    ),
+
+                    const _ProfileSection(
+                      title: 'Preferences',
+                      child: _ProfileCard(
+                        child: _ProfileRow(
+                          icon: Icons.place_outlined,
+                          title: 'Pickup preference',
+                          subtitle: 'Main Gate or Hostel Gate for food orders',
+                          dimmed: true,
+                          trailing: ComingSoonBadge(),
+                        ),
+                      ),
+                    ),
+
+                    if (user.canApproveEvents)
+                      _ProfileSection(
+                        title: 'Administration',
+                        child: _ProfileCard(
+                          child: _ProfileRow(
+                            icon: Icons.admin_panel_settings_outlined,
+                            title: 'Admin approvals',
+                            subtitle: 'Review pending events and edits',
+                            onTap: () => Get.to(() => const AdminApprovalsView()),
+                          ),
+                        ),
+                      ),
+
+                    _ProfileSection(
+                      title: 'Account',
+                      child: _ProfileCard(
+                        child: Column(
+                          children: _withRowDividers([
+                            const _ProfileRow(
+                              icon: Icons.person_outline_rounded,
+                              title: 'Edit profile',
+                              onTap: _openEditProfile,
+                            ),
+                            _ProfileRow(
+                              icon: Icons.logout_rounded,
+                              title: 'Log out',
+                              color: AppColors.error,
+                              showChevron: false,
+                              onTap: () => _confirmLogout(context, authController),
+                            ),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ],
+          ),
         );
       }),
     );
   }
+}
 
-  void _openMyActivityFromProfile(BuildContext context, int myEventsTabIndex) {
-    context.findAncestorStateOfType<_HomeViewState>()?.openMyActivityTab(myEventsTabIndex);
+List<Widget> _withRowDividers(List<Widget> rows) {
+  final out = <Widget>[];
+  for (var i = 0; i < rows.length; i++) {
+    if (i > 0) out.add(Divider(height: 1, thickness: 1, indent: 62.w, color: AppColors.border));
+    out.add(rows[i]);
+  }
+  return out;
+}
+
+/// Identity block shown inside the expanded Profile app bar.
+class _ProfileHeader extends StatelessWidget {
+  final ModelUser user;
+  final String displayName;
+
+  const _ProfileHeader({required this.user, required this.displayName});
+
+  String get _initials {
+    final parts = displayName.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    final first = parts.first[0];
+    final last = parts.length > 1 ? parts.last[0] : '';
+    return (first + last).toUpperCase();
   }
 
-  Widget _buildStatItem(
-    IconData icon,
-    String value,
-    String label, {
-    VoidCallback? onTap,
-  }) {
-    return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 4.h),
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = user.image != null && user.image!.isNotEmpty;
+    final institution = user.institutionName?.trim() ?? '';
+    final roles = [
+      user.isStudent == true ? 'Student' : 'Faculty',
+      if (user.isAdmin == true) 'Admin',
+    ];
+
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20.w, 0, 20.w, 22.h),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(2.5),
+              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+              child: CircleAvatar(
+                radius: 34.r,
+                backgroundColor: AppColors.surfaceMuted,
+                backgroundImage: hasImage
+                    ? appNetworkImageProvider("${Constant.uploadsBaseUrl}profiles/${user.image}")
+                    : null,
+                child: hasImage
+                    ? null
+                    : Text(
+                        _initials,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 22.sp,
+                            ),
                       ),
-                    ],
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 24),
-                ),
-                SizedBox(height: 10.h),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 20.sp,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFFFF5F15),
-                  ),
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+            SizedBox(width: 16.w),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 20.sp,
+                        ),
+                  ),
+                  SizedBox(height: 6.h),
+                  Wrap(
+                    spacing: 6.w,
+                    runSpacing: 4.h,
+                    children: roles.map((r) => _HeaderPill(label: r)).toList(),
+                  ),
+                  if (institution.isNotEmpty) ...[
+                    SizedBox(height: 6.h),
+                    Text(
+                      institution,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        fontSize: 12.5.sp,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildDivider() {
-    return Container(width: 1, height: 50.h, color: Colors.grey[200]);
+class _HeaderPill extends StatelessWidget {
+  final String label;
+
+  const _HeaderPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 3.h),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 11.sp,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileStat {
+  final String label;
+  final int value;
+  final VoidCallback onTap;
+
+  const _ProfileStat(this.label, this.value, this.onTap);
+}
+
+class _ProfileStatsCard extends StatelessWidget {
+  final List<_ProfileStat> stats;
+
+  const _ProfileStatsCard({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    return _ProfileCard(
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            for (var i = 0; i < stats.length; i++) ...[
+              if (i > 0)
+                VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  indent: 14.h,
+                  endIndent: 14.h,
+                  color: AppColors.border,
+                ),
+              Expanded(
+                child: InkWell(
+                  onTap: stats[i].onTap,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 4.w),
+                    child: Column(
+                      children: [
+                        Text(
+                          '${stats[i].value}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontSize: 20.sp,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.navy,
+                              ),
+                        ),
+                        SizedBox(height: 2.h),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            stats[i].label,
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileSection extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  const _ProfileSection({required this.title, required this.child, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(top: 22.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(left: 4.w, right: 4.w, bottom: 8.h),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 11.5.sp,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                if (trailing != null) trailing!,
+              ],
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+
+  const _ProfileCard({required this.child, this.padding});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: padding == null ? child : Padding(padding: padding!, child: child),
+    );
+  }
+}
+
+class _ProfileRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  /// Small caption above [title] (used for read-only detail rows).
+  final String? label;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  /// Tints icon + title for action rows (e.g. accent "Add link", red "Log out").
+  final Color? color;
+  final bool showChevron;
+  final bool dimmed;
+
+  const _ProfileRow({
+    required this.icon,
+    required this.title,
+    this.label,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+    this.onLongPress,
+    this.color,
+    this.showChevron = true,
+    this.dimmed = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = color ?? AppColors.navyMuted;
+    final content = Row(
+      children: [
+        Container(
+          width: 36.w,
+          height: 36.w,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 19.sp, color: iconColor),
+        ),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (label != null) ...[
+                Text(
+                  label!,
+                  style: TextStyle(
+                    fontSize: 11.5.sp,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 2.h),
+              ],
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14.5.sp,
+                  fontWeight: label != null ? FontWeight.w500 : FontWeight.w600,
+                  color: color ?? AppColors.navy,
+                ),
+              ),
+              if (subtitle != null) ...[
+                SizedBox(height: 2.h),
+                Text(
+                  subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+
+    return InkWell(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+        child: Row(
+          children: [
+            Expanded(child: dimmed ? Opacity(opacity: 0.45, child: content) : content),
+            if (trailing != null) ...[
+              SizedBox(width: 8.w),
+              trailing!,
+            ] else if (showChevron && onTap != null)
+              const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileEmptyHint extends StatelessWidget {
+  final String text;
+  final String actionLabel;
+  final VoidCallback onTap;
+
+  const _ProfileEmptyHint({required this.text, required this.actionLabel, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 13.5.sp, color: AppColors.textSecondary, height: 1.4),
+          ),
+        ),
+        SizedBox(width: 8.w),
+        TextButton(
+          onPressed: onTap,
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.accent,
+            padding: EdgeInsets.symmetric(horizontal: 10.w),
+            minimumSize: Size(0, 34.h),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(actionLabel, style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700)),
+        ),
+      ],
+    );
+  }
+}
+
+class _InterestChip extends StatelessWidget {
+  final String label;
+
+  const _InterestChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 13.sp,
+          fontWeight: FontWeight.w500,
+          color: AppColors.navy,
+        ),
+      ),
+    );
   }
 }
 

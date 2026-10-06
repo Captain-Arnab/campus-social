@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
@@ -30,6 +31,8 @@ import '../theme/app_theme.dart';
 import '../data/event_payment_cache.dart';
 import '../utils/event_fee_helper.dart';
 import '../widgets/event_payment_flow.dart';
+import '../widgets/expandable_text.dart';
+import '../widgets/see_more_list.dart';
 
 List<Map<String, dynamic>> reviewFilesFromEvent(dynamic ev) {
   if (ev is! Map) return [];
@@ -102,6 +105,22 @@ class _EventDetailViewState extends State<EventDetailView> {
   String? _minutesLiveLink;
   bool _closingEvent = false;
 
+  // Role checks are memoized: FutureBuilders in build() would otherwise re-run
+  // them (incl. a profile network call) on every setState. Cleared when the
+  // full event is reloaded, since organizer/editor ids may change.
+  Future<bool>? _isOrganizerCache;
+  Future<bool>? _canEditCache;
+  Future<Map<String, dynamic>>? _rolesCache;
+  Future<bool> get _isOrganizerFuture => _isOrganizerCache ??= _isEventOrganizerOnly();
+  Future<bool> get _canEditFuture => _canEditCache ??= _canEditEvent();
+  Future<Map<String, dynamic>> get _rolesFuture => _rolesCache ??= _getUserAndOrganizerRoles();
+
+  void _invalidateRoleCache() {
+    _isOrganizerCache = null;
+    _canEditCache = null;
+    _rolesCache = null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -119,34 +138,55 @@ class _EventDetailViewState extends State<EventDetailView> {
     final EventController controller = Get.find<EventController>();
     final full = await controller.fetchEventById(id);
     if (full != null && mounted) {
-      setState(() => _event = full);
+      setState(() {
+        _event = full;
+        _invalidateRoleCache();
+      });
       // my_registration from GET is source of truth for paid-lock (survives restart).
       // Drop any optimistic flag once a fresh GET has arrived.
       EventPaymentCache.clearOptimisticForEvent(full['id']?.toString() ?? '');
-      // Merge winners: keep event payload if API returns empty list (avoid unlocking attendance by mistake).
-      List<dynamic> winners = [];
-      if (full['winners'] is List && (full['winners'] as List).isNotEmpty) {
-        winners = List<dynamic>.from(full['winners'] as List);
-      }
+    }
+    // Winners gate the attendance lock, so the page waits for them; avatar
+    // enrichment is not awaited and fills in afterwards.
+    await Future.wait([
+      if (full != null) _loadWinners(id, full),
+      _loadMeetingMinutes(id),
+    ]);
+    if (mounted) setState(() => _loadingFull = false);
+  }
+
+  Future<void> _loadWinners(int id, Map full) async {
+    // Merge winners: keep event payload if API returns empty list (avoid unlocking attendance by mistake).
+    List<dynamic> winners = [];
+    if (full['winners'] is List && (full['winners'] as List).isNotEmpty) {
+      winners = List<dynamic>.from(full['winners'] as List);
+    }
+    try {
       final winRes = await ApiService.getWinnersByEventId(id);
       final winBody = ApiService.parseResponseBody(winRes.data);
-      if (mounted &&
-          winBody != null &&
-          winBody['status']?.toString() == 'success') {
+      if (winBody != null && winBody['status']?.toString() == 'success') {
         final data = winBody['data'];
         if (data is List && data.isNotEmpty) {
           winners = List<dynamic>.from(data);
         }
       }
-      // Attach profile photos for winner avatars
-      if (winners.isNotEmpty) {
-        try {
-          winners = await WinnerFeedHelper.enrichWinnersWithProfiles(winners);
-        } catch (_) {}
-      }
-      if (mounted) setState(() => _winnersList = winners);
-    }
-    // Meeting minutes (list by event_id) — approved content is public; pending/rejected for host only.
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _winnersList = winners);
+    if (winners.isEmpty) return;
+    unawaited(() async {
+      try {
+        final enriched = await WinnerFeedHelper.enrichWinnersWithProfiles(winners);
+        // Skip if a newer refresh already replaced the list.
+        if (mounted && identical(_winnersList, winners)) {
+          setState(() => _winnersList = enriched);
+        }
+      } catch (_) {}
+    }());
+  }
+
+  /// Meeting minutes (list by event_id) — approved content is public; pending/rejected for host only.
+  Future<void> _loadMeetingMinutes(int id) async {
     try {
       final minRes = await ApiService.getMeetingMinutes(id);
       final record = ApiService.meetingMinutesRecordFromResponse(minRes.data);
@@ -196,7 +236,6 @@ class _EventDetailViewState extends State<EventDetailView> {
         });
       }
     }
-    if (mounted) setState(() => _loadingFull = false);
   }
 
   bool _isApprovedEvent() {
@@ -1004,14 +1043,14 @@ class _EventDetailViewState extends State<EventDetailView> {
                   _sectionHeading("About Event"),
                   SizedBox(height: 10.h),
                   
-                  Text(
-                    _event['description'] ?? "No description available for this event.",
+                  ExpandableText(
+                    (_event['description'] ?? "No description available for this event.").toString(),
+                    trimLines: 5,
                     style: TextStyle(
                       fontSize: 15.sp,
                       color: AppColors.navyMuted,
                       height: 1.6,
                     ),
-                    softWrap: true,
                   ),
 
                   SizedBox(height: 24.h),
@@ -1027,8 +1066,9 @@ class _EventDetailViewState extends State<EventDetailView> {
                         borderRadius: BorderRadius.circular(AppRadius.card),
                         border: Border.all(color: AppColors.border),
                       ),
-                      child: Text(
+                      child: ExpandableText(
                         rulesText,
+                        trimLines: 5,
                         style: TextStyle(
                           fontSize: 15.sp,
                           color: AppColors.navyMuted,
@@ -1042,7 +1082,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   _sectionHeading("Team"),
                   SizedBox(height: 6.h),
                   Text(
-                    "Volunteers and participants. Contact numbers are private and visible only to the organizer, who can use the edit icon to set volunteer role or participant department/class.",
+                    "Contact numbers are visible only to the organizer.",
                     style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary, height: 1.4),
                   ),
                   SizedBox(height: 12.h),
@@ -1062,48 +1102,60 @@ class _EventDetailViewState extends State<EventDetailView> {
                     )
                   else
                     FutureBuilder<bool>(
-                      future: _isEventOrganizerOnly(),
+                      future: _isOrganizerFuture,
                       builder: (context, orgSnap) {
                         final org = orgSnap.data == true && _isApprovedEvent();
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (volunteerList.isNotEmpty) ...[
-                              Text("Volunteers", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.accent)),
+                              Text("Volunteers (${volunteerList.length})", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.accent)),
                               SizedBox(height: 8.h),
-                              ...volunteerList.map<Widget>((v) {
-                                if (v is! Map) return const SizedBox.shrink();
-                                return _TeamMemberTile(
-                                  map: v,
-                                  defaultRoleLabel: 'Volunteer',
-                                  showContact: org,
-                                  onEditMeta: org
-                                      ? () => _promptEditVolunteerRole(
-                                            context,
-                                            Map<String, dynamic>.from(v.map((k, val) => MapEntry(k.toString(), val))),
-                                          )
-                                      : null,
-                                );
-                              }),
+                              SeeMoreList(
+                                itemCount: volunteerList.length,
+                                initialCount: 3,
+                                linkColor: AppColors.accent,
+                                itemBuilder: (context, i) {
+                                  final v = volunteerList[i];
+                                  if (v is! Map) return const SizedBox.shrink();
+                                  return _TeamMemberTile(
+                                    map: v,
+                                    defaultRoleLabel: 'Volunteer',
+                                    showContact: org,
+                                    onEditMeta: org
+                                        ? () => _promptEditVolunteerRole(
+                                              context,
+                                              Map<String, dynamic>.from(v.map((k, val) => MapEntry(k.toString(), val))),
+                                            )
+                                        : null,
+                                  );
+                                },
+                              ),
                               SizedBox(height: 16.h),
                             ],
                             if (participantList.isNotEmpty) ...[
-                              Text("Participants", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.success)),
+                              Text("Participants (${participantList.length})", style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.success)),
                               SizedBox(height: 8.h),
-                              ...participantList.map<Widget>((p) {
-                                if (p is! Map) return const SizedBox.shrink();
-                                return _TeamMemberTile(
-                                  map: p,
-                                  defaultRoleLabel: 'Participant',
-                                  showContact: org,
-                                  onEditMeta: org
-                                      ? () => _promptEditParticipantDepartment(
-                                            context,
-                                            Map<String, dynamic>.from(p.map((k, val) => MapEntry(k.toString(), val))),
-                                          )
-                                      : null,
-                                );
-                              }),
+                              SeeMoreList(
+                                itemCount: participantList.length,
+                                initialCount: 3,
+                                linkColor: AppColors.success,
+                                itemBuilder: (context, i) {
+                                  final p = participantList[i];
+                                  if (p is! Map) return const SizedBox.shrink();
+                                  return _TeamMemberTile(
+                                    map: p,
+                                    defaultRoleLabel: 'Participant',
+                                    showContact: org,
+                                    onEditMeta: org
+                                        ? () => _promptEditParticipantDepartment(
+                                              context,
+                                              Map<String, dynamic>.from(p.map((k, val) => MapEntry(k.toString(), val))),
+                                            )
+                                        : null,
+                                  );
+                                },
+                              ),
                             ],
                           ],
                         );
@@ -1114,7 +1166,7 @@ class _EventDetailViewState extends State<EventDetailView> {
 
                   if (_isApprovedEvent() && _onOrAfterEventDay())
                     FutureBuilder<bool>(
-                      future: _isEventOrganizerOnly(),
+                      future: _isOrganizerFuture,
                       builder: (context, snap) {
                         if (snap.data != true) return const SizedBox.shrink();
                         return Padding(
@@ -1133,7 +1185,7 @@ class _EventDetailViewState extends State<EventDetailView> {
 
                   if (_isApprovedEvent() && _isPastEvent())
                     FutureBuilder<bool>(
-                      future: _isEventOrganizerOnly(),
+                      future: _isOrganizerFuture,
                       builder: (context, snap) {
                         if (snap.connectionState != ConnectionState.done) {
                           return Padding(
@@ -1173,8 +1225,9 @@ class _EventDetailViewState extends State<EventDetailView> {
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(color: AppColors.border),
                                   ),
-                                  child: Text(
+                                  child: ExpandableText(
                                     existingOrganizerReview,
+                                    trimLines: 5,
                                     style: TextStyle(fontSize: 15.sp, color: AppColors.navyMuted, height: 1.5),
                                   ),
                                 ),
@@ -1318,8 +1371,10 @@ class _EventDetailViewState extends State<EventDetailView> {
                           if (_minutesContent != null &&
                               _minutesContent!.trim().isNotEmpty) ...[
                             SizedBox(height: 12.h),
-                            Text(
+                            ExpandableText(
                               _minutesContent!,
+                              trimLines: 6,
+                              linkColor: AppColors.teal,
                               style: TextStyle(
                                 fontSize: 15.sp,
                                 color: AppColors.navyMuted,
@@ -1377,7 +1432,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   if (_minutesStatus != null &&
                       _minutesStatus != 'approved') ...[
                     FutureBuilder<bool>(
-                      future: _isEventOrganizerOnly(),
+                      future: _isOrganizerFuture,
                       builder: (context, snap) {
                         if (snap.data != true) return const SizedBox.shrink();
                         final st = _minutesStatus!;
@@ -1418,15 +1473,15 @@ class _EventDetailViewState extends State<EventDetailView> {
                                 if (_minutesContent != null &&
                                     _minutesContent!.trim().isNotEmpty) ...[
                                   SizedBox(height: 10.h),
-                                  Text(
+                                  ExpandableText(
                                     _minutesContent!,
+                                    trimLines: 4,
+                                    linkColor: color,
                                     style: TextStyle(
                                       fontSize: 13.sp,
                                       color: AppColors.navyMuted,
                                       height: 1.4,
                                     ),
-                                    maxLines: 6,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                                 if (_minutesPromoLink != null &&
@@ -1459,59 +1514,81 @@ class _EventDetailViewState extends State<EventDetailView> {
                   _sectionHeading("Winners"),
                   SizedBox(height: 12.h),
                   if (winners.isNotEmpty)
-                    ...winners.map<Widget>((w) {
-                      final posRaw = w is Map ? w['position'] : null;
-                      final pos = posRaw is int
-                          ? posRaw
-                          : int.tryParse(posRaw?.toString() ?? '') ?? 0;
-                      final name = winnerDisplayName(w);
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: 8.h),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Row(
-                            children: [
-                              WinnerAvatar(winner: w, position: pos, size: 48),
-                              SizedBox(width: 12.w),
-                              Expanded(
-                                child: Text(
-                                  name,
-                                  style: TextStyle(
-                                    fontSize: 15.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.navy,
+                    SeeMoreList(
+                      itemCount: winners.length,
+                      initialCount: 3,
+                      linkColor: AppColors.gold,
+                      itemBuilder: (context, i) {
+                        final w = winners[i];
+                        final posRaw = w is Map ? w['position'] : null;
+                        final pos = posRaw is int
+                            ? posRaw
+                            : int.tryParse(posRaw?.toString() ?? '') ?? 0;
+                        final name = winnerDisplayName(w);
+                        final affiliation = winnerAffiliation(w);
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 8.h),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Row(
+                              children: [
+                                WinnerAvatar(winner: w, position: pos, size: 48),
+                                SizedBox(width: 12.w),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        name,
+                                        style: TextStyle(
+                                          fontSize: 15.sp,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.navy,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (affiliation.isNotEmpty)
+                                        Text(
+                                          affiliation,
+                                          style: TextStyle(
+                                            fontSize: 12.sp,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
-                              if (pos > 0)
-                                Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                                  decoration: BoxDecoration(
-                                    color: (pos == 1 ? AppColors.gold : AppColors.surfaceMuted)
-                                        .withValues(alpha: 0.25),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    '#$pos',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12.sp,
-                                      color: pos == 1 ? AppColors.gold : AppColors.navyMuted,
+                                if (pos > 0)
+                                  Container(
+                                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                                    decoration: BoxDecoration(
+                                      color: (pos == 1 ? AppColors.gold : AppColors.surfaceMuted)
+                                          .withValues(alpha: 0.25),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      '#$pos',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12.sp,
+                                        color: pos == 1 ? AppColors.gold : AppColors.navyMuted,
+                                      ),
                                     ),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    })
+                        );
+                      },
+                    )
                   else
                     Container(
                       width: double.infinity,
@@ -1537,7 +1614,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   // Edit button (organizer or editor) — only before the event day
                   if (_isApprovedEvent() && _canEditEventBySchedule())
                     FutureBuilder<bool>(
-                      future: _canEditEvent(),
+                      future: _canEditFuture,
                       builder: (context, snap) {
                         if (snap.data != true) return const SizedBox.shrink();
                         return Padding(
@@ -1558,7 +1635,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   // Submit meeting minutes (organizer) — separate from Event Report
                   if (_isApprovedEvent())
                     FutureBuilder<bool>(
-                      future: _isEventOrganizerOnly(),
+                      future: _isOrganizerFuture,
                       builder: (context, snap) {
                         if (snap.data != true) return const SizedBox.shrink();
                         return Padding(
@@ -1587,7 +1664,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   // Close event (organizer) — only after event end
                   if (_isPastEvent() && _eventStatus() != 'closed')
                     FutureBuilder<bool>(
-                      future: _isEventOrganizerOnly(),
+                      future: _isOrganizerFuture,
                       builder: (context, snap) {
                         if (snap.data != true) return const SizedBox.shrink();
                         return Padding(
@@ -1600,7 +1677,7 @@ class _EventDetailViewState extends State<EventDetailView> {
                   // Organizer: Send notification — through event day only
                   if (_isApprovedEvent() && _canShowOrganizerNotificationBySchedule())
                     FutureBuilder<bool>(
-                      future: _canEditEvent(),
+                      future: _canEditFuture,
                       builder: (context, snap) {
                         if (snap.data != true) return const SizedBox.shrink();
                         return Padding(
@@ -1757,7 +1834,7 @@ class _EventDetailViewState extends State<EventDetailView> {
         ),
       ),
       bottomSheet: FutureBuilder<Map<String, dynamic>>(
-        future: _getUserAndOrganizerRoles(),
+        future: _rolesFuture,
         builder: (context, snapshot) {
           Widget sheetShell({required Widget child}) {
             // Edge-to-edge: Scaffold bottomSheet often zeros MediaQuery.padding,
@@ -2650,6 +2727,31 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
     return (m['full_name'] ?? m['student_name'] ?? 'User').toString();
   }
 
+  Widget _attendanceRow(Map<dynamic, dynamic> m, Map<int, bool> marks, String subtitle) {
+    final uid = int.tryParse(m['user_id'].toString());
+    if (uid == null) return const SizedBox.shrink();
+    if (widget.attendanceLocked) {
+      final present = _rowMarkedAttended(m);
+      return ListTile(
+        dense: true,
+        leading: Icon(
+          present ? Icons.check_circle : Icons.remove_circle_outline,
+          color: present ? Colors.teal.shade700 : Colors.grey,
+          size: 22,
+        ),
+        title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
+        subtitle: Text(subtitle, style: TextStyle(fontSize: 12.sp)),
+      );
+    }
+    return CheckboxListTile(
+      dense: true,
+      value: marks[uid] ?? false,
+      onChanged: (v) => setState(() => marks[uid] = v ?? false),
+      title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
+      subtitle: Text(subtitle, style: TextStyle(fontSize: 12.sp)),
+    );
+  }
+
   Future<void> _submit() async {
     if (widget.attendanceLocked) {
       if (mounted) {
@@ -2780,59 +2882,37 @@ class _OrganizerAttendancePanelState extends State<_OrganizerAttendancePanel> {
             Text('No volunteers or participants yet.', style: TextStyle(color: Colors.grey[700]))
           else ...[
             if (volRows.isNotEmpty) ...[
-              Text('Volunteers', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp)),
-              ...volRows.map((m) {
-                final uid = int.tryParse(m['user_id'].toString());
-                if (uid == null) return const SizedBox.shrink();
-                if (widget.attendanceLocked) {
-                  final present = _rowMarkedAttended(m);
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(
-                      present ? Icons.check_circle : Icons.remove_circle_outline,
-                      color: present ? Colors.teal.shade700 : Colors.grey,
-                      size: 22,
-                    ),
-                    title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
-                    subtitle: Text((m['role'] ?? 'Volunteer').toString(), style: TextStyle(fontSize: 12.sp)),
-                  );
-                }
-                return CheckboxListTile(
-                  dense: true,
-                  value: _vol[uid] ?? false,
-                  onChanged: (v) => setState(() => _vol[uid] = v ?? false),
-                  title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
-                  subtitle: Text((m['role'] ?? 'Volunteer').toString(), style: TextStyle(fontSize: 12.sp)),
-                );
-              }),
+              Text(
+                'Volunteers (${_vol.values.where((v) => v).length}/${volRows.length} present)',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp),
+              ),
+              SeeMoreList(
+                itemCount: volRows.length,
+                initialCount: 5,
+                linkColor: Colors.teal.shade800,
+                itemBuilder: (context, i) => _attendanceRow(
+                  volRows[i],
+                  _vol,
+                  (volRows[i]['role'] ?? 'Volunteer').toString(),
+                ),
+              ),
             ],
             if (partRows.isNotEmpty) ...[
               SizedBox(height: 8.h),
-              Text('Participants', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp)),
-              ...partRows.map((m) {
-                final uid = int.tryParse(m['user_id'].toString());
-                if (uid == null) return const SizedBox.shrink();
-                if (widget.attendanceLocked) {
-                  final present = _rowMarkedAttended(m);
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(
-                      present ? Icons.check_circle : Icons.remove_circle_outline,
-                      color: present ? Colors.teal.shade700 : Colors.grey,
-                      size: 22,
-                    ),
-                    title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
-                    subtitle: Text((m['role'] ?? m['department_class'] ?? 'Participant').toString(), style: TextStyle(fontSize: 12.sp)),
-                  );
-                }
-                return CheckboxListTile(
-                  dense: true,
-                  value: _part[uid] ?? false,
-                  onChanged: (v) => setState(() => _part[uid] = v ?? false),
-                  title: Text(_nameFromRow(m), style: TextStyle(fontSize: 14.sp)),
-                  subtitle: Text((m['role'] ?? m['department_class'] ?? 'Participant').toString(), style: TextStyle(fontSize: 12.sp)),
-                );
-              }),
+              Text(
+                'Participants (${_part.values.where((v) => v).length}/${partRows.length} present)',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp),
+              ),
+              SeeMoreList(
+                itemCount: partRows.length,
+                initialCount: 5,
+                linkColor: Colors.teal.shade800,
+                itemBuilder: (context, i) => _attendanceRow(
+                  partRows[i],
+                  _part,
+                  (partRows[i]['role'] ?? partRows[i]['department_class'] ?? 'Participant').toString(),
+                ),
+              ),
             ],
             if (!widget.attendanceLocked) ...[
               SizedBox(height: 12.h),

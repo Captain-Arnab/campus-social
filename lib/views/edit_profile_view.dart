@@ -1,14 +1,18 @@
-// edit_profile_view.dart - UI only change, no controller modifications
+import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import '../controllers/profile_controller.dart';
 import '../base/constant.dart';
+import '../data/interest_catalog.dart';
+import '../modal/model_user.dart';
+import '../theme/app_theme.dart';
 import '../utils/sweetalert_helper.dart';
-import '../widgets/app_bar_title_with_brand_logo.dart';
 import '../widgets/app_network_image.dart';
+import '../widgets/campus_app_bar.dart';
 
 class EditProfileView extends StatefulWidget {
   const EditProfileView({super.key});
@@ -23,33 +27,33 @@ class _EditProfileViewState extends State<EditProfileView> {
   final bioCtrl = TextEditingController();
   final deptClassCtrl = TextEditingController();
   final interestSearchCtrl = TextEditingController();
-  File? selectedImage;
-  
-  // Selected interests parsed from user data
-  List<String> _selectedInterests = [];
-  
-  // Available interest options for dropdown
-  final List<String> _interestOptions = [
-    'IT/Tech', 'Coding', 'Open Source', 'Cultural', 'Dance', 'Art',
-    'Sports', 'Fitness', 'Cricket', 'Football', 'Basketball', 'Social',
-    'Volunteering', 'Photography', 'Academic', 'Literature', 'Debate',
-    'Music', 'Singing', 'Entertainment', 'Drama', 'Fashion', 'History',
-    'Swimming', 'Wrestling', 'Astronomy', 'Physics', 'Gaming'
-  ];
-  
-  List<String> _filteredInterests = [];
-  bool _showSuggestions = false;
   final FocusNode _interestFocusNode = FocusNode();
+  File? selectedImage;
+
+  List<String> _selectedInterests = [];
+  late final String _initialName;
+  late final String _initialBio;
+  late final String _initialDept;
+  late final List<String> _initialInterests;
+
+  static const int _defaultSuggestionCount = 8;
+  static const int _maxSearchResults = 12;
+
+  List<String> _catalog = InterestCatalog.current;
 
   @override
   void initState() {
     super.initState();
-    nameCtrl.text = controller.userData.value.fullName ?? "";
-    bioCtrl.text = controller.userData.value.bio ?? "";
-    deptClassCtrl.text = controller.userData.value.departmentClass ?? "";
-    
-    // Parse existing interests from user data into list
-    final existingInterests = controller.userData.value.interests ?? "";
+    InterestCatalog.load().then((list) {
+      if (mounted) setState(() => _catalog = list);
+    });
+    final user = controller.userData.value;
+    nameCtrl.text = user.fullName ?? "";
+    bioCtrl.text = user.bio ?? "";
+    deptClassCtrl.text = user.departmentClass ?? "";
+
+    // "General" is the placeholder saved when no interests are picked.
+    final existingInterests = user.interests ?? "";
     if (existingInterests.isNotEmpty && existingInterests != 'General') {
       _selectedInterests = existingInterests
           .split(',')
@@ -57,691 +61,420 @@ class _EditProfileViewState extends State<EditProfileView> {
           .where((e) => e.isNotEmpty)
           .toList();
     }
-    
-    _filteredInterests = List.from(_interestOptions);
-    
-    // Listen to search field changes
-    interestSearchCtrl.addListener(() {
-      setState(() {
-        final query = interestSearchCtrl.text.toLowerCase();
-        if (query.isEmpty) {
-          _filteredInterests = List.from(_interestOptions);
-          _showSuggestions = false;
-        } else {
-          _filteredInterests = _interestOptions
-              .where((interest) => interest.toLowerCase().contains(query))
-              .toList();
-          _showSuggestions = true;
-        }
-      });
-    });
-    
-    // Listen to focus changes
-    _interestFocusNode.addListener(() {
-      setState(() {
-        _showSuggestions = _interestFocusNode.hasFocus && interestSearchCtrl.text.isNotEmpty;
-      });
-    });
+
+    _initialName = nameCtrl.text;
+    _initialBio = bioCtrl.text;
+    _initialDept = deptClassCtrl.text;
+    _initialInterests = List.of(_selectedInterests);
   }
-  
+
+  bool get _hasChanges =>
+      selectedImage != null ||
+      nameCtrl.text.trim() != _initialName.trim() ||
+      bioCtrl.text.trim() != _initialBio.trim() ||
+      deptClassCtrl.text.trim() != _initialDept.trim() ||
+      !listEquals(_selectedInterests, _initialInterests);
+
+  bool _isSelected(String interest) =>
+      _selectedInterests.any((s) => s.toLowerCase() == interest.toLowerCase());
+
   void _addInterest(String interest) {
-    if (!_selectedInterests.contains(interest)) {
-      setState(() {
-        _selectedInterests.add(interest);
-        interestSearchCtrl.clear();
-        _showSuggestions = false;
-      });
-    }
+    final value = InterestCatalog.normalize(interest);
+    if (value == null) return;
+    setState(() {
+      if (!_isSelected(value)) _selectedInterests.add(value);
+      interestSearchCtrl.clear();
+    });
   }
 
   void _removeInterest(String interest) {
-    setState(() {
-      _selectedInterests.remove(interest);
-    });
+    setState(() => _selectedInterests.remove(interest));
+  }
+
+  Future<bool> _confirmDiscard() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text('Your edits to this profile have not been saved.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   @override
   Widget build(BuildContext context) {
-    const radius = 16.0;
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FD),
-      resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        title: const AppBarTitleWithBrandLogo(
-          onPrimaryBackground: true,
-          title: Text(
-            "Edit Profile",
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+    final user = controller.userData.value;
+    final isStudent = user.isStudent ?? true;
+    final institution = user.institutionName?.trim() ?? '';
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (!_hasChanges || await _confirmDiscard()) {
+          if (context.mounted) Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.cream,
+        appBar: CampusAppBar(
+          titleText: 'Edit profile',
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.maybePop(context),
           ),
         ),
-        backgroundColor: const Color(0xFFFF5F15),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        child: Column(
-          children: [
-            // Soft gradient header → rounded bottom + shadow into content
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.fromLTRB(20.w, 28.h, 20.w, 36.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFFFF5F15),
-                    Color(0xFFFF7A3D),
-                    Color(0xFFFFA07A),
+        body: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(16.w, 20.h, 16.w, 24.h),
+            children: [
+              _buildPhotoPicker(user),
+
+              _EditSection(
+                title: 'Basic information',
+                child: _EditCard(
+                  children: [
+                    const _FieldLabel('Full name'),
+                    TextField(
+                      controller: nameCtrl,
+                      keyboardType: TextInputType.name,
+                      textCapitalization: TextCapitalization.words,
+                      textInputAction: TextInputAction.next,
+                      style: _inputTextStyle,
+                      decoration: _inputDecoration(hint: 'Enter your full name'),
+                    ),
+                    SizedBox(height: 16.h),
+                    const _FieldLabel('Department / Class'),
+                    TextField(
+                      controller: deptClassCtrl,
+                      textInputAction: TextInputAction.next,
+                      style: _inputTextStyle,
+                      decoration: _inputDecoration(
+                        hint: 'e.g. CSE 3rd Year, Section A',
+                        helper: 'Shown on your profile and used when you register as a participant.',
+                      ),
+                    ),
+                    SizedBox(height: 16.h),
+                    _ReadOnlyField(
+                      label: 'Institution',
+                      value: institution.isNotEmpty ? institution : 'Not set',
+                      note: 'Set at registration and cannot be changed here.',
+                    ),
                   ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: [0.0, 0.55, 1.0],
                 ),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(36),
-                  bottomRight: Radius.circular(36),
+              ),
+
+              _EditSection(
+                title: 'Account',
+                child: _EditCard(
+                  children: [
+                    _ReadOnlyField(
+                      label: 'Account type',
+                      value: isStudent ? 'Student' : 'Faculty',
+                      note: isStudent
+                          ? 'You sign in with your roll number. Contact support to change the account type.'
+                          : 'You sign in with your employee ID. Contact support to change the account type.',
+                    ),
+                  ],
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFF5F15).withValues(alpha: 0.28),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
               ),
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: _pickImage,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.22),
-                                blurRadius: 18,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3),
-                            ),
-                            child: CircleAvatar(
-                              radius: 58.w,
-                              backgroundColor: Colors.white,
-                              backgroundImage: selectedImage != null
-                                  ? FileImage(selectedImage!)
-                                  : (controller.userData.value.image != null &&
-                                          controller.userData.value.image!.isNotEmpty
-                                      ? appNetworkImageProvider(
-                                          "${Constant.uploadsBaseUrl}profiles/${controller.userData.value.image}",
-                                        )
-                                      : null),
-                              child: selectedImage == null &&
-                                      (controller.userData.value.image == null ||
-                                          controller.userData.value.image!.isEmpty)
-                                  ? Icon(Icons.person, size: 58.w, color: const Color(0xFFFF5F15))
-                                  : null,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 2,
-                          right: 2,
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
-                              ),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.35),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 14.h),
-                  Text(
-                    "Tap to update photo",
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.95),
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
 
-            SizedBox(height: 24.h),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20.w),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionHeader("Personal Information", Icons.person_outline),
-                  SizedBox(height: 14.h),
-                  _buildTextField(
-                    controller: nameCtrl,
-                    label: "Full Name",
-                    hint: "Enter your full name",
-                    icon: Icons.badge_outlined,
-                    inputType: TextInputType.name,
-                  ),
-                  SizedBox(height: 16.h),
-                  Obx(() {
-                    final raw = controller.userData.value.institutionName?.trim();
-                    final hasInst = raw != null && raw.isNotEmpty;
-                    return Padding(
-                      padding: EdgeInsets.only(bottom: 16.h),
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'Institution',
-                          prefixIcon: const Icon(
-                            Icons.account_balance_outlined,
-                            color: Color(0xFFFF5F15),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(radius),
-                          ),
-                          enabled: false,
-                          helperText: 'Set at registration and cannot be changed here',
-                        ),
-                        child: Text(
-                          hasInst ? raw : 'Not set',
-                          style: TextStyle(
-                            fontSize: 15.sp,
-                            color: hasInst ? Colors.black87 : Colors.grey,
-                            fontStyle: hasInst ? FontStyle.normal : FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                  _buildTextField(
-                    controller: deptClassCtrl,
-                    label: "Department / Class",
-                    hint: "e.g. CSE 3rd Year, Section A",
-                    icon: Icons.school_outlined,
-                    helperText:
-                        "Shown on your profile and used when you register as a participant",
-                  ),
-
-                  SizedBox(height: 20.h),
-
-                  Obx(() {
-                    final isSt = controller.userData.value.isStudent ?? true;
-                    return Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(16.w),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF4EC),
-                        borderRadius: BorderRadius.circular(radius),
-                        border: Border.all(color: const Color(0xFFFFD0B5)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.info_outline, size: 18.sp, color: const Color(0xFF9A3412)),
-                              SizedBox(width: 8.w),
-                              Text(
-                                "Account type",
-                                style: TextStyle(
-                                  fontSize: 14.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF7C2D12),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 10.h),
-                          Text(
-                            isSt
-                                ? "You are registered as a student (login uses roll number)."
-                                : "You are registered as faculty (login uses employee ID).",
-                            style: TextStyle(
-                              fontSize: 13.sp,
-                              height: 1.35,
-                              color: const Color(0xFF9A3412),
-                            ),
-                          ),
-                          SizedBox(height: 8.h),
-                          Text(
-                            "Account type cannot be changed in the app. Contact support if you need help.",
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              height: 1.35,
-                              color: const Color(0xFF9A3412).withValues(alpha: 0.85),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-
-                  SizedBox(height: 28.h),
-
-                  _buildSectionHeader("About You", Icons.description_outlined),
-                  SizedBox(height: 14.h),
-                  _buildTextField(
-                    controller: bioCtrl,
-                    label: "Biodata",
-                    hint: "Tell us about yourself...",
-                    icon: Icons.edit_note,
-                    maxLines: 4,
-                    inputType: TextInputType.multiline,
-                  ),
-
-                  SizedBox(height: 28.h),
-
-                  _buildSectionHeader("Your Interests", Icons.interests_outlined),
-                  SizedBox(height: 14.h),
-
-                  Stack(
-                    children: [
-                      Column(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(radius),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.04),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: TextField(
-                              controller: interestSearchCtrl,
-                              focusNode: _interestFocusNode,
-                              style: TextStyle(fontSize: 15.sp, color: Colors.black87),
-                              decoration: InputDecoration(
-                                labelText: "Search Interests",
-                                hintText: "Search or type your interests...",
-                                helperText: "Tap suggestions or press Enter to add",
-                                helperMaxLines: 2,
-                                helperStyle: TextStyle(
-                                  fontSize: 11.sp,
-                                  color: Colors.grey[600],
-                                  height: 1.3,
-                                ),
-                                prefixIcon: const Icon(Icons.search, color: Color(0xFFFF5F15), size: 22),
-                                suffixIcon: interestSearchCtrl.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear),
-                                        onPressed: () {
-                                          setState(() {
-                                            interestSearchCtrl.clear();
-                                            _showSuggestions = false;
-                                          });
-                                        },
-                                      )
-                                    : null,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(radius),
-                                  borderSide: BorderSide.none,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(radius),
-                                  borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(radius),
-                                  borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 2),
-                                ),
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-                              ),
-                              onSubmitted: (value) {
-                                if (value.trim().isNotEmpty) {
-                                  _addInterest(value.trim());
-                                }
-                              },
-                            ),
-                          ),
-                          if (_showSuggestions && _filteredInterests.isNotEmpty)
-                            Material(
-                              elevation: 4,
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                margin: EdgeInsets.only(top: 8.h),
-                                constraints: BoxConstraints(maxHeight: 200.h),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  border: Border.all(
-                                    color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: ListView.separated(
-                                  shrinkWrap: true,
-                                  padding: EdgeInsets.symmetric(vertical: 4.h),
-                                  itemCount: _filteredInterests.length,
-                                  separatorBuilder: (context, index) =>
-                                      Divider(height: 1, color: Colors.grey[200]),
-                                  itemBuilder: (context, index) {
-                                    final interest = _filteredInterests[index];
-                                    final isSelected = _selectedInterests.contains(interest);
-                                    return InkWell(
-                                      onTap: () {
-                                        _addInterest(interest);
-                                        _interestFocusNode.unfocus();
-                                      },
-                                      child: Container(
-                                        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                                        color: isSelected ? Colors.grey[100] : Colors.transparent,
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                interest,
-                                                style: TextStyle(
-                                                  fontSize: 14.sp,
-                                                  color: isSelected ? Colors.grey[600] : Colors.black87,
-                                                  fontWeight:
-                                                      isSelected ? FontWeight.w500 : FontWeight.normal,
-                                                ),
-                                              ),
-                                            ),
-                                            if (isSelected)
-                                              Icon(
-                                                Icons.check_circle,
-                                                color: const Color(0xFFFF5F15),
-                                                size: 20.w,
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          if (_showSuggestions &&
-                              _filteredInterests.isEmpty &&
-                              interestSearchCtrl.text.isNotEmpty)
-                            Container(
-                              margin: EdgeInsets.only(top: 8.h),
-                              padding: EdgeInsets.all(16.w),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF4EC),
-                                border: Border.all(
-                                  color: const Color(0xFFFF5F15).withValues(alpha: 0.3),
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    'No matching interests found',
-                                    style: TextStyle(
-                                      fontSize: 13.sp,
-                                      color: const Color(0xFF7C2D12),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  SizedBox(height: 10.h),
-                                  ElevatedButton.icon(
-                                    onPressed: () {
-                                      _addInterest(interestSearchCtrl.text.trim());
-                                      _interestFocusNode.unfocus();
-                                    },
-                                    icon: const Icon(Icons.add, size: 20),
-                                    label: Text(
-                                      'Add "${interestSearchCtrl.text.trim()}"',
-                                      style: TextStyle(fontSize: 13.sp),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFFF5F15),
-                                      foregroundColor: Colors.white,
-                                      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-
-                  SizedBox(height: 16.h),
-
-                  if (_selectedInterests.isNotEmpty)
-                    Container(
-                      padding: EdgeInsets.all(12.w),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(radius),
-                        border: Border.all(color: Colors.grey[200]!),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Wrap(
-                        spacing: 8.w,
-                        runSpacing: 8.h,
-                        children: _selectedInterests.map((interest) {
-                          return Chip(
-                            label: Text(interest),
-                            deleteIcon: const Icon(Icons.close, size: 18),
-                            onDeleted: () => _removeInterest(interest),
-                            backgroundColor: const Color(0xFFFF5F15).withValues(alpha: 0.1),
-                            labelStyle: TextStyle(
-                              color: const Color(0xFFFF5F15),
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            deleteIconColor: const Color(0xFFFF5F15),
-                            side: const BorderSide(color: Color(0xFFFF5F15), width: 1),
-                          );
-                        }).toList(),
+              _EditSection(
+                title: 'About',
+                child: _EditCard(
+                  children: [
+                    const _FieldLabel('Bio'),
+                    TextField(
+                      controller: bioCtrl,
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      minLines: 3,
+                      maxLines: 6,
+                      style: _inputTextStyle.copyWith(height: 1.45),
+                      decoration: _inputDecoration(
+                        hint: 'A few lines about you, your clubs, or what you are into',
                       ),
                     ),
-
-                  SizedBox(height: 36.h),
-
-                  Obx(
-                    () => controller.isLoading.value
-                        ? const Center(
-                            child: CircularProgressIndicator(color: Color(0xFFFF5F15)),
-                          )
-                        : Container(
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
-                              ),
-                              borderRadius: BorderRadius.circular(radius),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFFFF5F15).withValues(alpha: 0.4),
-                                  blurRadius: 15,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _saveProfile,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                padding: EdgeInsets.symmetric(vertical: 18.h),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(radius),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.check_circle_outline, color: Colors.white),
-                                  SizedBox(width: 10.w),
-                                  Text(
-                                    "Save Changes",
-                                    style: TextStyle(
-                                      fontSize: 16.sp,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                  ),
-
-                  SizedBox(height: 40.h),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFF5F15), Color(0xFFFF9068)],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: Colors.white, size: 18),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-        SizedBox(height: 10.h),
-        Divider(height: 1, thickness: 1, color: Colors.grey.shade200),
-      ],
-    );
-  }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    int maxLines = 1,
-    TextInputType inputType = TextInputType.text,
-    String? helperText,
-  }) {
-    const radius = 16.0;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
+              _EditSection(
+                title: 'Interests',
+                trailing: _selectedInterests.isEmpty
+                    ? null
+                    : Text(
+                        '${_selectedInterests.length} selected',
+                        style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                      ),
+                child: _EditCard(children: _buildInterestEditor()),
               ),
             ],
           ),
-          child: TextField(
-            controller: controller,
-            keyboardType: inputType,
-            maxLines: maxLines,
-            style: TextStyle(fontSize: 15.sp, color: Colors.black87, height: 1.35),
-            decoration: InputDecoration(
-              labelText: label,
-              hintText: hint,
-              hintStyle: TextStyle(fontSize: 14.sp, color: Colors.grey[500]),
-              prefixIcon: Icon(icon, color: const Color(0xFFFF5F15), size: 22),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(radius),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(radius),
-                borderSide: BorderSide(color: Colors.grey[200]!, width: 1),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(radius),
-                borderSide: const BorderSide(color: Color(0xFFFF5F15), width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 16.w,
-                vertical: maxLines > 1 ? 16.h : 16.h,
-              ),
+        ),
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 10.h),
+              child: Obx(() {
+                final saving = controller.isLoading.value;
+                return SizedBox(
+                  height: 50.h,
+                  child: FilledButton(
+                    onPressed: saving ? null : _saveProfile,
+                    style: FilledButton.styleFrom(
+                      disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.6),
+                    ),
+                    child: saving
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                          )
+                        : Text(
+                            'Save changes',
+                            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
+                          ),
+                  ),
+                );
+              }),
             ),
           ),
         ),
-        if (helperText != null) ...[
-          SizedBox(height: 8.h),
-          Padding(
-            padding: EdgeInsets.only(left: 4.w, right: 4.w),
-            child: Text(
-              helperText,
-              style: TextStyle(
-                fontSize: 12.sp,
-                height: 1.35,
-                color: Colors.grey[600],
+      ),
+    );
+  }
+
+  Widget _buildPhotoPicker(ModelUser user) {
+    final hasNetworkImage = user.image != null && user.image!.isNotEmpty;
+    final ImageProvider? image = selectedImage != null
+        ? FileImage(selectedImage!)
+        : hasNetworkImage
+            ? appNetworkImageProvider("${Constant.uploadsBaseUrl}profiles/${user.image}")
+            : null;
+
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: _pickImage,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: CircleAvatar(
+                  radius: 46.r,
+                  backgroundColor: AppColors.surfaceMuted,
+                  backgroundImage: image,
+                  child: image == null
+                      ? Icon(Icons.person_rounded, size: 44.r, color: AppColors.textSecondary)
+                      : null,
+                ),
               ),
-            ),
+              Positioned(
+                right: 0,
+                bottom: 2,
+                child: Container(
+                  width: 32.r,
+                  height: 32.r,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2.5),
+                  ),
+                  child: Icon(Icons.photo_camera_rounded, size: 16.r, color: Colors.white),
+                ),
+              ),
+            ],
           ),
+        ),
+        SizedBox(height: 6.h),
+        TextButton(
+          onPressed: _pickImage,
+          style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+          child: Text(
+            selectedImage != null ? 'Choose a different photo' : 'Change photo',
+            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildInterestEditor() {
+    final query = interestSearchCtrl.text.trim();
+    final q = query.toLowerCase();
+    final available = _catalog.where((o) => !_isSelected(o));
+    List<String> suggestions;
+    var hiddenMatches = 0;
+    if (q.isEmpty) {
+      suggestions = available.take(_defaultSuggestionCount).toList();
+    } else {
+      final matches = available.where((o) => o.toLowerCase().contains(q)).toList()
+        ..sort((a, b) {
+          final as = a.toLowerCase().startsWith(q) ? 0 : 1;
+          final bs = b.toLowerCase().startsWith(q) ? 0 : 1;
+          return as != bs ? as - bs : a.length - b.length;
+        });
+      hiddenMatches = (matches.length - _maxSearchResults).clamp(0, matches.length);
+      suggestions = matches.take(_maxSearchResults).toList();
+    }
+    final normalizedQuery = InterestCatalog.normalize(query);
+    final isNewInterest = query.isNotEmpty &&
+        !_isSelected(query) &&
+        !InterestCatalog.containsIgnoreCase(_catalog, query);
+    final canAddCustom = isNewInterest && normalizedQuery != null;
+    final tooLong = isNewInterest && query.length > InterestCatalog.maxLength;
+
+    return [
+      if (_selectedInterests.isEmpty)
+        Text(
+          'No interests yet. Pick a few below so we can suggest events you will like.',
+          style: TextStyle(fontSize: 13.5.sp, color: AppColors.textSecondary, height: 1.4),
+        )
+      else
+        Wrap(
+          spacing: 8.w,
+          runSpacing: 8.h,
+          children: _selectedInterests
+              .map((i) => _SelectedInterestChip(label: i, onRemove: () => _removeInterest(i)))
+              .toList(),
+        ),
+      SizedBox(height: 16.h),
+      TextField(
+        controller: interestSearchCtrl,
+        focusNode: _interestFocusNode,
+        textInputAction: TextInputAction.done,
+        style: _inputTextStyle,
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (value) {
+          _addInterest(value);
+          _interestFocusNode.requestFocus();
+        },
+        decoration: _inputDecoration(
+          hint: 'Search or add an interest',
+          prefix: const Icon(Icons.search_rounded, color: AppColors.textSecondary, size: 20),
+          suffix: query.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear',
+                  icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondary),
+                  onPressed: () => setState(interestSearchCtrl.clear),
+                ),
+        ),
+      ),
+      SizedBox(height: 14.h),
+      if (suggestions.isNotEmpty) ...[
+        Text(
+          query.isEmpty ? 'Popular' : 'Matches',
+          style: _hintLabelStyle,
+        ),
+        SizedBox(height: 8.h),
+        Wrap(
+          spacing: 8.w,
+          runSpacing: 8.h,
+          children: suggestions.map((s) => _SuggestionChip(label: s, onTap: () => _addInterest(s))).toList(),
+        ),
+        if (query.isEmpty && _catalog.where((o) => !_isSelected(o)).length > suggestions.length) ...[
+          SizedBox(height: 10.h),
+          Text('Search to see more interests.', style: _hintNoteStyle),
+        ] else if (hiddenMatches > 0) ...[
+          SizedBox(height: 10.h),
+          Text('$hiddenMatches more — keep typing to narrow down.', style: _hintNoteStyle),
         ],
       ],
+      if (canAddCustom) ...[
+        if (suggestions.isNotEmpty) SizedBox(height: 16.h),
+        Text(
+          suggestions.isEmpty ? 'Not in the list yet' : 'Not what you are looking for?',
+          style: _hintLabelStyle,
+        ),
+        SizedBox(height: 8.h),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _SuggestionChip(
+            label: 'Add "$normalizedQuery" as a new interest',
+            highlighted: true,
+            onTap: () => _addInterest(query),
+          ),
+        ),
+        SizedBox(height: 6.h),
+        Text(
+          'New interests are added to the shared list when you save, so others can pick them too.',
+          style: _hintNoteStyle,
+        ),
+      ] else if (tooLong)
+        Text(
+          'Keep interests under ${InterestCatalog.maxLength} characters.',
+          style: _hintNoteStyle.copyWith(color: AppColors.error),
+        )
+      else if (suggestions.isEmpty)
+        Text(
+          query.isEmpty ? 'You have added every suggestion.' : 'Already added.',
+          style: _hintNoteStyle,
+        ),
+    ];
+  }
+
+  TextStyle get _hintLabelStyle => TextStyle(
+        fontSize: 12.sp,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textSecondary,
+      );
+
+  TextStyle get _hintNoteStyle => TextStyle(fontSize: 12.sp, color: AppColors.textSecondary, height: 1.35);
+
+  TextStyle get _inputTextStyle => TextStyle(fontSize: 15.sp, color: AppColors.navy);
+
+  InputDecoration _inputDecoration({
+    String? hint,
+    String? helper,
+    Widget? prefix,
+    Widget? suffix,
+  }) {
+    OutlineInputBorder border(Color color, [double width = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.button),
+          borderSide: BorderSide(color: color, width: width),
+        );
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary.withValues(alpha: 0.8)),
+      helperText: helper,
+      helperMaxLines: 2,
+      helperStyle: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary, height: 1.35),
+      prefixIcon: prefix,
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: AppColors.cream,
+      isDense: true,
+      contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 13.h),
+      border: border(AppColors.border),
+      enabledBorder: border(AppColors.border),
+      focusedBorder: border(AppColors.accent, 1.5),
     );
   }
 
@@ -764,27 +497,26 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _saveProfile() async {
-    // Validation
+    FocusScope.of(context).unfocus();
     if (nameCtrl.text.trim().isEmpty) {
       SweetAlertHelper.showError(context, "Required", "Please enter your name");
       return;
     }
 
-    // Convert selected interests list back to comma-separated string
-    final interestsString = _selectedInterests.isEmpty 
-        ? 'General' 
+    final interestsString = _selectedInterests.isEmpty
+        ? 'General'
         : _selectedInterests.join(', ');
 
-    // Call existing controller method (no changes needed in controller)
-    bool success = await controller.updateProfile(
+    final success = await controller.updateProfile(
       nameCtrl.text.trim(),
       bioCtrl.text.trim(),
       interestsString,
       selectedImage,
       departmentClass: deptClassCtrl.text.trim(),
     );
-    
+
     if (success) {
+      unawaited(InterestCatalog.contribute(_selectedInterests));
       Get.back();
     }
   }
@@ -797,5 +529,211 @@ class _EditProfileViewState extends State<EditProfileView> {
     interestSearchCtrl.dispose();
     _interestFocusNode.dispose();
     super.dispose();
+  }
+}
+
+class _EditSection extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  const _EditSection({required this.title, required this.child, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(top: 20.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(left: 4.w, right: 4.w, bottom: 8.h),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 11.5.sp,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                if (trailing != null) trailing!,
+              ],
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _EditCard extends StatelessWidget {
+  final List<Widget> children;
+
+  const _EditCard({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+
+  const _FieldLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 6.h, left: 2.w),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 13.sp,
+          fontWeight: FontWeight.w600,
+          color: AppColors.navyMuted,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadOnlyField extends StatelessWidget {
+  final String label;
+  final String value;
+  final String? note;
+
+  const _ReadOnlyField({required this.label, required this.value, this.note});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _FieldLabel(label),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 13.h),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceMuted,
+            borderRadius: BorderRadius.circular(AppRadius.button),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  value,
+                  style: TextStyle(fontSize: 15.sp, color: AppColors.navyMuted),
+                ),
+              ),
+              Icon(Icons.lock_outline_rounded, size: 16.sp, color: AppColors.textSecondary),
+            ],
+          ),
+        ),
+        if (note != null) ...[
+          SizedBox(height: 6.h),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 2.w),
+            child: Text(
+              note!,
+              style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary, height: 1.35),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SelectedInterestChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onRemove;
+
+  const _SelectedInterestChip({required this.label, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(left: 12.w, right: 4.w),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w600,
+              color: AppColors.accentDark,
+            ),
+          ),
+          InkResponse(
+            onTap: onRemove,
+            radius: 16,
+            child: Padding(
+              padding: EdgeInsets.all(6.w),
+              child: const Icon(Icons.close_rounded, size: 16, color: AppColors.accentDark),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SuggestionChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool highlighted;
+
+  const _SuggestionChip({required this.label, required this.onTap, this.highlighted = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlighted ? AppColors.accent : AppColors.navyMuted;
+    return Material(
+      color: AppColors.surface,
+      shape: StadiumBorder(
+        side: BorderSide(color: highlighted ? AppColors.accent : AppColors.border),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const StadiumBorder(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add_rounded, size: 16, color: color),
+              SizedBox(width: 4.w),
+              Text(
+                label,
+                style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w500, color: color),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
