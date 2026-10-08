@@ -703,23 +703,23 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
             leadingWidth: 220,
             leading: CampusSliverAppBar.logoLeading(),
             actions: [
-              TextButton(
-                onPressed: () => _openMicampusWebsite(context),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.white.withValues(alpha: 0.9),
-                  padding: EdgeInsets.symmetric(horizontal: 6.w),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  'micampus.co.in',
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    decoration: TextDecoration.underline,
-                    decorationColor: Colors.white54,
-                  ),
-                ),
-              ),
+              // TextButton(
+              //   onPressed: () => _openMicampusWebsite(context),
+              //   style: TextButton.styleFrom(
+              //     foregroundColor: Colors.white.withValues(alpha: 0.9),
+              //     padding: EdgeInsets.symmetric(horizontal: 6.w),
+              //     minimumSize: Size.zero,
+              //     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              //   ),
+              //   child: Text(
+              //     'micampus.co.in',
+              //     style: TextStyle(
+              //       fontSize: 11.sp,
+              //       decoration: TextDecoration.underline,
+              //       decorationColor: Colors.white54,
+              //     ),
+              //   ),
+              // ),
               Obx(() {
                 final unread = Get.isRegistered<InboxNotificationController>()
                     ? Get.find<InboxNotificationController>().unreadCount.value
@@ -907,25 +907,15 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(height: 8.h),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 20.w),
-                        child: Text(
-                          "Live today",
-                          style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
-                        ),
-                      ),
-                      SizedBox(height: 10.h),
-                      if (liveToday.isEmpty)
+                      if (liveToday.isNotEmpty) ...[
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 20.w),
-                          child: const AppEmptyState(
-                            icon: Icons.event_busy_rounded,
-                            accentColor: AppColors.teal,
-                            headline: 'Nothing live right now',
-                            supporting: 'Check back soon or browse upcoming events below.',
+                          child: Text(
+                            "Live today",
+                            style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: Colors.black87),
                           ),
-                        )
-                      else
+                        ),
+                        SizedBox(height: 10.h),
                         SizedBox(
                           height: 320.h,
                           child: ListView.separated(
@@ -941,7 +931,8 @@ class _ExploreTabState extends State<_ExploreTab> with AutomaticKeepAliveClientM
                             ),
                           ),
                         ),
-                      SizedBox(height: 24.h),
+                        SizedBox(height: 24.h),
+                      ],
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20.w),
                         child: Text(
@@ -3488,6 +3479,22 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
     return DateTime.tryParse(s.replaceAll(' ', 'T'));
   }
 
+  /// e.g. `22nd October, 2026`; falls back to the raw string if unparseable.
+  String _formatReminderDate(String raw) {
+    final dt = DateTime.tryParse(raw.replaceAll(' ', 'T'));
+    if (dt == null) return raw;
+    final day = dt.day;
+    final suffix = (day >= 11 && day <= 13)
+        ? 'th'
+        : switch (day % 10) {
+            1 => 'st',
+            2 => 'nd',
+            3 => 'rd',
+            _ => 'th',
+          };
+    return '$day$suffix ${DateFormat('MMMM, yyyy').format(dt)}';
+  }
+
   /// Nearest reminder only (earliest `notify_date`).
   List<dynamic> _nearestRemindersOnly(List<dynamic> list) {
     if (list.isEmpty) return [];
@@ -3585,7 +3592,8 @@ class _UpcomingRemindersSectionState extends State<_UpcomingRemindersSection> {
           SizedBox(height: 6.h),
           ...(remindersToShow.map<Widget>((d) {
             final title = (d is Map ? d['title'] : null)?.toString() ?? 'Reminder';
-            final dateStr = (d is Map ? d['notify_date'] : null)?.toString() ?? '';
+            final rawDate = (d is Map ? d['notify_date'] : null)?.toString() ?? '';
+            final dateStr = rawDate.isEmpty ? '' : _formatReminderDate(rawDate);
             final source = (d is Map ? d['source'] : null)?.toString() ?? '';
             final eventIdRaw = d is Map ? d['event_id'] : null;
             final eventId = eventIdRaw is int ? eventIdRaw : int.tryParse(eventIdRaw?.toString() ?? '');
